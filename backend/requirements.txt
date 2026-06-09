@@ -1,0 +1,13 @@
+numpy>=2.1.0
+fastapi
+uvicorn[standard]
+supabase
+python-dotenv
+groq
+sentry-sdk[fastapi]
+httpx
+pydantic
+pydantic-settings
+python-multipart
+gotrue
+prophet==1.1.5
