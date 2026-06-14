@@ -8,7 +8,7 @@ from typing import Optional
 
 def run_lstm_forecast(
     prices: pd.Series,  # 60 days of close prices, daily
-    forecast_days: int = 7
+    forecast_days: int = 30
 ) -> dict:
     """
     Runs a simple but effective LSTM forecast.
@@ -22,6 +22,13 @@ def run_lstm_forecast(
     """
     import torch
     import torch.nn as nn
+    
+    # Hardware Optimizations for CPU Training Speed
+    import os
+    num_cores = os.cpu_count() or 4
+    torch.set_num_threads(num_cores)
+    if hasattr(torch.backends, 'mkldnn') and torch.backends.mkldnn.is_available():
+        torch.backends.mkldnn.enabled = True
     
     # Normalize prices
     price_array = prices.values.astype(np.float32)
@@ -130,7 +137,7 @@ def run_lstm_forecast(
 def run_prophet_forecast(
     prices: pd.Series,
     dates: pd.Series,
-    forecast_days: int = 7
+    forecast_days: int = 30
 ) -> dict | None:
     """
     Uses NeuralProphet instead of Prophet.
@@ -215,7 +222,7 @@ def run_prophet_forecast(
 def run_ensemble_forecast(
     prices: pd.Series,
     dates: pd.Series,
-    forecast_days: int = 7
+    forecast_days: int = 30
 ) -> dict:
     """
     Runs LSTM and Prophet, averages their forecasts.

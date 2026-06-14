@@ -30,8 +30,16 @@ export function GlobalSearch() {
         setIsOpen(false);
       }
     };
+    
+    const handleOpenSearch = () => setIsOpen(true);
+    
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("open-global-search", handleOpenSearch);
+    
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("open-global-search", handleOpenSearch);
+    };
   }, []);
 
   useEffect(() => {

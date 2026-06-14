@@ -1,36 +1,29 @@
 import os
 import ssl
 import sys
+import sqlite3
 from pathlib import Path
 from typing import Dict, Optional
 
 import pandas as pd
-import sentry_sdk
-from dotenv import load_dotenv
+import yfinance as yf
 from fredapi import Fred
-from supabase import Client, create_client
 
 ssl._create_default_https_context = ssl._create_unverified_context
 
+# Database path
+DB_PATH = Path(__file__).parent.parent.parent.parent / "backend" / "cryptograph.db"
+if not DB_PATH.exists():
+    DB_PATH = Path(__file__).parent.parent.parent.parent / "cryptograph.db"
 
-# Load environment variables
-env_path = Path(__file__).parent.parent.parent / ".env"
-load_dotenv(dotenv_path=env_path)
-
-SENTRY_DSN: Optional[str] = os.environ.get("SENTRY_DSN")
-if SENTRY_DSN:
-    sentry_sdk.init(dsn=SENTRY_DSN)
-
-SUPABASE_URL: Optional[str] = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY: Optional[str] = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-FRED_API_KEY: Optional[str] = os.environ.get("FRED_API_KEY")
-
-if not SUPABASE_URL or not SUPABASE_KEY or not FRED_API_KEY:
-    print("Error: SUPABASE and FRED keys must be set in ml/.env")
-    sys.exit(1)
-
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-fred = Fred(api_key=FRED_API_KEY)
+def get_setting(conn, key: str) -> Optional[str]:
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT setting_value FROM app_settings WHERE setting_key = ?", (key,))
+        row = cursor.fetchone()
+        return row[0] if row else None
+    except sqlite3.OperationalError:
+        return None
 
 SERIES_MAP: Dict[str, str] = {
     "DFF": "fed_rate",
@@ -39,65 +32,103 @@ SERIES_MAP: Dict[str, str] = {
     "VIXCLS": "vix"
 }
 
+def create_macro_table_if_not_exists(conn):
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS macro_indicators (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp DATETIME NOT NULL UNIQUE,
+            fed_rate REAL,
+            cpi REAL,
+            inflation REAL,
+            vix REAL,
+            fed_rate_z REAL,
+            cpi_z REAL,
+            inflation_z REAL,
+            vix_z REAL
+        )
+    """)
+    conn.commit()
+
+def fetch_yfinance_fallback() -> pd.DataFrame:
+    """Fetch surrogate data via yfinance for missing FRED API."""
+    print("FRED API key missing. Falling back to yfinance (^TNX, ^VIX).")
+    tickers = ["^TNX", "^VIX"]
+    data = yf.download(tickers, start="2020-01-01")
+    
+    df = pd.DataFrame()
+    # Map ^TNX (10Y Yield) -> fed_rate proxy
+    # Map ^VIX -> vix
+    df['fed_rate'] = data['Close']['^TNX']
+    df['vix'] = data['Close']['^VIX']
+    df['cpi'] = None  # No easy daily proxy for CPI via yfinance
+    df['inflation'] = None
+    
+    return df
+
 def main() -> None:
+    conn = sqlite3.connect(DB_PATH)
+    create_macro_table_if_not_exists(conn)
+    
+    FRED_API_KEY = get_setting(conn, "fred_api_key")
     all_data = pd.DataFrame()
 
-    for series_id, column_name in SERIES_MAP.items():
-        try:
-            # Fetch series
-            data = fred.get_series(series_id, observation_start="2020-01-01")
-            df = data.to_frame(name=column_name)
-            
-            # Combine into one DataFrame on the date index
-            if all_data.empty:
-                all_data = df
-            else:
-                all_data = all_data.join(df, how="outer")
+    if FRED_API_KEY:
+        fred = Fred(api_key=FRED_API_KEY)
+        for series_id, column_name in SERIES_MAP.items():
+            try:
+                data = fred.get_series(series_id, observation_start="2020-01-01")
+                df = data.to_frame(name=column_name)
                 
-            print(f"Fetched FRED series: {series_id} ({len(data)} observations)")
-        except Exception as e:
-            sentry_sdk.capture_exception(e)
-            print(f"Error fetching {series_id}: {e}")
+                if all_data.empty:
+                    all_data = df
+                else:
+                    all_data = all_data.join(df, how="outer")
+                print(f"Fetched FRED series: {series_id} ({len(data)} observations)")
+            except Exception as e:
+                print(f"Error fetching {series_id}: {e}")
+    else:
+        all_data = fetch_yfinance_fallback()
 
     if all_data.empty:
-        print("No FRED data collected.")
+        print("No macro data collected.")
         return
 
-    # Resample to daily frequency using .resample("D").last()
-    # Note: 'D' resamples to calendar day frequency
     all_data = all_data.resample("D").last()
-    
-    # Forward-fill missing values (weekends/holidays)
     all_data = all_data.ffill()
-    
-    # Drop rows where ALL four columns are NaN
     all_data = all_data.dropna(how="all")
 
-    # Upsert into macro_indicators table
-    # Supabase upsert has a limit, typically 1000 or so, we will do batches
     records = []
     for timestamp, row in all_data.iterrows():
-        # Pandas timestamp has an isoformat method
-        records.append({
-            "timestamp": timestamp.isoformat() + "Z",
-            "fed_rate": row["fed_rate"] if pd.notna(row["fed_rate"]) else None,
-            "cpi": row["cpi"] if pd.notna(row["cpi"]) else None,
-            "inflation": row["inflation"] if pd.notna(row["inflation"]) else None,
-            "vix": row["vix"] if pd.notna(row["vix"]) else None
-        })
+        records.append((
+            timestamp.isoformat() + "Z",
+            row.get("fed_rate") if pd.notna(row.get("fed_rate")) else None,
+            row.get("cpi") if pd.notna(row.get("cpi")) else None,
+            row.get("inflation") if pd.notna(row.get("inflation")) else None,
+            row.get("vix") if pd.notna(row.get("vix")) else None
+        ))
 
+    cursor = conn.cursor()
     total_rows = 0
-    batch_size = 500
-    for i in range(0, len(records), batch_size):
-        batch = records[i:i+batch_size]
+    for i in range(0, len(records), 500):
+        batch = records[i:i+500]
         try:
-            supabase.table("macro_indicators").upsert(batch, on_conflict="timestamp").execute()
+            cursor.executemany("""
+                INSERT INTO macro_indicators (timestamp, fed_rate, cpi, inflation, vix)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(timestamp) DO UPDATE SET
+                    fed_rate=excluded.fed_rate,
+                    cpi=excluded.cpi,
+                    inflation=excluded.inflation,
+                    vix=excluded.vix
+            """, batch)
+            conn.commit()
             total_rows += len(batch)
         except Exception as e:
-            sentry_sdk.capture_exception(e)
             print(f"Error upserting macro batch: {e}")
 
-    print(f"✅ FRED collection complete: {total_rows} daily rows")
+    print(f"Macro collection complete: {total_rows} daily rows")
+    conn.close()
 
 if __name__ == "__main__":
     main()

@@ -1,0 +1,32 @@
+$ErrorActionPreference = "Stop"
+
+Write-Host "===================================================" -ForegroundColor Cyan
+Write-Host "     Starting CryptoGraph Analytics Environment    " -ForegroundColor Cyan
+Write-Host "===================================================" -ForegroundColor Cyan
+Write-Host ""
+
+# Start Backend
+Write-Host "[*] Initializing Backend Server (FastAPI)..." -ForegroundColor Yellow
+Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"cd /d `"$PSScriptRoot\backend`" && set PYTHONPATH=`"$PSScriptRoot\backend;$PSScriptRoot`" && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload`"" -WindowStyle Normal
+
+# Wait briefly
+Start-Sleep -Seconds 2
+
+# Start Frontend
+Write-Host "[*] Initializing Frontend Server (Next.js)..." -ForegroundColor Yellow
+Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"cd /d `"$PSScriptRoot\frontend`" && npm run dev`"" -WindowStyle Normal
+
+# Wait for frontend to compile
+Write-Host "[*] Waiting for servers to initialize (5s)..." -ForegroundColor Yellow
+Start-Sleep -Seconds 5
+
+# Launch Browser
+Write-Host "[*] Launching Browser..." -ForegroundColor Green
+Start-Process "http://localhost:3000"
+
+Write-Host ""
+Write-Host "===================================================" -ForegroundColor Cyan
+Write-Host "   All systems running!                            " -ForegroundColor Cyan
+Write-Host "   (Backend and Frontend are running in separate   " -ForegroundColor Cyan
+Write-Host "    terminal windows)                              " -ForegroundColor Cyan
+Write-Host "===================================================" -ForegroundColor Cyan

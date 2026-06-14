@@ -1,7 +1,9 @@
 """Prediction routes."""
 import subprocess
 from fastapi import APIRouter, Depends, BackgroundTasks
-from app.api.deps import get_supabase
+from app.api.deps import get_db
+from sqlalchemy.orm import Session
+from sqlalchemy import desc
 from app.db.models import Prediction, PredictionHistory
 
 router = APIRouter(prefix="/predictions", tags=["predictions"])
@@ -11,59 +13,78 @@ async def get_predictions(
     limit: int = 50,
     direction: str = "all",           # all | up | down | neutral
     min_confidence: float = 0.0,
-    db=Depends(get_supabase)
+    db: Session = Depends(get_db)
 ):
     """Returns latest predictions for all assets with optional filters."""
-    query = db.table("predictions").select("*, assets(symbol)").order("timestamp", desc=True).limit(limit)
+    from app.db.models_sqla import Prediction as SQLAPrediction, Asset
+    
+    query = db.query(SQLAPrediction, Asset).join(Asset)
     
     if direction != "all":
-        query = query.eq("direction", direction)
+        query = query.filter(SQLAPrediction.direction == direction)
         
     if min_confidence > 0:
-        query = query.gte("confidence", min_confidence)
+        query = query.filter(SQLAPrediction.confidence >= min_confidence)
         
-    res = query.execute()
+    res = query.order_by(desc(SQLAPrediction.predicted_at)).limit(limit).all()
     
     predictions = []
-    for row in res.data:
-        asset_symbol = row.get("assets", {}).get("symbol", "UNKNOWN")
+    for pred, asset in res:
+        import json
+        sv = None
+        if pred.shap_values:
+            try:
+                sv = pred.shap_values if isinstance(pred.shap_values, dict) else json.loads(pred.shap_values)
+            except:
+                pass
+                
         predictions.append(Prediction(
-            asset_symbol=asset_symbol,
-            direction=row.get("direction", "neutral"),
-            confidence=row.get("confidence", 0.0),
-            volatility_regime=row.get("volatility_regime", "medium"),
-            predicted_at=str(row.get("timestamp", "")),
-            model_version=row.get("model_version", "v1.0")
+            asset_symbol=asset.symbol,
+            direction=pred.direction or "neutral",
+            confidence=pred.confidence or 0.0,
+            volatility_regime=pred.volatility_regime or "medium",
+            predicted_at=str(pred.predicted_at or ""),
+            model_version=pred.model_version or "v1.0",
+            shap_values=sv
         ))
     return predictions
 
 @router.get("/{symbol}", response_model=PredictionHistory)
-async def get_prediction_history(symbol: str, db=Depends(get_supabase)):
+async def get_prediction_history(symbol: str, db: Session = Depends(get_db)):
     """Returns last 30 predictions for a single asset."""
+    from app.db.models_sqla import Prediction as SQLAPrediction, Asset
+    
     # Find asset
-    asset_res = db.table("assets").select("id").eq("symbol", symbol).execute()
-    if not asset_res.data:
+    asset = db.query(Asset).filter(Asset.symbol == symbol).first()
+    if not asset:
         return PredictionHistory(symbol=symbol, predictions=[])
         
-    asset_id = asset_res.data[0]['id']
-    
-    res = db.table("predictions").select("*").eq("asset_id", asset_id).order("timestamp", desc=True).limit(30).execute()
+    res = db.query(SQLAPrediction).filter(SQLAPrediction.asset_id == asset.id).order_by(desc(SQLAPrediction.predicted_at)).limit(30).all()
     
     preds = []
-    for row in res.data:
+    for row in res:
+        import json
+        sv = None
+        if row.shap_values:
+            try:
+                sv = row.shap_values if isinstance(row.shap_values, dict) else json.loads(row.shap_values)
+            except:
+                pass
+                
         preds.append(Prediction(
             asset_symbol=symbol,
-            direction=row.get("direction", "neutral"),
-            confidence=row.get("confidence", 0.0),
-            volatility_regime=row.get("volatility_regime", "medium"),
-            predicted_at=str(row.get("timestamp", "")),
-            model_version=row.get("model_version", "v1.0")
+            direction=row.direction or "neutral",
+            confidence=row.confidence or 0.0,
+            volatility_regime=row.volatility_regime or "medium",
+            predicted_at=str(row.predicted_at or ""),
+            model_version=row.model_version or "v1.0",
+            shap_values=sv
         ))
         
     return PredictionHistory(symbol=symbol, predictions=preds)
 
 @router.post("/inference/trigger")
-async def trigger_inference(background_tasks: BackgroundTasks, db=Depends(get_supabase)):
+async def trigger_inference(background_tasks: BackgroundTasks):
     """
     Triggers fresh inference run asynchronously.
     Calls ml/pipelines/inference_pipeline.py as subprocess in background.

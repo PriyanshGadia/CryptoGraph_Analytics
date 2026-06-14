@@ -1,158 +1,149 @@
 from fastapi import APIRouter, Depends, HTTPException
-from app.api.deps import get_supabase
+from sqlalchemy.orm import Session
+from sqlalchemy import text
+from app.api.deps import get_db
 from datetime import datetime, timezone, timedelta
+from app.db.models_sqla import Asset
+import ccxt
 
 router = APIRouter(prefix="/coins", tags=["coins"])
 
 @router.get("/{symbol}/ohlcv")
-async def get_coin_ohlcv(
+def get_coin_ohlcv(
     symbol: str,
-    period: str = "3M",
-    db=Depends(get_supabase)
+    interval: str = "1h",
+    db: Session = Depends(get_db)
 ):
-    """
-    Returns OHLCV candle data for the given period.
-    period maps to:
-      1W  -> last 7 days
-      1M  -> last 30 days
-      3M  -> last 90 days
-      1Y  -> last 365 days
-      ALL -> all available data
-    """
-    # Look up asset_id
-    asset_res = db.table("assets").select("id").ilike("symbol", symbol).execute()
-    if not asset_res.data:
+    asset = db.query(Asset).filter(Asset.symbol.ilike(symbol)).first()
+    if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
-    asset_id = asset_res.data[0]["id"]
     
-    # Compute since date
-    now = datetime.now(timezone.utc)
-    if period == "1W":
-        since = now - timedelta(days=7)
-    elif period == "1M":
-        since = now - timedelta(days=30)
-    elif period == "3M":
-        since = now - timedelta(days=90)
-    elif period == "1Y":
-        since = now - timedelta(days=365)
-    else:
-        since = datetime(2000, 1, 1, tzinfo=timezone.utc)
+    try:
+        exchange = ccxt.binance()
+        market_symbol = f"{symbol.upper()}/USDT"
+        raw_ohlcv = exchange.fetch_ohlcv(market_symbol, timeframe=interval, limit=1500)
         
-    since_str = since.isoformat()
-    
-    # Query ohlcv
-    ohlcv_res = db.table("ohlcv").select("timestamp, open, high, low, close, volume")\
-        .eq("asset_id", asset_id)\
-        .gte("timestamp", since_str)\
-        .order("timestamp", desc=False)\
-        .execute()
+        data = []
+        for row in raw_ohlcv:
+            data.append({
+                "time": int(row[0] / 1000),
+                "open": float(row[1]),
+                "high": float(row[2]),
+                "low": float(row[3]),
+                "close": float(row[4]),
+                "volume": float(row[5])
+            })
+        return data
+    except Exception as e:
+        print(f"Error fetching OHLCV from Binance: {e}")
+        # Fallback to SQLite if Binance API fails
+        since = datetime.now(timezone.utc) - timedelta(days=365)
+        since_str = since.isoformat()
         
-    data = []
-    for row in ohlcv_res.data:
-        data.append({
-            "date": row["timestamp"].split("T")[0],
-            "open": float(row["open"]),
-            "high": float(row["high"]),
-            "low": float(row["low"]),
-            "close": float(row["close"]),
-            "volume": float(row["volume"])
-        })
-        
-    return data
+        res = db.execute(text("""
+            SELECT timestamp, open, high, low, close, volume
+            FROM ohlcv
+            WHERE asset_id = :asset_id AND timestamp >= :since
+            ORDER BY timestamp ASC
+        """), {"asset_id": asset.id, "since": since_str}).fetchall()
+            
+        data = []
+        seen = set()
+        for row in res:
+            raw_ts = int(datetime.fromisoformat(row[0]).timestamp())
+            ts = (raw_ts // 60) * 60
+            if ts in seen: continue
+            seen.add(ts)
+            data.append({
+                "time": ts,
+                "open": float(row[1]),
+                "high": float(row[2]),
+                "low": float(row[3]),
+                "close": float(row[4]),
+                "volume": float(row[5])
+            })
+            
+        return data
 
 @router.get("/{symbol}/indicators")
-async def get_coin_indicators(
+def get_coin_indicators(
     symbol: str,
     period: str = "3M",
-    db=Depends(get_supabase)
+    db: Session = Depends(get_db)
 ):
-    """
-    Returns technical indicators for the given period.
-    """
-    asset_res = db.table("assets").select("id").ilike("symbol", symbol).execute()
-    if not asset_res.data:
+    asset = db.query(Asset).filter(Asset.symbol.ilike(symbol)).first()
+    if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
-    asset_id = asset_res.data[0]["id"]
     
-    now = datetime.now(timezone.utc)
-    if period == "1W":
-        since = now - timedelta(days=7)
-    elif period == "1M":
-        since = now - timedelta(days=30)
-    elif period == "3M":
-        since = now - timedelta(days=90)
-    elif period == "1Y":
-        since = now - timedelta(days=365)
-    else:
-        since = datetime(2000, 1, 1, tzinfo=timezone.utc)
-        
+    # Always fetch 1 Year minimum to allow charting engines to pan backwards indefinitely
+    since = datetime.now(timezone.utc) - timedelta(days=365)
     since_str = since.isoformat()
     
-    res = db.table("technical_features")\
-        .select("timestamp, rsi_14, macd, macd_signal, atr_14, bb_width, returns_1d, returns_7d, volatility_7d")\
-        .eq("asset_id", asset_id)\
-        .gte("timestamp", since_str)\
-        .order("timestamp", desc=False)\
-        .execute()
+    res = db.execute(text("""
+        SELECT timestamp, rsi_14, macd, macd_signal, atr_14, bb_width, returns_1d, returns_7d, volatility_7d
+        FROM technical_features
+        WHERE asset_id = :asset_id AND timestamp >= :since
+        ORDER BY timestamp ASC
+    """), {"asset_id": asset.id, "since": since_str}).fetchall()
         
     data = []
-    for row in res.data:
+    seen = set()
+    for row in res:
+        # Enforce strict 1-minute time bucketing to prevent duplicate/overlapping candles
+        raw_ts = int(datetime.fromisoformat(row[0]).timestamp())
+        ts = (raw_ts // 60) * 60
+        if ts in seen: continue
+        seen.add(ts)
         data.append({
-            "date": row["timestamp"].split("T")[0],
-            "rsi_14": row.get("rsi_14"),
-            "macd": row.get("macd"),
-            "macd_signal": row.get("macd_signal"),
-            "atr_14": row.get("atr_14"),
-            "bb_width": row.get("bb_width"),
-            "returns_1d": row.get("returns_1d"),
-            "returns_7d": row.get("returns_7d"),
-            "volatility_7d": row.get("volatility_7d"),
+            "time": ts,
+            "rsi_14": row[1],
+            "macd": row[2],
+            "macd_signal": row[3],
+            "atr_14": row[4],
+            "bb_width": row[5],
+            "returns_1d": row[6],
+            "returns_7d": row[7],
+            "volatility_7d": row[8],
         })
         
     return data
 
 @router.get("/{symbol}/prediction-history")
-async def get_coin_prediction_history(symbol: str, db=Depends(get_supabase)):
-    """
-    Returns last 30 predictions for this coin with accuracy scoring.
-    """
-    asset_res = db.table("assets").select("id").ilike("symbol", symbol).execute()
-    if not asset_res.data:
+def get_coin_prediction_history(symbol: str, db: Session = Depends(get_db)):
+    asset = db.query(Asset).filter(Asset.symbol.ilike(symbol)).first()
+    if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
-    asset_id = asset_res.data[0]["id"]
     
-    # Get last 30 predictions
-    preds_res = db.table("predictions").select("*")\
-        .eq("asset_id", asset_id)\
-        .order("timestamp", desc=True)\
-        .limit(30)\
-        .execute()
+    preds_res = db.execute(text("""
+        SELECT timestamp, direction, confidence, volatility_regime, model_version
+        FROM predictions
+        WHERE asset_id = :asset_id
+        ORDER BY timestamp DESC
+        LIMIT 30
+    """), {"asset_id": asset.id}).fetchall()
         
-    if not preds_res.data:
+    if not preds_res:
         return {"predictions": [], "summary": {"accuracy_pct": 0, "total_scored": 0, "correct_count": 0, "avg_confidence": 0}}
         
-    # Get relevant OHLCV to score predictions
-    # We need prices for prediction dates and prediction_date + 1
-    # Optimization: just get all OHLCV for this asset for the last 40 days to cover it
-    oldest_pred_ts = preds_res.data[-1]["timestamp"]
-    ohlcv_res = db.table("ohlcv").select("timestamp, close")\
-        .eq("asset_id", asset_id)\
-        .gte("timestamp", oldest_pred_ts)\
-        .execute()
+    oldest_pred_ts = preds_res[-1][0]
+    ohlcv_res = db.execute(text("""
+        SELECT timestamp, close
+        FROM ohlcv
+        WHERE asset_id = :asset_id AND timestamp >= :since
+    """), {"asset_id": asset.id, "since": oldest_pred_ts}).fetchall()
         
     price_map = {}
-    for r in ohlcv_res.data:
-        date_str = r["timestamp"].split("T")[0]
-        price_map[date_str] = r["close"]
+    for r in ohlcv_res:
+        date_str = r[0].split("T")[0]
+        price_map[date_str] = r[1]
         
     results = []
     correct_count = 0
     total_scored = 0
     conf_sum = 0
     
-    for p in preds_res.data:
-        date_str = p["timestamp"].split("T")[0]
-        # Calculate next day string
+    for p in preds_res:
+        date_str = p[0].split("T")[0]
         pred_date = datetime.strptime(date_str, "%Y-%m-%d")
         next_day_str = (pred_date + timedelta(days=1)).strftime("%Y-%m-%d")
         
@@ -164,7 +155,7 @@ async def get_coin_prediction_history(symbol: str, db=Depends(get_supabase)):
             close_next = price_map[next_day_str]
             actual_return = (close_next - close_today) / close_today
             
-            direction = p.get("direction")
+            direction = p[1]
             if direction in ["up", "strong_up"] and actual_return > 0:
                 was_correct = True
             elif direction in ["down", "strong_down"] and actual_return < 0:
@@ -178,21 +169,21 @@ async def get_coin_prediction_history(symbol: str, db=Depends(get_supabase)):
             if was_correct:
                 correct_count += 1
                 
-        conf = p.get("confidence", 0)
+        conf = p[2] or 0.0
         conf_sum += conf
                 
         results.append({
             "date": date_str,
-            "direction": p.get("direction"),
+            "direction": p[1],
             "confidence": conf,
-            "volatility_regime": p.get("volatility_regime"),
+            "volatility_regime": p[3],
             "actual_return": actual_return,
             "was_correct": was_correct,
-            "model_version": p.get("model_version")
+            "model_version": p[4]
         })
         
     accuracy_pct = (correct_count / total_scored * 100) if total_scored > 0 else 0
-    avg_confidence = (conf_sum / len(preds_res.data)) if preds_res.data else 0
+    avg_confidence = (conf_sum / len(preds_res)) if preds_res else 0
     
     return {
         "predictions": results,
@@ -205,44 +196,33 @@ async def get_coin_prediction_history(symbol: str, db=Depends(get_supabase)):
     }
 
 @router.get("/{symbol}/correlations")
-async def get_coin_correlations(symbol: str, db=Depends(get_supabase)):
-    """
-    Returns top 10 most correlated coins to this one.
-    """
+def get_coin_correlations(symbol: str, db: Session = Depends(get_db)):
     import pandas as pd
     
-    asset_res = db.table("assets").select("id, symbol, sector, market_cap_usd").execute()
-    asset_map = {a["id"]: a for a in asset_res.data}
-    symbol_to_id = {a["symbol"].lower(): a["id"] for a in asset_res.data}
+    assets = db.query(Asset).all()
+    asset_map = {a.id: {"symbol": a.symbol, "sector": a.sector, "market_cap_usd": a.market_cap_usd} for a in assets}
+    symbol_to_id = {a.symbol.lower(): a.id for a in assets}
     
     if symbol.lower() not in symbol_to_id:
         raise HTTPException(status_code=404, detail="Asset not found")
         
     target_asset_id = symbol_to_id[symbol.lower()]
     
-    # Query last 90 days of returns_1d for ALL assets (with pagination)
     now = datetime.now(timezone.utc)
     since = now - timedelta(days=90)
     
-    all_data = []
-    start = 0
-    limit = 1000
-    while True:
-        res = db.table("technical_features")\
-            .select("asset_id, timestamp, returns_1d")\
-            .gte("timestamp", since.isoformat())\
-            .range(start, start + limit - 1)\
-            .execute()
-        all_data.extend(res.data)
-        if len(res.data) < limit:
-            break
-        start += limit
-        
-    df = pd.DataFrame(all_data)
-    if df.empty:
+    res = db.execute(text("""
+        SELECT asset_id, timestamp, returns_1d
+        FROM technical_features
+        WHERE timestamp >= :since
+    """), {"since": since.isoformat()}).fetchall()
+    
+    if not res:
         return []
         
-    # Pivot so we have dates as index and assets as columns
+    all_data = [{"asset_id": r[0], "timestamp": r[1], "returns_1d": r[2]} for r in res]
+    df = pd.DataFrame(all_data)
+    
     df['date'] = df['timestamp'].apply(lambda x: x.split("T")[0])
     pivot = df.pivot_table(index='date', columns='asset_id', values='returns_1d')
     
@@ -252,21 +232,20 @@ async def get_coin_correlations(symbol: str, db=Depends(get_supabase)):
     corr = pivot.corr(method='pearson')
     target_corr = corr[target_asset_id].dropna()
     
-    # Sort by absolute correlation
     sorted_corr = target_corr.abs().sort_values(ascending=False)
     
-    # Get current predictions for all assets
-    preds_res = db.table("predictions").select("asset_id, direction")\
-        .order("timestamp", desc=True)\
-        .limit(200)\
-        .execute()
+    preds_res = db.execute(text("""
+        SELECT asset_id, direction
+        FROM predictions
+        ORDER BY timestamp DESC
+        LIMIT 200
+    """)).fetchall()
         
-    # Keep only the latest prediction per asset
     latest_preds = {}
-    for p in preds_res.data:
-        aid = p["asset_id"]
+    for p in preds_res:
+        aid = p[0]
         if aid not in latest_preds:
-            latest_preds[aid] = p["direction"]
+            latest_preds[aid] = p[1]
             
     results = []
     for aid, abs_val in sorted_corr.items():
@@ -289,33 +268,30 @@ async def get_coin_correlations(symbol: str, db=Depends(get_supabase)):
     return results
 
 @router.get("/{symbol}/sentiment-history")
-async def get_coin_sentiment_history(symbol: str, db=Depends(get_supabase)):
-    """
-    Returns last 90 days of sentiment data for this coin.
-    """
-    asset_res = db.table("assets").select("id").ilike("symbol", symbol).execute()
-    if not asset_res.data:
+def get_coin_sentiment_history(symbol: str, db: Session = Depends(get_db)):
+    asset = db.query(Asset).filter(Asset.symbol.ilike(symbol)).first()
+    if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
-    asset_id = asset_res.data[0]["id"]
     
     now = datetime.now(timezone.utc)
     since = now - timedelta(days=90)
     
-    res = db.table("sentiment").select("timestamp, sentiment_score, fear_greed, fear_greed_norm, community_score, public_interest")\
-        .eq("asset_id", asset_id)\
-        .gte("timestamp", since.isoformat())\
-        .order("timestamp", desc=False)\
-        .execute()
+    res = db.execute(text("""
+        SELECT timestamp, sentiment_score, fear_greed, fear_greed_norm, community_score, public_interest
+        FROM asset_news
+        WHERE asset_id = :asset_id AND timestamp >= :since
+        ORDER BY timestamp ASC
+    """), {"asset_id": asset.id, "since": since.isoformat()}).fetchall()
         
     data = []
-    for row in res.data:
+    for row in res:
         data.append({
-            "date": row["timestamp"].split("T")[0],
-            "sentiment_score": row.get("sentiment_score"),
-            "fear_greed": row.get("fear_greed"),
-            "fear_greed_norm": row.get("fear_greed_norm"),
-            "community_score": row.get("community_score"),
-            "public_interest": row.get("public_interest")
+            "date": row[0].split("T")[0],
+            "sentiment_score": row[1],
+            "fear_greed": row[2],
+            "fear_greed_norm": row[3],
+            "community_score": row[4],
+            "public_interest": row[5]
         })
         
     return data

@@ -1,40 +1,36 @@
 from fastapi import APIRouter, Depends
-from app.api.deps import get_supabase
+from sqlalchemy.orm import Session
+from sqlalchemy import desc
+from app.api.deps import get_db
+from app.db.models_sqla import OHLCV, Prediction, AssetNews
 from datetime import datetime, timezone
 
 router = APIRouter(prefix="/status", tags=["status"])
 
 @router.get("")
 @router.get("/")
-async def get_data_status(db=Depends(get_supabase)):
+async def get_data_status(db: Session = Depends(get_db)):
     """Returns when each data source was last updated."""
     
     # Latest OHLCV timestamp
-    ohlcv = db.table("ohlcv").select("timestamp").order(
-        "timestamp", desc=True).limit(1).execute()
+    ohlcv = db.query(OHLCV.timestamp).order_by(desc(OHLCV.timestamp)).first()
     
     # Latest prediction timestamp
-    preds = db.table("predictions").select("predicted_at").order(
-        "predicted_at", desc=True).limit(1).execute()
+    preds = db.query(Prediction.predicted_at).order_by(desc(Prediction.predicted_at)).first()
     
-    # Latest sentiment timestamp
-    sent = db.table("sentiment").select("timestamp").order(
-        "timestamp", desc=True).limit(1).execute()
-    
-    # Latest graph snapshot
-    graph = db.table("graph_snapshots").select("timestamp").order(
-        "timestamp", desc=True).limit(1).execute()
+    # Latest sentiment timestamp (AssetNews as proxy)
+    sent = db.query(AssetNews.created_at).order_by(desc(AssetNews.created_at)).first()
 
-    def fmt(rows, key):
-        if rows and rows[0].get(key):
-            return rows[0][key]
+    def fmt(val):
+        if val and val[0]:
+            return val[0].isoformat() if isinstance(val[0], datetime) else str(val[0])
         return None
 
     return {
-        "ohlcv_last_updated":       fmt(ohlcv.data, "timestamp"),
-        "predictions_last_updated": fmt(preds.data, "predicted_at"),
-        "sentiment_last_updated":   fmt(sent.data, "timestamp"),
-        "graph_last_updated":       fmt(graph.data, "timestamp"),
+        "ohlcv_last_updated":       fmt(ohlcv),
+        "predictions_last_updated": fmt(preds),
+        "sentiment_last_updated":   fmt(sent),
+        "graph_last_updated":       fmt(preds), # Graph is built during prediction
         "server_time":              datetime.now(timezone.utc).isoformat(),
         "refresh_intervals": {
             "ohlcv":       "every 5 minutes",

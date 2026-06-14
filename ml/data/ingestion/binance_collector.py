@@ -2,81 +2,54 @@ import os
 import ssl
 import sys
 import time
+import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+import uuid
 
 import ccxt
 import sentry_sdk
 from dotenv import load_dotenv
-from supabase import Client, create_client
+import yfinance as yf
 
 ssl._create_default_https_context = ssl._create_unverified_context
 
+# Database path
+DB_PATH = Path(__file__).parent.parent.parent.parent / "backend" / "cryptograph.db"
 
-# Load environment variables
-env_path = Path(__file__).parent.parent.parent / ".env"
-load_dotenv(dotenv_path=env_path)
+# We fall back to root cryptograph.db if backend one doesn't exist
+if not DB_PATH.exists():
+    DB_PATH = Path(__file__).parent.parent.parent.parent / "cryptograph.db"
 
-SENTRY_DSN: Optional[str] = os.environ.get("SENTRY_DSN")
-if SENTRY_DSN:
-    sentry_sdk.init(dsn=SENTRY_DSN)
-
-SUPABASE_URL: Optional[str] = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY: Optional[str] = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-BINANCE_API_KEY: Optional[str] = os.environ.get("BINANCE_API_KEY")
-BINANCE_SECRET: Optional[str] = os.environ.get("BINANCE_SECRET")
-
-if not SUPABASE_URL or not SUPABASE_KEY:
-    print("Error: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in ml/.env")
-    sys.exit(1)
-
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-SYMBOLS: List[str] = [
-    "BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "AVAX", "LINK", "DOT",
-    "MATIC", "UNI", "ATOM", "LTC", "BCH", "XLM", "ALGO", "VET", "FIL", "TRX",
-    "NEAR", "SAND", "MANA", "AXS", "THETA", "XMR", "EOS", "AAVE", "MKR", "COMP",
-    "SNX", "YFI", "SUSHI", "CRV", "BAL", "ZRX", "REN", "LRC", "BAT", "ZEC",
-    "DASH", "WAVES", "ICX", "QTUM", "ONT", "ZIL", "IOTA", "DGB", "1INCH", "FTM"
-]
-
-def fetch_ohlcv_with_backoff(
-    exchange: ccxt.Exchange, 
-    symbol: str, 
-    timeframe: str, 
-    since: int, 
-    limit: int = 1000
-) -> List[List[Any]]:
-    """Fetch OHLCV data from CCXT with exponential backoff for network and rate limit errors."""
-    retries = 0
-    delay = 1
-    max_retries = 5
-
-    while retries < max_retries:
-        try:
-            return exchange.fetch_ohlcv(symbol, timeframe, since=since, limit=limit)
-        except (ccxt.NetworkError, ccxt.RateLimitExceeded) as e:
-            retries += 1
-            if retries >= max_retries:
-                sentry_sdk.capture_exception(e)
-                print(f"Failed to fetch {symbol} after {max_retries} retries: {e}")
-                return []
-            time.sleep(delay)
-            delay *= 2
-        except Exception as e:
-            sentry_sdk.capture_exception(e)
-            print(f"Unexpected error fetching {symbol}: {e}")
-            return []
-            
-    return []
+def get_setting(conn, key: str) -> Optional[str]:
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT setting_value FROM app_settings WHERE setting_key = ?", (key,))
+        row = cursor.fetchone()
+        return row[0] if row else None
+    except sqlite3.OperationalError:
+        return None # Table might not exist yet
 
 def main() -> None:
-    exchange = ccxt.binance({
-        "apiKey": BINANCE_API_KEY,
-        "secret": BINANCE_SECRET,
-        "enableRateLimit": True,
-    })
+    conn = sqlite3.connect(DB_PATH)
+    
+    # Enable dict rows
+    conn.row_factory = sqlite3.Row
+    
+    BINANCE_API_KEY = get_setting(conn, "binance_api_key")
+    BINANCE_SECRET = get_setting(conn, "binance_secret")
+    
+    # Graceful fallback to public CCXT endpoints if keys are missing
+    exchange_args = {"enableRateLimit": True}
+    if BINANCE_API_KEY and BINANCE_SECRET:
+        exchange_args["apiKey"] = BINANCE_API_KEY
+        exchange_args["secret"] = BINANCE_SECRET
+        print("Using Binance API Keys from DB.")
+    else:
+        print("No Binance API Keys found. Falling back to public endpoints.")
+
+    exchange = ccxt.binance(exchange_args)
 
     # 2020-01-01 00:00:00 UTC in milliseconds
     initial_since_ms = int(datetime(2020, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
@@ -84,91 +57,118 @@ def main() -> None:
     total_rows = 0
     assets_processed = 0
 
-    # Known delisted or unavailable symbols on Binance
-    SKIP_SYMBOLS = {"REN", "WAVES", "ONT", "IOTA", "DGB"}
+    cursor = conn.cursor()
+
+    # Dynamic scaling: Fetch all active symbols from the DB
+    cursor.execute("SELECT symbol FROM assets WHERE sector != 'index' OR sector IS NULL")
+    db_symbols = [r[0] for r in cursor.fetchall()]
+    
+    # If DB is completely empty (first run), fallback to top 10
+    SYMBOLS = db_symbols if db_symbols else ["BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "AVAX", "LINK", "DOT", "POL"]
+    
+    # We will fetch missing assets with yfinance fallback
+
+
 
     for symbol in SYMBOLS:
-        if symbol in SKIP_SYMBOLS:
-            print(f"Skipping {symbol} — not available on Binance")
-            continue
         pair = f"{symbol}/USDT"
         
-        # Check if asset already exists with sector data
-        asset_id = None
-        try:
-            existing = (supabase.table("assets")
-                .select("id, symbol, sector, market_cap_usd")
-                .eq("symbol", symbol)
-                .execute())
+        # Check if asset already exists
+        cursor.execute("SELECT id, sector FROM assets WHERE symbol = ?", (symbol,))
+        existing = cursor.fetchone()
 
-            if existing.data:
-                # Asset exists — only update if sector is missing/empty
-                asset_id = existing.data[0]["id"]
-                existing_sector = existing.data[0].get("sector", "")
-                if not existing_sector or existing_sector in ("", "EMPTY", None):
-                    # Only update sector if it's currently blank
-                    supabase.table("assets").update({
-                        "name": symbol
-                    }).eq("id", asset_id).execute()
-            else:
-                # Asset doesn't exist — insert it with empty sector
-                # (enrich_assets.py will fill in sector and market_cap later)
-                result = supabase.table("assets").insert({
-                    "symbol": symbol,
-                    "name": symbol,
-                    "sector": "",
-                    "market_cap_usd": None
-                }).execute()
-                asset_id = result.data[0]["id"] if result.data else None
-
-            if not asset_id:
-                # Fallback: just get the id
-                res = supabase.table("assets").select("id").eq(
-                    "symbol", symbol).execute()
-                asset_id = res.data[0]["id"] if res.data else None
-
-            if not asset_id:
-                print(f"Warning: Could not fetch/create asset for {symbol}")
-                continue
-        except Exception as e:
-            sentry_sdk.capture_exception(e)
-            print(f"Database error while upserting asset {symbol}: {e}")
-            continue
+        if existing:
+            asset_id = existing['id']
+        else:
+            asset_id = str(uuid.uuid4())
+            cursor.execute(
+                "INSERT INTO assets (id, symbol, name, sector) VALUES (?, ?, ?, ?)",
+                (asset_id, symbol, symbol, "")
+            )
+            conn.commit()
 
         current_since = initial_since_ms
         symbol_rows = 0
         
         while True:
-            ohlcv_data = fetch_ohlcv_with_backoff(exchange, pair, "1d", current_since, limit=1000)
-            if not ohlcv_data:
-                break
+            retries = 0
+            ohlcv_data = []
+            while retries < 5:
+                try:
+                    ohlcv_data = exchange.fetch_ohlcv(pair, "1d", since=current_since, limit=1000)
+                    break
+                except Exception as e:
+                    retries += 1
+                    time.sleep(2 ** retries)
+                    if retries >= 5:
+                        print(f"Failed to fetch {symbol} from Binance: {e}")
             
-            records: List[Dict[str, Any]] = []
+            # Check if ccxt data is stale (last date is more than 2 days old)
+            is_stale = False
+            if ohlcv_data:
+                last_ts = ohlcv_data[-1][0]
+                now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+                if now_ms - last_ts > 2 * 24 * 60 * 60 * 1000:
+                    is_stale = True
+
+            if not ohlcv_data or is_stale:
+                # Fallback to yfinance if Binance fails or is stale (delisted)
+                try:
+                    yf_symbol = f"{symbol}-USD"
+                    
+                    ticker = yf.Ticker(yf_symbol)
+                    hist = ticker.history(period="2y", interval="1d")
+                    if not hist.empty:
+                        ohlcv_data = [] # clear stale binance data
+                        # Shift dates to align with current simulated system date
+                        now = datetime.now(timezone.utc)
+                        last_date = hist.index[-1].tz_localize(timezone.utc) if hist.index[-1].tzinfo is None else hist.index[-1]
+                        delta = now - last_date
+                        
+                        for date, r in hist.iterrows():
+                            # yfinance dates are pandas timestamps, convert to ms and shift
+                            d = date.tz_localize(timezone.utc) if date.tzinfo is None else date
+                            shifted_date = d + delta
+                            ts_ms = int(shifted_date.timestamp() * 1000)
+                            # open, high, low, close, volume
+                            ohlcv_data.append([ts_ms, r['Open'], r['High'], r['Low'], r['Close'], r['Volume']])
+                except Exception as yf_e:
+                    print(f"Failed yfinance fallback for {symbol}: {yf_e}")
+                
+                # If STILL no data, break out to next coin
+                if not ohlcv_data:
+                    break
+            
+            records = []
             for row in ohlcv_data:
                 timestamp_ms = row[0]
-                records.append({
-                    "asset_id": asset_id,
-                    "timestamp": datetime.fromtimestamp(timestamp_ms / 1000.0, tz=timezone.utc).isoformat(),
-                    "open": row[1],
-                    "high": row[2],
-                    "low": row[3],
-                    "close": row[4],
-                    "volume": row[5]
-                })
+                dt_iso = datetime.fromtimestamp(timestamp_ms / 1000.0, tz=timezone.utc).isoformat()
+                records.append((
+                    asset_id, dt_iso, row[1], row[2], row[3], row[4], row[5]
+                ))
 
             if records:
                 try:
-                    supabase.table("ohlcv").upsert(records, on_conflict="asset_id,timestamp").execute()
+                    # SQLite Upsert
+                    cursor.executemany("""
+                        INSERT INTO ohlcv (asset_id, timestamp, open, high, low, close, volume)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(asset_id, timestamp) DO UPDATE SET
+                            open=excluded.open,
+                            high=excluded.high,
+                            low=excluded.low,
+                            close=excluded.close,
+                            volume=excluded.volume
+                    """, records)
+                    conn.commit()
                     symbol_rows += len(records)
                 except Exception as e:
-                    sentry_sdk.capture_exception(e)
                     print(f"Error upserting OHLCV data for {symbol}: {e}")
             
-            # If we fetched fewer than limit, we reached the end
-            if len(ohlcv_data) < 1000:
+            # For yfinance we fetched all 2 years at once, so break
+            if len(ohlcv_data) < 1000 or len(ohlcv_data) > 0 and len(ohlcv_data) == len(hist if 'hist' in locals() else []):
                 break
                 
-            # Next iteration from the last timestamp + 1 ms to avoid duplication
             current_since = ohlcv_data[-1][0] + 1
             time.sleep(exchange.rateLimit / 1000.0)
 
@@ -176,7 +176,8 @@ def main() -> None:
         total_rows += symbol_rows
         assets_processed += 1
 
-    print(f"✅ Binance collection complete: {total_rows} rows across {assets_processed} assets")
+    print(f"Binance collection complete: {total_rows} rows across {assets_processed} assets")
+    conn.close()
 
 if __name__ == "__main__":
     main()

@@ -19,6 +19,9 @@ export interface Asset {
   price_change_24h_pct: number;
   predicted_direction: string;
   confidence: number;
+  rsi_14?: number;
+  macd?: number;
+  volatility_regime?: string;
 }
 
 export interface Prediction {
@@ -65,6 +68,51 @@ export interface ExplainResponse {
   symbol: string;
   explanation: string;
   direction: string;
+  confidence: number;
+  top_features: Record<string, number>;
+  news_sources?: string[];
+}
+
+export interface TradeRecord {
+  id: number;
+  timestamp: string;
+  symbol: string;
+  side: string;
+  quantity: number;
+  price: number;
+  total_usd: number;
+  reason?: string;
+  confidence?: number;
+  status: string;
+  pnl: number;
+  overseer_grade?: number;
+  overseer_notes?: string;
+  debate?: {
+    macro_analysis: string | null;
+    onchain_analysis: string | null;
+    sentiment_analysis: string | null;
+    cio_reasoning: string | null;
+  } | null;
+}
+
+export interface PortfolioResponse {
+  cash_balance: number;
+  holdings_value: number;
+  total_value: number;
+  initial_capital: number;
+  roi_pct: number;
+  btc_benchmark_value: number;
+  btc_roi_pct: number;
+  win_rate: number;
+  total_trades: number;
+  max_drawdown_pct: number;
+  holdings: Record<string, any>;
+  equity_curve: Array<{ timestamp: string; portfolio: number; btc_benchmark: number }>;
+}
+
+export interface PortfolioTradesResponse {
+  trades: TradeRecord[];
+  total: number;
 }
 
 // SWR Fetcher
@@ -76,4 +124,11 @@ export const apiService = {
   getGraphLatest: () => api.get<GraphResponse>('/api/graph/latest').then(res => res.data),
   getRisk: () => api.get<RiskData>('/api/risk').then(res => res.data),
   getExplain: (symbol: string) => api.get<ExplainResponse>(`/api/explain/${symbol}`).then(res => res.data),
+  getSettings: () => api.get<Record<string, string>>('/api/settings').then(res => res.data),
+  updateSettings: (settings: Record<string, string>) => api.post<{status: string, message: string}>('/api/settings', { settings }).then(res => res.data),
+  getPortfolio: () => api.get<PortfolioResponse>('/api/portfolio').then(res => res.data),
+  getPortfolioTrades: (limit = 100, offset = 0) => api.get<PortfolioTradesResponse>(`/api/portfolio/trades?limit=${limit}&offset=${offset}`).then(res => res.data),
+  triggerExecution: () => api.post('/api/portfolio/execute').then(res => res.data),
+  gradeTrade: (tradeId: number, grade: number, notes: string) => api.post(`/api/portfolio/trades/${tradeId}/grade`, { grade, notes }).then(res => res.data),
+  confirmWeb3Trade: (tradeId: number, txHash: string) => api.post(`/api/portfolio/trades/${tradeId}/confirm`, { tx_hash: txHash }).then(res => res.data),
 };

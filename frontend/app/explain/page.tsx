@@ -115,6 +115,19 @@ export default function ExplainPage() {
                 </p>
               ))}
             </div>
+            
+            {explanation.news_sources && explanation.news_sources.length > 0 && (
+              <div className="mt-6 pt-4 border-t border-border">
+                <div className="text-xs text-textMuted uppercase tracking-wider font-bold mb-2">Market Context</div>
+                <div className="flex flex-wrap gap-2">
+                  {explanation.news_sources.map((source, idx) => (
+                    <Badge key={idx} variant="outline" className="text-textMuted bg-surface">
+                      {source}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

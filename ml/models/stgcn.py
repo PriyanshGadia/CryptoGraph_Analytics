@@ -13,8 +13,8 @@ class STGCNModel(nn.Module):
     Full ST-GCN model assembling all components.
 
     Architecture:
-      Input (N, 24 features)
-        -> LinearProjection: (N, 24) -> (N, 128)
+      Input (N, 24/27 features)
+        -> LinearProjection: (N, in_features) -> (N, 128)
         -> SpatioTemporalGAT: processes T graph snapshots -> (N, T, 128)
         -> TemporalTransformer: (N, T, 128) -> (N, 128)
         -> MultiTaskHead: (N, 128) -> direction (N,5) + volatility (N,4)
@@ -57,7 +57,7 @@ class STGCNModel(nn.Module):
     ) -> tuple[Tensor, Tensor]:
         """
         1. Project input features for each graph in sequence
-           [graph.x is (N, 24)] -> projected to (N, 128) for each graph
+           [graph.x is (N, in_features)] -> projected to (N, 128) for each graph
         2. Pass projected sequence through SpatioTemporalGAT -> (N, T, 128)
         3. Pass through TemporalTransformer -> (N, 128)
         4. Pass through MultiTaskHead -> (direction_logits, volatility_logits)

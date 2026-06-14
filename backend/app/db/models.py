@@ -19,6 +19,7 @@ class Prediction(BaseModel):
     volatility_regime: str
     predicted_at: str
     model_version: str
+    shap_values: Optional[dict] = None
 
 class PredictionHistory(BaseModel):
     symbol: str
@@ -55,3 +56,34 @@ class ExplainResponse(BaseModel):
     direction: str
     confidence: float
     top_features: Dict[str, float]
+    news_sources: List[str] = []
+
+class TradeRecord(BaseModel):
+    id: int
+    timestamp: str
+    symbol: str
+    side: str
+    quantity: float
+    price: float
+    total_usd: float
+    reason: Optional[str] = None
+    confidence: Optional[float] = None
+    pnl: float = 0.0
+
+class PortfolioResponse(BaseModel):
+    cash_balance: float
+    holdings_value: float
+    total_value: float
+    initial_capital: float = 100000.0
+    roi_pct: float
+    btc_benchmark_value: float
+    btc_roi_pct: float
+    win_rate: float
+    total_trades: int
+    max_drawdown_pct: float
+    holdings: Dict[str, Any]
+    equity_curve: List[Dict[str, Any]]
+
+class PortfolioTradesResponse(BaseModel):
+    trades: List[TradeRecord]
+    total: int

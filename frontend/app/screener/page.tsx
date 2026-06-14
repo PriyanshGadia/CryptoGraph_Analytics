@@ -69,6 +69,24 @@ export default function ScreenerPage() {
   
   const [filtersOpen, setFiltersOpen] = useState(true);
   
+  // Realtime Live Data State
+  const [liveData, setLiveData] = useState<Record<string, {price: number, volume: number}>>({});
+  
+  useEffect(() => {
+    const ws = new WebSocket(`${BASE.replace("http", "ws")}/api/stream/screener`);
+    ws.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (payload.type === "LIVE_PRICES" && payload.data) {
+          setLiveData(payload.data);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    return () => ws.close();
+  }, []);
+  
   // Debounce for SWR
   const dMinConf = useDebounceLocal(minConf, 300);
   const dMaxConf = useDebounceLocal(maxConf, 300);
@@ -81,8 +99,8 @@ export default function ScreenerPage() {
     direction,
     sector,
     volatility,
-    min_confidence: (dMinConf / 100).toString(),
-    max_confidence: (dMaxConf / 100).toString(),
+    min_confidence: dMinConf.toString(),
+    max_confidence: dMaxConf.toString(),
     min_rsi: dMinRsi.toString(),
     max_rsi: dMaxRsi.toString(),
     min_market_cap: dMinMcap.toString(),
@@ -90,7 +108,23 @@ export default function ScreenerPage() {
     sort_dir: sortDir
   }).toString();
 
-  const { data: results, isLoading } = useSWR(`${BASE}/api/screener/?${query}`, fetcher);
+  const { data: results, isLoading, mutate } = useSWR(`${BASE}/api/screener/?${query}`, fetcher);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const refreshLiveTechnicals = async () => {
+    setIsRefreshing(true);
+    try {
+      const res = await fetch(`${BASE}/api/screener/refresh`, { method: "POST" });
+      if (res.ok) {
+        mutate();
+      } else {
+        console.error("Refresh failed");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+    setIsRefreshing(false);
+  };
 
   const applyPreset = (preset: string) => {
     // Reset defaults first
@@ -142,9 +176,18 @@ export default function ScreenerPage() {
       r.symbol, r.name, r.sector, r.direction, r.confidence, r.rsi_14, r.returns_7d, r.volatility_regime, r.market_cap_usd
     ]);
     
-    const csvContent = [
-      headers.join(","),
-      ...rows.map((row: any) => row.join(","))
+    const escapeCsvField = (field: any) => {
+      if (field == null) return "";
+      const str = String(field);
+      if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+        return '"' + str.replace(/"/g, '""') + '"';
+      }
+      return str;
+    };
+
+    const csvContent = "\uFEFF" + [
+      headers.map(escapeCsvField).join(","),
+      ...rows.map((row: any) => row.map(escapeCsvField).join(","))
     ].join("\n");
     
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -250,6 +293,9 @@ export default function ScreenerPage() {
               <div>
                 <label className="block text-xs font-bold text-[#94a3b8] uppercase mb-1">Sort By</label>
                 <select className="w-full bg-[#0f0f0f] text-white p-2 rounded-md border border-[#2a2a2a]" value={sortBy} onChange={e => setSortBy(e.target.value)}>
+                  <option value="symbol">Symbol</option>
+                  <option value="sector">Sector</option>
+                  <option value="current_price">Price</option>
                   <option value="confidence">Confidence</option>
                   <option value="market_cap_usd">Market Cap</option>
                   <option value="returns_1d">24h Return</option>
@@ -303,9 +349,18 @@ export default function ScreenerPage() {
           <h2 className="text-white font-bold">
             Showing {results ? results.length : "..."} assets
           </h2>
-          <button onClick={exportCSV} className="flex items-center gap-2 text-sm text-indigo-400 hover:text-indigo-300 transition-colors bg-indigo-500/10 px-3 py-1.5 rounded-md border border-indigo-500/30">
-            <Download size={16} /> Export CSV
-          </button>
+          <div className="flex gap-2">
+            <button 
+              onClick={refreshLiveTechnicals} 
+              disabled={isRefreshing}
+              className="flex items-center gap-2 text-sm text-green-400 hover:text-green-300 transition-colors bg-green-500/10 px-3 py-1.5 rounded-md border border-green-500/30 disabled:opacity-50"
+            >
+              <RefreshCw size={16} className={isRefreshing ? "animate-spin" : ""} /> {isRefreshing ? "Refreshing..." : "Live Refresh"}
+            </button>
+            <button onClick={exportCSV} className="flex items-center gap-2 text-sm text-indigo-400 hover:text-indigo-300 transition-colors bg-indigo-500/10 px-3 py-1.5 rounded-md border border-indigo-500/30">
+              <Download size={16} /> Export CSV
+            </button>
+          </div>
         </div>
         
         {isLoading ? (
@@ -317,33 +372,52 @@ export default function ScreenerPage() {
             <table className="w-full text-sm text-left">
               <thead className="text-[10px] text-[#94a3b8] uppercase bg-[#0f0f0f]">
                 <tr>
-                  <th className="px-4 py-3">Asset</th>
-                  <th className="px-4 py-3">Direction</th>
-                  <th className="px-4 py-3">Confidence</th>
-                  <th className="px-4 py-3">RSI (14d)</th>
-                  <th className="px-4 py-3">7D Return</th>
-                  <th className="px-4 py-3">Volatility</th>
-                  <th className="px-4 py-3 text-right">Market Cap</th>
+                  <th className="px-4 py-3 cursor-pointer hover:text-white transition-colors" onClick={() => {setSortBy('symbol'); setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}}>Asset</th>
+                  <th className="px-4 py-3 cursor-pointer hover:text-white transition-colors" onClick={() => {setSortBy('sector'); setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}}>Sector</th>
+                  <th className="px-4 py-3 cursor-pointer hover:text-white transition-colors text-right" onClick={() => {setSortBy('current_price'); setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}}>Price</th>
+                  <th className="px-4 py-3 cursor-pointer hover:text-white transition-colors" onClick={() => {setSortBy('direction'); setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}}>Direction</th>
+                  <th className="px-4 py-3 cursor-pointer hover:text-white transition-colors" onClick={() => {setSortBy('confidence'); setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}}>Confidence</th>
+                  <th className="px-4 py-3 cursor-pointer hover:text-white transition-colors" onClick={() => {setSortBy('rsi_14'); setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}}>RSI (14d)</th>
+                  <th className="px-4 py-3 cursor-pointer hover:text-white transition-colors" onClick={() => {setSortBy('returns_7d'); setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}}>7D Return</th>
+                  <th className="px-4 py-3 cursor-pointer hover:text-white transition-colors" onClick={() => {setSortBy('volatility_7d'); setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}}>Volatility</th>
+                  <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors" onClick={() => {setSortBy('market_cap_usd'); setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}}>Market Cap</th>
                   <th className="px-4 py-3 text-center">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#2a2a2a]/50">
-                {results.map((row: any, i: number) => (
+                {results.map((row: any, i: number) => {
+                  const live = liveData[row.symbol];
+                  const displayPrice = live ? live.price : row.current_price;
+                  
+                  // Scale Market Cap dynamically if we have a baseline price
+                  let displayMcap = row.market_cap_usd;
+                  if (live && row.current_price && row.current_price > 0) {
+                    displayMcap = (live.price / row.current_price) * row.market_cap_usd;
+                  }
+                  
+                  return (
                   <tr key={i} className="hover:bg-[#2a2a2a]/30 transition-colors">
                     <td className="px-4 py-3">
                       <Link href={`/coin/${row.symbol}`} className="flex items-center gap-2 group">
                         <span className="font-bold font-mono text-white group-hover:text-indigo-400">{row.symbol}</span>
-                        <span className="text-[9px] uppercase bg-[#2a2a2a] text-[#cbd5e1] px-1.5 py-0.5 rounded">{row.sector}</span>
                       </Link>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-[10px] uppercase bg-[#2a2a2a] text-[#cbd5e1] px-2 py-1 rounded">{row.sector}</span>
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono font-bold text-white transition-all duration-300">
+                      <span className={live ? "text-indigo-300" : ""}>
+                        ${displayPrice > 1 ? displayPrice.toFixed(2) : displayPrice.toFixed(4)}
+                      </span>
                     </td>
                     <td className="px-4 py-3">
                       <DirectionBadge direction={row.direction} />
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-1 w-32">
-                        <span className="text-xs text-white font-mono">{(row.confidence * 100).toFixed(0)}%</span>
+                        <span className="text-xs text-white font-mono">{(row.confidence).toFixed(0)}%</span>
                         <div className="w-full bg-[#2a2a2a] h-1.5 rounded-full overflow-hidden">
-                          <div className="bg-indigo-500 h-full" style={{ width: `${row.confidence * 100}%` }}></div>
+                          <div className="bg-indigo-500 h-full" style={{ width: `${row.confidence}%` }}></div>
                         </div>
                       </div>
                     </td>
@@ -360,21 +434,23 @@ export default function ScreenerPage() {
                     <td className="px-4 py-3">
                       <VolatilityChip level={row.volatility_regime} />
                     </td>
-                    <td className="px-4 py-3 text-right font-mono text-[#cbd5e1]">
-                      {formatMcap(row.market_cap_usd)}
+                    <td className="px-4 py-3 text-right font-mono text-[#cbd5e1] transition-all duration-300">
+                      <span className={live ? "text-indigo-200" : ""}>
+                        {formatMcap(displayMcap)}
+                      </span>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex justify-center gap-2">
                         <Link href={`/coin/${row.symbol}`} className="text-xs bg-[#2a2a2a] hover:bg-[#3a3a3a] text-white px-3 py-1.5 rounded transition-colors font-bold border border-[#3a3a3a]">
                           View
                         </Link>
-                        <Link href={`/predictions`} className="text-xs bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 px-3 py-1.5 rounded transition-colors font-bold border border-indigo-500/30">
+                        <Link href={`/predictions?symbol=${row.symbol}`} className="text-xs bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 px-3 py-1.5 rounded transition-colors font-bold border border-indigo-500/30">
                           Forecast
                         </Link>
                       </div>
                     </td>
                   </tr>
-                ))}
+                )})}
               </tbody>
             </table>
           </div>

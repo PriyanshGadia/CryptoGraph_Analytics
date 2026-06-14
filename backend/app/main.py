@@ -5,13 +5,22 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sentry_sdk.integrations.fastapi import FastApiIntegration
+from slowapi.errors import RateLimitExceeded
+from slowapi import _rate_limit_exceeded_handler
 
 from app.core.config import settings
 from app.api.routes import (
     assets, predictions, graph, risk, explain,
     forecast, status, coins, performance,
-    correlations, sentiment_data, screener
+    correlations, sentiment_data, screener, settings as app_settings_route,
+    portfolio, stream
 )
+from app.db.database import engine, SessionLocal
+from app.db.models_sqla import Base, AppSetting
+from app.api.routes.forecast import limiter
+
+# Initialize Database
+Base.metadata.create_all(bind=engine)
 
 # Initialize Sentry safely
 if getattr(settings, 'sentry_dsn', None):
@@ -34,13 +43,25 @@ app = FastAPI(
 )
 
 # CORS
-origins = ["*"] if settings.environment == "development" else [os.getenv("FRONTEND_URL", "")]
+try:
+    db_session = SessionLocal()
+    frontend_url_record = db_session.query(AppSetting).filter(AppSetting.setting_key == "FRONTEND_URL").first()
+    frontend_url = frontend_url_record.setting_value if frontend_url_record and frontend_url_record.setting_value else "http://localhost:3000"
+    db_session.close()
+except Exception:
+    frontend_url = "http://localhost:3000"
+
+origins = ["*"] if settings.environment == "development" else [frontend_url]
 app.add_middleware(
     CORSMiddleware, 
     allow_origins=origins,
     allow_methods=["*"], 
     allow_headers=["*"]
 )
+
+# Rate Limiter
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Register routers
 app.include_router(assets.router,      prefix="/api")
@@ -55,6 +76,29 @@ app.include_router(performance.router,   prefix="/api")
 app.include_router(correlations.router,  prefix="/api")
 app.include_router(sentiment_data.router,prefix="/api")
 app.include_router(screener.router,      prefix="/api")
+app.include_router(app_settings_route.router, prefix="/api")
+app.include_router(portfolio.router, prefix="/api")
+app.include_router(stream.router, prefix="/api")
+
+@app.on_event("startup")
+async def startup_event():
+    import asyncio
+    from ml.pipelines.inference_pipeline import SYMBOLS
+    from app.core.streams.binance_ws import binance_ws_loop, populate_static_features
+    from app.api.routes.stream import prediction_broadcast_loop, screener_broadcast_loop
+    
+    # Populate static cache using our synchronous DB session setup
+    try:
+        db = SessionLocal()
+        populate_static_features(db, SYMBOLS)
+        db.close()
+    except Exception as e:
+        print(f"Error populating static features: {e}")
+        
+    # Start the async background loops
+    asyncio.create_task(binance_ws_loop(SYMBOLS))
+    asyncio.create_task(prediction_broadcast_loop())
+    asyncio.create_task(screener_broadcast_loop())
 
 @app.get("/health")
 async def health():

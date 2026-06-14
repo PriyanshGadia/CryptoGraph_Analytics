@@ -1,29 +1,30 @@
-version: "3.9"
+version: '3.8'
+
 services:
   backend:
-    build: ./backend
-    ports: ["8000:8000"]
-    env_file: ./backend/.env
-    volumes: ["./ml/artifacts:/app/artifacts"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cryptograph_backend
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      # - SUPABASE_URL=your_supabase_url
+      # - SUPABASE_KEY=your_supabase_key
+    volumes:
+      - ./backend/ml/data/sqlite:/app/ml/data/sqlite # Persist SQLite database
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
   frontend:
-    build: ./frontend
-    ports: ["3000:3000"]
-    env_file: ./frontend/.env.local
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: cryptograph_frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
     depends_on:
-      backend:
-        condition: service_healthy
+      - backend
     restart: unless-stopped
-
-  ml-worker:
-    build: ./ml
-    command: python scheduler.py
-    env_file: ./ml/.env
-    volumes: ["./ml/artifacts:/app/artifacts"]
-    restart: on-failure
