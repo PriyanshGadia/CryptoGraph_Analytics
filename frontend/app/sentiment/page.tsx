@@ -3,24 +3,26 @@
 import { useMemo } from "react";
 import useSWR from "swr";
 import { fetcher } from "@/lib/api";
-import { AreaChart, Area, ComposedChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Cell } from "recharts";
+import { LineChart, Line, AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, BarChart, Bar, Cell, CartesianGrid, ComposedChart } from "recharts";
 import Link from "next/link";
-import { TrendingUp, TrendingDown, Minus } from "lucide-react";
-import { ChartSkeleton, StatCardSkeleton } from "@/components/PageSkeleton";
+import { TrendingUp, TrendingDown, MessageSquareShare, Activity, HeartPulse } from "lucide-react";
+import { ChartSkeleton } from "@/components/PageSkeleton";
+import { GlassCard } from "@/components/ui/GlassCard";
+import { ScrollToTop } from "@/components/ScrollToTop";
 
-const BASE = "http://localhost:8000";
+const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 // --- Sector Color Mapping ---
 const getSectorColor = (sector: string) => {
   const colors: Record<string, string> = {
-    layer1: "#3b82f6",
-    defi: "#8b5cf6",
-    exchange: "#f59e0b",
-    payment: "#10b981",
-    gaming: "#ec4899",
-    privacy: "#6366f1",
-    storage: "#14b8a6",
-    other: "#94a3b8"
+    layer1: "rgb(59, 130, 246)",
+    defi: "rgb(139, 92, 246)",
+    exchange: "rgb(245, 158, 11)",
+    payment: "rgb(16, 185, 129)",
+    gaming: "rgb(236, 72, 153)",
+    privacy: "rgb(99, 102, 241)",
+    storage: "rgb(20, 184, 166)",
+    other: "rgb(148, 163, 184)"
   };
   return colors[sector?.toLowerCase()] || colors.other;
 };
@@ -33,12 +35,12 @@ const FearGreedGauge = ({ value }: { value: number }) => {
   
   // Zones: Extreme Fear (0-24), Fear (25-44), Neutral (45-55), Greed (56-74), Extreme Greed (75-100)
   let zoneLabel = "Neutral";
-  let zoneColor = "#94a3b8"; // Neutral
-  if (clampedValue <= 24) { zoneLabel = "Extreme Fear"; zoneColor = "#991b1b"; }
-  else if (clampedValue <= 44) { zoneLabel = "Fear"; zoneColor = "#ef4444"; }
-  else if (clampedValue <= 55) { zoneLabel = "Neutral"; zoneColor = "#94a3b8"; }
-  else if (clampedValue <= 74) { zoneLabel = "Greed"; zoneColor = "#22c55e"; }
-  else { zoneLabel = "Extreme Greed"; zoneColor = "#14532d"; }
+  let zoneColor = "rgb(148, 163, 184)"; // Neutral
+  if (clampedValue <= 24) { zoneLabel = "Extreme Fear"; zoneColor = "rgb(239, 68, 68)"; }
+  else if (clampedValue <= 44) { zoneLabel = "Fear"; zoneColor = "rgba(239, 68, 68, 0.7)"; }
+  else if (clampedValue <= 55) { zoneLabel = "Neutral"; zoneColor = "rgb(148, 163, 184)"; }
+  else if (clampedValue <= 74) { zoneLabel = "Greed"; zoneColor = "rgba(34, 197, 94, 0.7)"; }
+  else { zoneLabel = "Extreme Greed"; zoneColor = "rgb(34, 197, 94)"; }
 
   // SVG Geometry
   const width = 320;
@@ -47,17 +49,6 @@ const FearGreedGauge = ({ value }: { value: number }) => {
   const cy = height - 20; // needle pivot
   const r = 120; // radius
   
-  // Arc helper
-  const describeArc = (startAngle: number, endAngle: number) => {
-    // Math angles: 0 is right, 180 is left. SVG starts at right and goes down? 
-    // We want 180 to 0 (left to right)
-    // Angles in radians for SVG standard math. 
-    // Wait, simpler to use stroke-dasharray on a circle.
-    // 2 * pi * r = circumference
-    return "";
-  };
-
-  // Even simpler SVG arcs:
   // Using circle with stroke-dasharray
   const circ = 2 * Math.PI * r;
   const halfCirc = circ / 2;
@@ -70,42 +61,44 @@ const FearGreedGauge = ({ value }: { value: number }) => {
   const p5 = 26 / 100 * halfCirc; // Extreme Greed (100-74 = 26)
 
   // Offsets for each segment
-  const offset1 = circ; // starts at left
-  const offset2 = circ - p1;
-  const offset3 = circ - p1 - p2;
-  const offset4 = circ - p1 - p2 - p3;
-  const offset5 = circ - p1 - p2 - p3 - p4;
+  const offset1 = 0; // starts at left
+  const offset2 = -p1;
+  const offset3 = -(p1 + p2);
+  const offset4 = -(p1 + p2 + p3);
+  const offset5 = -(p1 + p2 + p3 + p4);
 
   return (
-    <div className="flex flex-col items-center">
-      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+    <div className="flex flex-col items-center relative">
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 rounded-full blur-[80px] pointer-events-none opacity-50 transition-colors duration-1000" style={{ backgroundColor: zoneColor }} />
+      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="relative z-10 drop-shadow-[0_0_15px_rgba(0,0,0,0.5)]">
         {/* Base circle for path, rotated so it starts from left (180 deg) and goes to right */}
         <g transform={`rotate(180, ${cx}, ${cy})`}>
           {/* Extreme Greed */}
-          <circle cx={cx} cy={cy} r={r} fill="transparent" stroke="#14532d" strokeWidth="24" strokeDasharray={`${p5} ${circ}`} strokeDashoffset={offset5} />
+          <circle cx={cx} cy={cy} r={r} fill="transparent" stroke="rgba(34, 197, 94, 0.8)" strokeWidth="24" strokeDasharray={`${p5} ${circ}`} strokeDashoffset={offset5} className="drop-shadow-[0_0_5px_rgba(34,197,94,0.5)]" />
           {/* Greed */}
-          <circle cx={cx} cy={cy} r={r} fill="transparent" stroke="#22c55e" strokeWidth="24" strokeDasharray={`${p4} ${circ}`} strokeDashoffset={offset4} />
+          <circle cx={cx} cy={cy} r={r} fill="transparent" stroke="rgba(34, 197, 94, 0.4)" strokeWidth="24" strokeDasharray={`${p4} ${circ}`} strokeDashoffset={offset4} />
           {/* Neutral */}
-          <circle cx={cx} cy={cy} r={r} fill="transparent" stroke="#94a3b8" strokeWidth="24" strokeDasharray={`${p3} ${circ}`} strokeDashoffset={offset3} />
+          <circle cx={cx} cy={cy} r={r} fill="transparent" stroke="rgba(148, 163, 184, 0.3)" strokeWidth="24" strokeDasharray={`${p3} ${circ}`} strokeDashoffset={offset3} />
           {/* Fear */}
-          <circle cx={cx} cy={cy} r={r} fill="transparent" stroke="#ef4444" strokeWidth="24" strokeDasharray={`${p2} ${circ}`} strokeDashoffset={offset2} />
+          <circle cx={cx} cy={cy} r={r} fill="transparent" stroke="rgba(239, 68, 68, 0.4)" strokeWidth="24" strokeDasharray={`${p2} ${circ}`} strokeDashoffset={offset2} />
           {/* Extreme Fear */}
-          <circle cx={cx} cy={cy} r={r} fill="transparent" stroke="#991b1b" strokeWidth="24" strokeDasharray={`${p1} ${circ}`} strokeDashoffset={offset1} />
+          <circle cx={cx} cy={cy} r={r} fill="transparent" stroke="rgba(239, 68, 68, 0.8)" strokeWidth="24" strokeDasharray={`${p1} ${circ}`} strokeDashoffset={offset1} className="drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]" />
         </g>
         
         {/* Needle Group */}
-        <g transform={`translate(${cx}, ${cy}) rotate(${rotation})`}>
+        <g transform={`translate(${cx}, ${cy}) rotate(${rotation})`} className="transition-transform duration-1000 ease-out">
           {/* Needle base */}
-          <circle cx="0" cy="0" r="8" fill="#fff" />
+          <circle cx="0" cy="0" r="10" fill="#f1f5f9" className="drop-shadow-[0_0_5px_rgba(255,255,255,0.8)]" />
+          <circle cx="0" cy="0" r="4" fill="#0f172a" />
           {/* Needle pointer */}
-          <polygon points="-4,0 4,0 0,-100" fill="#fff" />
+          <polygon points="-3,0 3,0 0,-115" fill="#f1f5f9" className="drop-shadow-[0_0_5px_rgba(255,255,255,0.5)]" />
         </g>
         
         {/* Text */}
-        <text x={cx} y={cy - 30} textAnchor="middle" fill="#fff" fontSize="48" fontWeight="bold" fontFamily="monospace">
+        <text x={cx} y={cy - 35} textAnchor="middle" fill="#f1f5f9" fontSize="48" fontWeight="900" fontFamily="monospace" className="drop-shadow-[0_0_10px_rgba(255,255,255,0.3)] tracking-tighter">
           {Math.round(value)}
         </text>
-        <text x={cx} y={cy + 15} textAnchor="middle" fill={zoneColor} fontSize="18" fontWeight="bold">
+        <text x={cx} y={cy + 15} textAnchor="middle" fill={zoneColor} fontSize="14" fontWeight="bold" className="uppercase tracking-widest drop-shadow-[0_0_5px_currentColor]">
           {zoneLabel}
         </text>
       </svg>
@@ -115,26 +108,12 @@ const FearGreedGauge = ({ value }: { value: number }) => {
 
 export default function SentimentPage() {
   // SWR fetches
-  const { data: fgHistory } = useSWR(`${BASE}/api/sentiment-data/fear-greed-history?days=365`, fetcher);
-  const { data: btcHistory } = useSWR(`${BASE}/api/sentiment-data/fear-greed-vs-btc?days=365`, fetcher);
-  const { data: sectorSent } = useSWR(`${BASE}/api/sentiment-data/sector-sentiment`, fetcher);
-  const { data: trending } = useSWR(`${BASE}/api/sentiment-data/trending`, fetcher);
+  const { data: fgHistory } = useSWR(`${BASE}/api/sentiment-data/fear-greed-history?days=365`, fetcher, { refreshInterval: 120000 });
+  const { data: btcHistory } = useSWR(`${BASE}/api/sentiment-data/fear-greed-vs-btc?days=365`, fetcher, { refreshInterval: 120000 });
+  const { data: sectorSent } = useSWR(`${BASE}/api/sentiment-data/sector-sentiment`, fetcher, { refreshInterval: 120000 });
+  const { data: trending } = useSWR(`${BASE}/api/sentiment-data/trending`, fetcher, { refreshInterval: 120000 });
 
-  if (!fgHistory || !btcHistory || !sectorSent || !trending) {
-    return (
-      <div className="space-y-6">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-white font-mono">Market Sentiment Analysis</h1>
-          <p className="text-sm text-[#94a3b8]">Loading sentiment data...</p>
-        </div>
-        <ChartSkeleton height={400} />
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <StatCardSkeleton />
-          <StatCardSkeleton />
-        </div>
-      </div>
-    );
-  }
+  if (!fgHistory || !btcHistory || !sectorSent || !trending) return <ChartSkeleton />;
 
   // Calculate current, yesterday, 7d avg
   const today = fgHistory[fgHistory.length - 1]?.fear_greed || 50;
@@ -143,163 +122,218 @@ export default function SentimentPage() {
   const avg7 = last7.reduce((sum: number, curr: any) => sum + curr.fear_greed, 0) / (last7.length || 1);
 
   return (
-    <div className="space-y-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-white font-mono">Market Sentiment Analysis</h1>
-        <p className="text-sm text-[#94a3b8]">AI-driven social and market sentiment metrics.</p>
-      </div>
-      
-      {/* SECTION 1 - Large Fear & Greed Gauge */}
-      <div className="bg-[#1a1a1a] p-8 rounded-xl border border-[#2a2a2a] flex flex-col items-center justify-center">
-        <h3 className="text-xl font-bold text-white font-mono mb-6">Fear & Greed Index</h3>
-        
-        <FearGreedGauge value={today} />
-        
-        <div className="flex gap-6 mt-4">
-          <div className="text-sm text-[#94a3b8]">
-            Yesterday: <span className="font-bold text-white">{yesterday}</span>
-          </div>
-          <div className="text-sm text-[#94a3b8]">
-            7D Avg: <span className="font-bold text-white">{Math.round(avg7)}</span>
-          </div>
-        </div>
-        
-        <div className="flex flex-wrap justify-center gap-4 mt-8 text-xs font-mono uppercase">
-          <div className="flex items-center gap-2"><div className="w-3 h-3 bg-[#991b1b] rounded-sm"></div> Extreme Fear</div>
-          <div className="flex items-center gap-2"><div className="w-3 h-3 bg-[#ef4444] rounded-sm"></div> Fear</div>
-          <div className="flex items-center gap-2"><div className="w-3 h-3 bg-[#94a3b8] rounded-sm"></div> Neutral</div>
-          <div className="flex items-center gap-2"><div className="w-3 h-3 bg-[#22c55e] rounded-sm"></div> Greed</div>
-          <div className="flex items-center gap-2"><div className="w-3 h-3 bg-[#14532d] rounded-sm"></div> Extreme Greed</div>
+    <div className="space-y-8 pt-8 max-w-[1600px] mx-auto relative">
+      <div className="absolute top-[10%] right-[-10%] w-[500px] h-[500px] bg-accent/5 rounded-full blur-[150px] pointer-events-none" />
+      <div className="absolute bottom-[20%] left-[-10%] w-[400px] h-[400px] bg-success/5 rounded-full blur-[120px] pointer-events-none" />
+
+      {/* HEADER */}
+      <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-4 border-b border-white/10 pb-6">
+        <div>
+          <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-text via-text/80 to-text-muted flex items-center gap-4 tracking-tight">
+            <div className="p-3 glass bg-accent/10 rounded-crypto shadow-inner shadow-accent/20">
+                <MessageSquareShare className="text-accent" size={32} />
+            </div>
+            Social Substrates
+          </h1>
+          <p className="text-text-muted mt-3 font-light tracking-wide max-w-xl">
+            NLP-driven sentiment analysis, crowd psychology vectors, and fear/greed clustering.
+          </p>
         </div>
       </div>
       
-      {/* SECTION 2 - Fear & Greed History */}
-      <div className="bg-[#1a1a1a] p-6 rounded-xl border border-[#2a2a2a]">
-        <h3 className="text-lg font-bold text-white font-mono mb-6">Fear & Greed Index — Last 12 Months</h3>
-        <div className="h-[280px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={fgHistory} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-              <defs>
-                <linearGradient id="colorFG" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#14532d" stopOpacity={0.8}/>
-                  <stop offset="50%" stopColor="#94a3b8" stopOpacity={0.5}/>
-                  <stop offset="100%" stopColor="#991b1b" stopOpacity={0.8}/>
-                </linearGradient>
-              </defs>
-              <XAxis dataKey="date" stroke="#4a4a4a" tick={{fill: '#94a3b8', fontSize: 12}} minTickGap={30} />
-              <YAxis domain={[0, 100]} stroke="#4a4a4a" tick={{fill: '#94a3b8'}} />
-              <Tooltip contentStyle={{ backgroundColor: "#0f0f0f", borderColor: "#2a2a2a", color: "#fff" }} />
-              <ReferenceLine y={75} stroke="#22c55e" strokeDasharray="3 3" label={{ position: 'insideTopLeft', value: 'Extreme Greed', fill: '#22c55e', fontSize: 10 }} />
-              <ReferenceLine y={25} stroke="#ef4444" strokeDasharray="3 3" label={{ position: 'insideBottomLeft', value: 'Extreme Fear', fill: '#ef4444', fontSize: 10 }} />
-              <Area type="monotone" dataKey="fear_greed" stroke="#6366f1" fillOpacity={1} fill="url(#colorFG)" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-      
-      {/* SECTION 3 - Dual Axis: Fear & Greed vs BTC Price */}
-      <div className="bg-[#1a1a1a] p-6 rounded-xl border border-[#2a2a2a]">
-        <h3 className="text-lg font-bold text-white font-mono mb-1">Fear & Greed vs Bitcoin Price</h3>
-        <p className="text-sm text-[#94a3b8] mb-6">High greed historically precedes corrections; extreme fear = buy signal</p>
-        
-        <div className="h-[320px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={btcHistory} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-              <XAxis dataKey="date" stroke="#4a4a4a" tick={{fill: '#94a3b8', fontSize: 12}} minTickGap={30} />
-              <YAxis yAxisId="left" domain={['auto', 'auto']} stroke="#ffffff" tick={{fill: '#ffffff'}} tickFormatter={(v) => `$${v.toLocaleString()}`} />
-              <YAxis yAxisId="right" orientation="right" domain={[0, 100]} stroke="#6366f1" tick={{fill: '#6366f1'}} />
-              <Tooltip 
-                contentStyle={{ backgroundColor: "#0f0f0f", borderColor: "#2a2a2a", color: "#fff" }} 
-                formatter={(val: number, name: string) => [name === 'btc_price' ? `$${val.toLocaleString()}` : val, name === 'btc_price' ? 'BTC Price' : 'Fear & Greed']}
-              />
-              <Area yAxisId="right" type="monotone" dataKey="fear_greed" fill="#6366f1" stroke="none" fillOpacity={0.2} />
-              <Line yAxisId="left" type="monotone" dataKey="btc_price" stroke="#ffffff" strokeWidth={2} dot={false} />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-      
-      {/* SECTION 4 - Two Column Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
-        {/* LEFT: Sentiment by Sector */}
-        <div className="bg-[#1a1a1a] p-6 rounded-xl border border-[#2a2a2a]">
-          <h3 className="text-lg font-bold text-white font-mono mb-6">Community Sentiment by Sector</h3>
+      <div className="relative z-10 space-y-8">
+        {/* SECTION 1 & 2 - Top Row: Gauge and History Area */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
-          <div className="h-[300px]">
+          {/* Gauge Card */}
+          <GlassCard asymmetric="md" className="p-8 flex flex-col items-center justify-center relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-4">
+                <HeartPulse size={20} className={`opacity-50 group-hover:opacity-100 transition-opacity ${today > 60 ? 'text-success animate-pulse' : today < 40 ? 'text-danger' : 'text-text-muted'}`} />
+            </div>
+            <h3 className="text-xl font-black text-text tracking-tight mb-8">Fear & Greed Index</h3>
+            
+            <FearGreedGauge value={today} />
+            
+            <div className="flex gap-8 mt-6">
+              <div className="text-[10px] uppercase tracking-widest font-bold text-text-muted text-center">
+                Yesterday<br/><span className="text-lg font-black text-text font-mono mt-1 block">{yesterday}</span>
+              </div>
+              <div className="w-px h-8 bg-white/10" />
+              <div className="text-[10px] uppercase tracking-widest font-bold text-text-muted text-center">
+                7D Vector<br/><span className="text-lg font-black text-text font-mono mt-1 block">{Math.round(avg7)}</span>
+              </div>
+            </div>
+          </GlassCard>
+          
+          {/* Fear & Greed History Area */}
+          <GlassCard asymmetric="lg" className="p-8 lg:col-span-2">
+            <div className="mb-6 flex justify-between items-end">
+                <div>
+                    <h3 className="text-xl font-black text-text tracking-tight flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full glass bg-accent/10 border border-accent/20 flex items-center justify-center">
+                            <Activity className="text-accent" size={16} />
+                        </div>
+                        Emotional Trajectory
+                    </h3>
+                    <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-2">12-Month Rolling Analysis window</p>
+                </div>
+                <div className="hidden sm:flex gap-4 text-[9px] uppercase font-bold tracking-widest">
+                    <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-success/80 shadow-[0_0_5px_rgba(34,197,94,0.5)]" /> Greed</div>
+                    <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-text-muted/50" /> Neutral</div>
+                    <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-danger/80 shadow-[0_0_5px_rgba(239,68,68,0.5)]" /> Fear</div>
+                </div>
+            </div>
+            
+            <div className="h-[280px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={fgHistory} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorFG" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="rgba(34,197,94,0.6)" stopOpacity={1}/>
+                      <stop offset="40%" stopColor="rgba(148,163,184,0.1)" stopOpacity={0.8}/>
+                      <stop offset="100%" stopColor="rgba(239,68,68,0.6)" stopOpacity={1}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                  <XAxis dataKey="date" stroke="rgba(255,255,255,0.3)" tick={{fill: 'rgba(255,255,255,0.5)', fontSize: 10, fontFamily: 'monospace'}} minTickGap={30} tickLine={false} axisLine={false} />
+                  <YAxis domain={[0, 100]} stroke="rgba(255,255,255,0.3)" tick={{fill: 'rgba(255,255,255,0.5)', fontSize: 10, fontFamily: 'monospace'}} tickLine={false} axisLine={false} />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: "rgba(10, 10, 15, 0.9)", borderColor: "rgba(255, 255, 255, 0.1)", borderRadius: "12px", color: "#fff", backdropFilter: "blur(10px)" }} 
+                    itemStyle={{ fontFamily: 'monospace', fontWeight: 'bold' }}
+                    labelStyle={{ color: 'rgba(255,255,255,0.5)', marginBottom: '8px' }}
+                  />
+                  <ReferenceLine y={75} stroke="rgba(34,197,94,0.5)" strokeDasharray="3 3" label={{ position: 'insideTopLeft', value: 'EXTREME GREED', fill: 'rgba(34,197,94,0.8)', fontSize: 9, fontFamily: 'sans-serif', fontWeight: 'bold', letterSpacing: '0.1em' }} />
+                  <ReferenceLine y={25} stroke="rgba(239,68,68,0.5)" strokeDasharray="3 3" label={{ position: 'insideBottomLeft', value: 'EXTREME FEAR', fill: 'rgba(239,68,68,0.8)', fontSize: 9, fontFamily: 'sans-serif', fontWeight: 'bold', letterSpacing: '0.1em' }} />
+                  <Area type="monotone" dataKey="fear_greed" stroke="rgb(var(--accent))" strokeWidth={2} fillOpacity={1} fill="url(#colorFG)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </GlassCard>
+        </div>
+        
+        {/* SECTION 3 - Dual Axis: Fear & Greed vs BTC Price */}
+        <GlassCard asymmetric="lg" className="p-0 overflow-hidden">
+          <div className="p-8 border-b border-white/5 bg-surface/30">
+            <h3 className="text-xl font-black text-text tracking-tight">Psychology vs. Price Action</h3>
+            <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-1">Cross-referencing network sentiment against BTC valuations</p>
+          </div>
+          
+          <div className="p-8 h-[400px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={sectorSent} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                <XAxis type="number" domain={[-1, 1]} stroke="#4a4a4a" tick={{fill: '#94a3b8'}} />
-                <YAxis dataKey="sector" type="category" stroke="#4a4a4a" tick={{fill: '#94a3b8', fontSize: 12}} tickFormatter={(val) => typeof val === 'string' ? val.toUpperCase() : val} />
+              <ComposedChart data={btcHistory} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                <XAxis dataKey="date" stroke="rgba(255,255,255,0.3)" tick={{fill: 'rgba(255,255,255,0.5)', fontSize: 10, fontFamily: 'monospace'}} minTickGap={30} tickLine={false} axisLine={false} />
+                <YAxis yAxisId="left" domain={['auto', 'auto']} stroke="rgba(255,255,255,0.3)" tick={{fill: 'rgba(255,255,255,0.8)', fontSize: 10, fontFamily: 'monospace'}} tickFormatter={(v) => `$${v.toLocaleString()}`} tickLine={false} axisLine={false} />
+                <YAxis yAxisId="right" orientation="right" domain={[0, 100]} stroke="rgba(255,255,255,0.3)" tick={{fill: 'rgb(var(--accent))', fontSize: 10, fontFamily: 'monospace', fontWeight: 'bold'}} tickLine={false} axisLine={false} />
                 <Tooltip 
-                  cursor={{fill: '#2a2a2a'}} 
-                  contentStyle={{ backgroundColor: "#0f0f0f", borderColor: "#2a2a2a", color: "#fff" }}
-                  formatter={(v: number, n: string, props: any) => [`${v.toFixed(3)} (${props.payload.asset_count} assets)`, 'Avg Sentiment']}
+                  contentStyle={{ backgroundColor: "rgba(10, 10, 15, 0.9)", borderColor: "rgba(255, 255, 255, 0.1)", borderRadius: "12px", color: "#fff", backdropFilter: "blur(10px)" }} 
+                  itemStyle={{ fontFamily: 'monospace', fontWeight: 'bold' }}
+                  labelStyle={{ color: 'rgba(255,255,255,0.5)', marginBottom: '8px' }}
+                  formatter={(val: number, name: string) => [name === 'btc_price' ? `$${val.toLocaleString()}` : val, name === 'btc_price' ? 'BTC Price' : 'Index Level']}
                 />
-                <ReferenceLine x={0} stroke="#4a4a4a" />
-                <Bar dataKey="avg_sentiment" radius={[0, 4, 4, 0]}>
-                  {
-                    sectorSent.map((entry: any, index: number) => (
-                      <Cell key={`cell-${index}`} fill={entry.avg_sentiment >= 0 ? '#22c55e' : '#ef4444'} />
-                    ))
-                  }
-                </Bar>
-              </BarChart>
+                <Area yAxisId="right" type="monotone" dataKey="fear_greed" fill="url(#colorFG)" stroke="none" fillOpacity={0.15} />
+                <Line yAxisId="left" type="monotone" dataKey="btc_price" stroke="#f1f5f9" strokeWidth={3} dot={false} className="drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]" />
+              </ComposedChart>
             </ResponsiveContainer>
           </div>
-        </div>
+        </GlassCard>
         
-        {/* RIGHT: Trending Assets */}
-        <div className="bg-[#1a1a1a] p-6 rounded-xl border border-[#2a2a2a] flex flex-col">
-          <h3 className="text-lg font-bold text-white font-mono mb-6">Sentiment Movers</h3>
+        {/* SECTION 4 - Two Column Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           
-          <div className="flex-1 space-y-6">
-            <div>
-              <div className="flex items-center gap-2 mb-3 text-green-400 font-bold">
-                <TrendingUp size={18} />
-                <h4>Rising Sentiment (7d)</h4>
-              </div>
-              <div className="space-y-2">
-                {trending.gainers.map((g: any, i: number) => (
-                  <div key={i} className="flex justify-between items-center bg-[#0f0f0f] p-3 rounded-lg border border-[#2a2a2a]">
-                    <div className="flex items-center gap-3">
-                      <Link href={`/coin/${g.symbol}`} className="font-mono font-bold text-white hover:text-indigo-400">{g.symbol}</Link>
-                      <span className="text-[10px] uppercase bg-[#2a2a2a] text-[#cbd5e1] px-1.5 py-0.5 rounded" style={{ backgroundColor: getSectorColor(g.sector) }}>{g.sector}</span>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm font-bold text-green-400">+{g.change.toFixed(3)}</div>
-                      <div className="text-xs text-[#94a3b8]">{g.prev_sentiment.toFixed(2)} → {g.current_sentiment.toFixed(2)}</div>
-                    </div>
+          {/* LEFT: Sentiment by Sector */}
+          <GlassCard asymmetric="md" className="p-8">
+            <div className="mb-8">
+              <h3 className="text-xl font-black text-text tracking-tight">Sector Disposition</h3>
+              <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-1">Aggregated sentiment variance across topology</p>
+            </div>
+            
+            <div className="h-[320px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={sectorSent} layout="vertical" margin={{ top: 5, right: 30, left: 10, bottom: 5 }}>
+                  <XAxis type="number" domain={[-1, 1]} stroke="rgba(255,255,255,0.3)" tick={{fill: 'rgba(255,255,255,0.5)', fontSize: 10, fontFamily: 'monospace'}} tickLine={false} axisLine={false} />
+                  <YAxis dataKey="sector" type="category" stroke="rgba(255,255,255,0.3)" tick={{fill: 'rgba(255,255,255,0.8)', fontSize: 10, fontFamily: 'monospace', fontWeight: 'bold'}} tickFormatter={(val) => typeof val === 'string' ? val.toUpperCase() : val} tickLine={false} axisLine={false} width={80} />
+                  <Tooltip 
+                    cursor={{fill: 'rgba(255,255,255,0.05)'}} 
+                    contentStyle={{ backgroundColor: "rgba(10, 10, 15, 0.9)", borderColor: "rgba(255, 255, 255, 0.1)", borderRadius: "12px", color: "#fff", backdropFilter: "blur(10px)" }}
+                    itemStyle={{ fontFamily: 'monospace', fontWeight: 'bold' }}
+                    formatter={(v: number, n: string, props: any) => [`${v > 0 ? '+' : ''}${v.toFixed(3)} (${props.payload.asset_count} nodes)`, 'Vector']}
+                  />
+                  <ReferenceLine x={0} stroke="rgba(255,255,255,0.2)" strokeDasharray="3 3" />
+                  <Bar dataKey="avg_sentiment" radius={[0, 4, 4, 0]} barSize={20}>
+                    {
+                      sectorSent.map((entry: any, index: number) => (
+                        <Cell key={`cell-${index}`} fill={entry.avg_sentiment >= 0 ? 'rgb(34, 197, 94)' : 'rgb(239, 68, 68)'} className={entry.avg_sentiment >= 0 ? 'drop-shadow-[0_0_5px_rgba(34,197,94,0.5)]' : 'drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]'} />
+                      ))
+                    }
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </GlassCard>
+          
+          {/* RIGHT: Trending Assets */}
+          <GlassCard asymmetric="md" className="p-0 overflow-hidden flex flex-col">
+            <div className="p-8 border-b border-white/5 bg-surface/30">
+              <h3 className="text-xl font-black text-text tracking-tight">Social Velocity Movers</h3>
+              <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-1">Highest derivative changes in NLP scores (7d)</p>
+            </div>
+            
+            <div className="flex-1 p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+              {/* Gainers */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-success mb-2">
+                  <div className="p-1.5 rounded-full glass bg-success/20 border border-success/30 shadow-inner">
+                    <TrendingUp size={14} className="drop-shadow-[0_0_5px_currentColor]" />
                   </div>
-                ))}
+                  <h4 className="font-bold text-xs uppercase tracking-widest text-text">Positive Momentum</h4>
+                </div>
+                <div className="space-y-3">
+                  {trending.gainers.map((g: any, i: number) => (
+                    <div key={i} className="flex justify-between items-center glass bg-success/5 p-4 rounded-crypto border border-success/10 hover:border-success/30 hover:bg-success/10 transition-colors group">
+                      <div className="flex flex-col gap-1.5">
+                        <Link href={`/graph?asset=${g.symbol}`} className="font-mono font-black text-text group-hover:text-success transition-colors text-lg tracking-tight">{g.symbol}</Link>
+                        <span className="text-[8px] uppercase tracking-widest font-bold text-white px-2 py-0.5 rounded-sm inline-block w-max shadow-inner" style={{ backgroundColor: getSectorColor(g.sector) }}>{g.sector}</span>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-base font-black font-mono text-success drop-shadow-[0_0_5px_rgba(34,197,94,0.5)]">+{g.change.toFixed(3)}</div>
+                        <div className="text-[10px] text-text-muted font-mono bg-black/40 px-2 py-0.5 rounded-sm mt-1">{g.prev_sentiment.toFixed(2)} → {g.current_sentiment.toFixed(2)}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              
+              {/* Losers */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-danger mb-2">
+                  <div className="p-1.5 rounded-full glass bg-danger/20 border border-danger/30 shadow-inner">
+                    <TrendingDown size={14} className="drop-shadow-[0_0_5px_currentColor]" />
+                  </div>
+                  <h4 className="font-bold text-xs uppercase tracking-widest text-text">Negative Momentum</h4>
+                </div>
+                <div className="space-y-3">
+                  {trending.losers.map((l: any, i: number) => (
+                    <div key={i} className="flex justify-between items-center glass bg-danger/5 p-4 rounded-crypto border border-danger/10 hover:border-danger/30 hover:bg-danger/10 transition-colors group">
+                      <div className="flex flex-col gap-1.5">
+                        <Link href={`/graph?asset=${l.symbol}`} className="font-mono font-black text-text group-hover:text-danger transition-colors text-lg tracking-tight">{l.symbol}</Link>
+                        <span className="text-[8px] uppercase tracking-widest font-bold text-white px-2 py-0.5 rounded-sm inline-block w-max shadow-inner" style={{ backgroundColor: getSectorColor(l.sector) }}>{l.sector}</span>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-base font-black font-mono text-danger drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]">{l.change.toFixed(3)}</div>
+                        <div className="text-[10px] text-text-muted font-mono bg-black/40 px-2 py-0.5 rounded-sm mt-1">{l.prev_sentiment.toFixed(2)} → {l.current_sentiment.toFixed(2)}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
             
-            <div>
-              <div className="flex items-center gap-2 mb-3 text-red-400 font-bold">
-                <TrendingDown size={18} />
-                <h4>Falling Sentiment (7d)</h4>
-              </div>
-              <div className="space-y-2">
-                {trending.losers.map((l: any, i: number) => (
-                  <div key={i} className="flex justify-between items-center bg-[#0f0f0f] p-3 rounded-lg border border-[#2a2a2a]">
-                    <div className="flex items-center gap-3">
-                      <Link href={`/coin/${l.symbol}`} className="font-mono font-bold text-white hover:text-indigo-400">{l.symbol}</Link>
-                      <span className="text-[10px] uppercase text-[#cbd5e1] px-1.5 py-0.5 rounded" style={{ backgroundColor: getSectorColor(l.sector) }}>{l.sector}</span>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm font-bold text-red-400">{l.change.toFixed(3)}</div>
-                      <div className="text-xs text-[#94a3b8]">{l.prev_sentiment.toFixed(2)} → {l.current_sentiment.toFixed(2)}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-          
+          </GlassCard>
         </div>
+        
       </div>
-      
+      <ScrollToTop />
     </div>
   );
 }

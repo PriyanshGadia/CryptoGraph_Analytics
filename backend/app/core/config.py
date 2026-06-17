@@ -1,5 +1,17 @@
+"""
+Application configuration module.
+
+Settings priority:
+1. app_settings SQLite table (user-configured via UI)
+2. .env file (developer fallback)
+3. Hardcoded defaults
+
+The get_setting() function provides a unified way to fetch any setting
+from the app_settings table first, falling back to pydantic-settings.
+"""
 from typing import Optional
 from pydantic_settings import BaseSettings
+
 
 class Settings(BaseSettings):
     supabase_url: Optional[str] = None
@@ -20,3 +32,36 @@ class Settings(BaseSettings):
         protected_namespaces = ()
 
 settings = Settings()
+
+
+def get_setting(key: str, default: str = None) -> Optional[str]:
+    """
+    Fetches a setting value with DB-first priority:
+    1. Checks the app_settings SQLite table (user-configured via Settings page)
+    2. Falls back to the pydantic Settings object (.env / defaults)
+    
+    This ensures API keys saved through the UI are actually used.
+    """
+    try:
+        from app.db.database import SessionLocal
+        from app.db.models_sqla import AppSetting
+        from app.core.security import decrypt_secret
+
+        db = SessionLocal()
+        try:
+            record = db.query(AppSetting).filter(AppSetting.setting_key == key).first()
+            if record and record.setting_value:
+                value = decrypt_secret(record.setting_value)
+                if value:
+                    return value
+        finally:
+            db.close()
+    except Exception:
+        pass
+
+    # Fallback to pydantic settings
+    env_val = getattr(settings, key, None)
+    if env_val:
+        return env_val
+
+    return default

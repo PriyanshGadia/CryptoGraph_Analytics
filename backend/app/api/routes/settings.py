@@ -4,22 +4,64 @@ from app.db.database import get_db
 from app.db.models_sqla import AppSetting
 from app.core.security import encrypt_secret, decrypt_secret
 from pydantic import BaseModel
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 router = APIRouter(prefix="/settings", tags=["settings"])
+
+SENSITIVE_KEYWORDS = ["key", "secret", "dsn", "password", "token"]
+
+def _is_sensitive(key: str) -> bool:
+    return any(kw in key.lower() for kw in SENSITIVE_KEYWORDS)
+
+def _mask_value(value: str) -> str:
+    """Returns a masked version of a sensitive value for display purposes."""
+    if not value or len(value) < 8:
+        return "••••••••"
+    return value[:4] + "••••" + value[-4:]
+
 
 class SettingsUpdate(BaseModel):
     settings: Dict[str, str]
 
+class SettingsResponse(BaseModel):
+    values: Dict[str, str]
+    configured: Dict[str, bool]
+
 @router.get("")
 def get_settings(db: Session = Depends(get_db)):
-    """Retrieve all app settings, decrypting sensitive values."""
+    """
+    Retrieve all app settings.
+    For sensitive keys: returns masked values + a 'configured' boolean.
+    For non-sensitive keys: returns the actual value.
+    """
     settings_records = db.query(AppSetting).all()
-    return {record.setting_key: decrypt_secret(record.setting_value) for record in settings_records}
+    
+    values = {}
+    configured = {}
+    
+    for record in settings_records:
+        key = record.setting_key
+        raw_value = record.setting_value or ""
+        
+        if _is_sensitive(key):
+            # Decrypt to check if it's actually configured
+            decrypted = decrypt_secret(raw_value)
+            has_value = bool(decrypted and decrypted.strip())
+            configured[key] = has_value
+            # Return empty string — frontend should show placeholder
+            values[key] = ""
+        else:
+            values[key] = raw_value
+            configured[key] = bool(raw_value)
+    
+    return {"values": values, "configured": configured}
 
 @router.post("")
 def update_settings(update_data: SettingsUpdate, db: Session = Depends(get_db)):
-    """Update or create app settings (Batched to prevent N+1 queries)."""
+    """
+    Update or create app settings (Batched to prevent N+1 queries).
+    Skips empty strings for sensitive fields (user didn't change them).
+    """
     # Fetch all existing records that match the keys we are updating
     keys_to_update = list(update_data.settings.keys())
     existing_records = db.query(AppSetting).filter(AppSetting.setting_key.in_(keys_to_update)).all()
@@ -27,16 +69,24 @@ def update_settings(update_data: SettingsUpdate, db: Session = Depends(get_db)):
     # Create a lookup dictionary
     existing_lookup = {record.setting_key: record for record in existing_records}
     
-    # Update or insert
+    updated_count = 0
+    
     for key, value in update_data.settings.items():
-        is_sensitive = any(kw in key.lower() for kw in ["key", "secret", "dsn"])
-        final_value = encrypt_secret(value) if is_sensitive and value else value
+        is_sensitive = _is_sensitive(key)
+        
+        # Skip empty sensitive fields — user didn't change them
+        if is_sensitive and (not value or not value.strip()):
+            continue
+        
+        # Encrypt sensitive values
+        final_value = encrypt_secret(value) if is_sensitive else value
         
         if key in existing_lookup:
             existing_lookup[key].setting_value = final_value
         else:
             new_setting = AppSetting(setting_key=key, setting_value=final_value)
             db.add(new_setting)
+        updated_count += 1
             
     db.commit()
-    return {"status": "success", "message": "Settings updated"}
+    return {"status": "success", "message": f"Updated {updated_count} setting(s)"}

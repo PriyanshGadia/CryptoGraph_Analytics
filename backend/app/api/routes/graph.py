@@ -1,112 +1,142 @@
-"""Graph routes."""
+"""Graph routes — local SQLAlchemy backend."""
 from fastapi import APIRouter, Depends
-from app.api.deps import get_supabase
+from sqlalchemy.orm import Session
+from sqlalchemy import desc, text
+from app.api.deps import get_db
 from app.db.models import GraphResponse, GraphNode, GraphEdge
+from app.db.models_sqla import Asset, Prediction, OHLCV
+from datetime import datetime, timezone, timedelta
+import numpy as np
+import pandas as pd
 
 router = APIRouter(prefix="/graph", tags=["graph"])
 
+
+def _compute_correlation_graph(db: Session, top_n_edges: int = 100):
+    """
+    Builds a correlation-based graph from the local OHLCV + technical_features tables.
+    Nodes = assets, Edges = top Pearson correlations between daily returns.
+    """
+    since = datetime.now(timezone.utc) - timedelta(days=30)
+
+    # Batched query: get all daily returns from technical_features
+    tech_query = text("""
+        SELECT asset_id, timestamp, returns_1d
+        FROM technical_features
+        WHERE timestamp >= :since
+        ORDER BY timestamp ASC
+    """)
+    rows = db.execute(tech_query, {"since": since.isoformat()}).fetchall()
+
+    if not rows:
+        return [], []
+
+    # Build a pivot table: date x asset_id -> returns_1d
+    df = pd.DataFrame(rows, columns=["asset_id", "timestamp", "returns_1d"])
+    df["date"] = df["timestamp"].apply(lambda x: str(x).split("T")[0] if isinstance(x, str) else str(x)[:10])
+    pivot = df.pivot_table(index="date", columns="asset_id", values="returns_1d")
+    pivot = pivot.dropna(axis=1, thresh=max(1, len(pivot) // 2))
+
+    if pivot.shape[1] < 2:
+        return [], []
+
+    corr_matrix = pivot.corr(method="pearson")
+
+    # Load asset metadata
+    assets = db.query(Asset).all()
+    asset_map = {a.id: a for a in assets}
+
+    # Get latest predictions
+    preds = db.query(Prediction).order_by(desc(Prediction.predicted_at)).limit(200).all()
+    pred_map = {}
+    for p in preds:
+        if p.asset_id not in pred_map:
+            pred_map[p.asset_id] = p
+
+    # Build nodes
+    nodes_dict = {}
+    for aid in corr_matrix.columns:
+        asset = asset_map.get(aid)
+        if not asset:
+            continue
+        pred = pred_map.get(aid)
+        nodes_dict[asset.symbol] = GraphNode(
+            id=str(aid),
+            symbol=asset.symbol,
+            sector=asset.sector or "other",
+            market_cap_usd=asset.market_cap_usd,
+            predicted_direction=pred.direction if pred else None,
+            confidence=pred.confidence if pred else None,
+        )
+
+    # Build edges from upper triangle of correlation matrix
+    mask = np.triu(np.ones_like(corr_matrix, dtype=bool), k=1)
+    pairs = []
+    for i, aid_a in enumerate(corr_matrix.columns):
+        for j, aid_b in enumerate(corr_matrix.columns):
+            if mask[i][j]:
+                val = corr_matrix.iloc[i, j]
+                if not np.isnan(val) and abs(val) > 0.1:
+                    pairs.append((aid_a, aid_b, float(val)))
+
+    # Sort by absolute correlation descending, take top_n_edges
+    pairs.sort(key=lambda x: abs(x[2]), reverse=True)
+    pairs = pairs[:top_n_edges]
+
+    edges = []
+    for aid_a, aid_b, weight in pairs:
+        a = asset_map.get(aid_a)
+        b = asset_map.get(aid_b)
+        if a and b:
+            edge_type = "positive_correlation" if weight > 0 else "negative_correlation"
+            edges.append(GraphEdge(
+                source=a.symbol,
+                target=b.symbol,
+                weight=round(abs(weight), 4),
+                edge_type=edge_type,
+            ))
+
+    return list(nodes_dict.values()), edges
+
+
 @router.get("/latest", response_model=GraphResponse)
-async def get_latest_graph(db=Depends(get_supabase)):
+async def get_latest_graph(db: Session = Depends(get_db)):
     """
     Returns current graph for visualization.
-    Query latest graph_snapshots grouped by (source_asset, target_asset).
-    Join with assets table to get symbol, sector, market_cap_usd.
-    Join with predictions for predicted_direction, confidence.
-    Build nodes list (deduplicated assets) and edges list.
+    Computes correlation-based graph from local OHLCV/technical_features.
     """
-    # 1. Fetch the latest snapshot date
-    snapshot_res = db.table("graph_snapshots").select("timestamp").order("timestamp", desc=True).limit(1).execute()
-    
-    if not snapshot_res.data:
-        return GraphResponse(nodes=[], edges=[])
-        
-    latest_date = snapshot_res.data[0]['timestamp']
-    
-    # 2. Fetch edges for that date
-    edges_res = db.table("graph_snapshots").select("*, source:assets!source_asset(id, symbol, sector, market_cap_usd), target:assets!target_asset(id, symbol, sector, market_cap_usd)").eq("timestamp", latest_date).execute()
-    
-    nodes_dict = {}
-    edges_list = []
-    
-    for row in edges_res.data:
-        src = row.get("source")
-        tgt = row.get("target")
-        
-        if not src or not tgt:
-            continue
-            
-        src_sym = src["symbol"]
-        tgt_sym = tgt["symbol"]
-        
-        edges_list.append(GraphEdge(
-            source=src_sym,
-            target=tgt_sym,
-            weight=row.get("weight", 0.0),
-            edge_type=row.get("edge_type", "correlation")
-        ))
-        
-        # Add to nodes dictionary
-        if src_sym not in nodes_dict:
-            nodes_dict[src_sym] = {
-                "id": str(src["id"]),
-                "symbol": src_sym,
-                "sector": src.get("sector", "other"),
-                "market_cap_usd": src.get("market_cap_usd")
-            }
-        if tgt_sym not in nodes_dict:
-            nodes_dict[tgt_sym] = {
-                "id": str(tgt["id"]),
-                "symbol": tgt_sym,
-                "sector": tgt.get("sector", "other"),
-                "market_cap_usd": tgt.get("market_cap_usd")
-            }
-            
-    # 3. Fetch latest predictions to augment nodes
-    pred_res = db.table("predictions").select("*, assets(symbol)").order("timestamp", desc=True).limit(200).execute()
-    pred_dict = {}
-    for p in pred_res.data:
-        sym = p.get("assets", {}).get("symbol")
-        if sym and sym not in pred_dict:
-            pred_dict[sym] = p
+    nodes, edges = _compute_correlation_graph(db)
+    return GraphResponse(nodes=nodes, edges=edges)
 
-    nodes_list = []
-    for sym, node_info in nodes_dict.items():
-        p_info = pred_dict.get(sym, {})
-        nodes_list.append(GraphNode(
-            id=node_info["id"],
-            symbol=sym,
-            sector=node_info["sector"],
-            market_cap_usd=node_info.get("market_cap_usd"),
-            predicted_direction=p_info.get("direction"),
-            confidence=p_info.get("confidence")
-        ))
-        
-    return GraphResponse(nodes=nodes_list, edges=edges_list)
 
 @router.get("/history")
-async def get_graph_history(days: int = 7, db=Depends(get_supabase)):
+async def get_graph_history(days: int = 7, db: Session = Depends(get_db)):
     """
-    Returns graph evolution over N days.
-    For each day in last `days` days:
-      Query graph_snapshots for that date
-      Compute: edge_count, density (edge_count/max_possible), top 5 central nodes
-    Return list of daily summaries.
+    Returns graph evolution metrics over N days.
+    Computes edge density from rolling correlation windows.
     """
-    # Simple mockup aggregation for time-series extraction
-    res = db.table("graph_snapshots").select("timestamp").order("timestamp", desc=True).limit(days * 1000).execute()
-    
-    date_counts = {}
-    for row in res.data:
-        dt = row['timestamp']
-        date_counts[dt] = date_counts.get(dt, 0) + 1
-        
+    # Build one snapshot for now (multi-day requires heavy compute)
+    nodes, edges = _compute_correlation_graph(db)
+
     history = []
-    for dt, count in list(date_counts.items())[:days]:
-        history.append({
-            "date": dt,
-            "edge_count": count,
-            "density": min(count / (50*49), 1.0), # Assuming max nodes is 50
-            "top_central_nodes": ["BTC", "ETH", "BNB"] # Mock centralities
-        })
-        
+    total_assets = len(nodes)
+    max_possible = total_assets * (total_assets - 1) / 2 if total_assets > 1 else 1
+
+    # Group significant edges by strength
+    strong_edges = [e for e in edges if e.weight > 0.5]
+    central_nodes = {}
+    for e in edges:
+        central_nodes[e.source] = central_nodes.get(e.source, 0) + 1
+        central_nodes[e.target] = central_nodes.get(e.target, 0) + 1
+
+    top_central = sorted(central_nodes.items(), key=lambda x: x[1], reverse=True)[:5]
+
+    history.append({
+        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "edge_count": len(edges),
+        "density": min(len(edges) / max_possible, 1.0) if max_possible > 0 else 0,
+        "strong_edge_count": len(strong_edges),
+        "top_central_nodes": [n[0] for n in top_central],
+    })
+
     return history

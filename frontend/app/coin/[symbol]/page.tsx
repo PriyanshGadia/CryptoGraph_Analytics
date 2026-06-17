@@ -7,21 +7,22 @@ import { ChevronRight, RefreshCw, Maximize, Minimize, Brain, Layers, Activity, A
 import Link from "next/link";
 import useSWR from "swr";
 import { fetcher } from "@/lib/api";
+import { GlassCard } from "@/components/ui/GlassCard";
 
-const BASE = "http://localhost:8000";
+const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const WS_BASE = BASE.replace(/^http/, "ws");
 
 function DirectionBadge({ dir }: { dir: string }) {
-  const config: Record<string, {bg: string, text: string, label: string, border: string}> = {
-    strong_up:   {bg:"bg-[#10b981]/10",  text:"text-[#10b981]", label:"STRONG BUY", border:"border-[#10b981]/20"},
-    up:          {bg:"bg-[#34d399]/10",  text:"text-[#34d399]", label:"BUY", border:"border-[#34d399]/20"},
-    neutral:     {bg:"bg-[#94a3b8]/10",   text:"text-[#94a3b8]",  label:"NEUTRAL", border:"border-[#94a3b8]/20"},
-    down:        {bg:"bg-[#fb923c]/10",    text:"text-[#fb923c]",   label:"SELL", border:"border-[#fb923c]/20"},
-    strong_down: {bg:"bg-[#f43f5e]/10",    text:"text-[#f43f5e]",   label:"STRONG SELL", border:"border-[#f43f5e]/20"},
+  const config: Record<string, {bg: string, text: string, label: string, border: string, shadow: string}> = {
+    strong_up:   {bg:"bg-success/10",  text:"text-success", label:"STRONG BUY", border:"border-success/30", shadow:"shadow-[0_0_10px_rgba(34,197,94,0.2)]"},
+    up:          {bg:"bg-success/5",  text:"text-success", label:"BUY", border:"border-success/20", shadow:""},
+    neutral:     {bg:"bg-white/5",   text:"text-text-muted",  label:"NEUTRAL", border:"border-white/10", shadow:""},
+    down:        {bg:"bg-danger/5",    text:"text-danger",   label:"SELL", border:"border-danger/20", shadow:""},
+    strong_down: {bg:"bg-danger/10",    text:"text-danger",   label:"STRONG SELL", border:"border-danger/30", shadow:"shadow-[0_0_10px_rgba(239,68,68,0.2)]"},
   }
   const c = config[dir] || config["neutral"]
   return (
-    <span className={`inline-flex items-center justify-center px-3 py-1 rounded-sm text-[10px] font-bold uppercase tracking-widest border ${c.bg} ${c.text} ${c.border}`}>
+    <span className={`inline-flex items-center justify-center px-3 py-1 rounded-sm text-[10px] font-black uppercase tracking-widest border ${c.bg} ${c.text} ${c.border} ${c.shadow}`}>
       {c.label}
     </span>
   )
@@ -29,11 +30,13 @@ function DirectionBadge({ dir }: { dir: string }) {
 
 function VolatilityChip({ regime }: { regime: string }) {
   const colors: Record<string,string> = {
-    low:"bg-blue-500/10 text-blue-400 border-blue-500/20", medium:"bg-amber-500/10 text-amber-400 border-amber-500/20",
-    high:"bg-orange-500/10 text-orange-400 border-orange-500/20", extreme:"bg-red-500/10 text-red-400 border-red-500/20"
+    low:"bg-success/10 text-success border-success/20 shadow-[0_0_5px_rgba(34,197,94,0.2)]", 
+    medium:"bg-accent/10 text-accent border-accent/20 shadow-[0_0_5px_rgba(var(--accent),0.2)]",
+    high:"bg-orange-500/10 text-orange-400 border-orange-500/20 shadow-[0_0_5px_rgba(249,115,22,0.2)]", 
+    extreme:"bg-danger/10 text-danger border-danger/20 shadow-[0_0_5px_rgba(239,68,68,0.2)]"
   }
   return (
-    <span className={`px-2 py-0.5 rounded text-[10px] border font-mono uppercase tracking-widest ${colors[regime] || colors.medium}`}>
+    <span className={`px-2 py-0.5 rounded-sm text-[10px] border font-black uppercase tracking-widest ${colors[regime] || colors.medium}`}>
       {regime}
     </span>
   )
@@ -154,7 +157,7 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
         volumeSeriesRef.current.update({
           time: data.time,
           value: data.volume,
-          color: data.close >= data.open ? "#10b98130" : "#f43f5e30",
+          color: data.close >= data.open ? "rgba(34,197,94,0.2)" : "rgba(239,68,68,0.2)",
         });
       }
       setLivePrice(data.close);
@@ -176,11 +179,11 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
       height: isFullscreen ? window.innerHeight - 100 : 480,
       layout: {
         background: { type: ColorType.Solid, color: "transparent" },
-        textColor: "#64748b",
+        textColor: "rgba(255, 255, 255, 0.5)",
       },
       grid: {
-        vertLines: { color: "rgba(255, 255, 255, 0.03)" },
-        horzLines: { color: "rgba(255, 255, 255, 0.03)" },
+        vertLines: { color: "rgba(255, 255, 255, 0.05)" },
+        horzLines: { color: "rgba(255, 255, 255, 0.05)" },
       },
       crosshair: { mode: 1 },
       rightPriceScale: { borderColor: "rgba(255, 255, 255, 0.1)" },
@@ -190,14 +193,14 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
     chartRef.current = chart;
     
     const series = chartType === 'candlestick' ? chart.addCandlestickSeries({
-      upColor:   "#10b981",
-      downColor: "#f43f5e",
-      borderUpColor:   "#10b981",
-      borderDownColor: "#f43f5e",
-      wickUpColor:   "#10b981",
-      wickDownColor: "#f43f5e",
+      upColor:   "rgb(34, 197, 94)",
+      downColor: "rgb(239, 68, 68)",
+      borderUpColor:   "rgb(34, 197, 94)",
+      borderDownColor: "rgb(239, 68, 68)",
+      wickUpColor:   "rgb(34, 197, 94)",
+      wickDownColor: "rgb(239, 68, 68)",
     }) : chart.addLineSeries({
-      color: "#6366f1",
+      color: "rgb(var(--accent))",
       lineWidth: 2,
     });
     
@@ -215,7 +218,7 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
     
     // Volume histogram
     const volumeSeries = chart.addHistogramSeries({
-      color: "#6366f140",
+      color: "rgba(var(--accent), 0.2)",
       priceFormat: { type: "volume" },
       priceScaleId: "volume",
     });
@@ -227,7 +230,7 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
     volumeSeries.setData(ohlcv.map((d: any) => ({
       time:  d.time,
       value: d.volume,
-      color: d.close >= d.open ? "#10b98130" : "#f43f5e30",
+      color: d.close >= d.open ? "rgba(34,197,94,0.2)" : "rgba(239,68,68,0.2)",
     })));
     volumeSeriesRef.current = volumeSeries;
     
@@ -249,11 +252,11 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
       });
       
       if (middleData.length > 0) {
-        const upperLine = chart.addLineSeries({ color: "#818cf8", lineWidth: 1, lineStyle: 2 });
+        const upperLine = chart.addLineSeries({ color: "rgba(var(--accent), 0.8)", lineWidth: 1, lineStyle: 2 });
         upperLine.setData(upperData);
-        const lowerLine = chart.addLineSeries({ color: "#818cf8", lineWidth: 1, lineStyle: 2 });
+        const lowerLine = chart.addLineSeries({ color: "rgba(var(--accent), 0.8)", lineWidth: 1, lineStyle: 2 });
         lowerLine.setData(lowerData);
-        const middleLine = chart.addLineSeries({ color: "#64748b", lineWidth: 1 });
+        const middleLine = chart.addLineSeries({ color: "rgba(255,255,255,0.5)", lineWidth: 1 });
         middleLine.setData(middleData);
       }
     }
@@ -317,8 +320,11 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
   }, [period, ohlcv]);
   
   if (!ohlcv || !history) return (
-    <div className="h-screen flex items-center justify-center text-slate-500 font-mono text-sm tracking-widest uppercase bg-[#030712]">
-        Loading Asset Profile...
+    <div className="h-[50vh] flex flex-col items-center justify-center space-y-6">
+      <div className="text-text bg-surface/30 p-6 rounded-crypto border border-white/10 font-mono text-center flex flex-col items-center gap-4 shadow-inner">
+          <RefreshCw size={32} className="text-accent animate-spin" />
+          <p className="uppercase tracking-widest text-[10px] font-bold text-text-muted">Loading Asset Profile...</p>
+      </div>
     </div>
   );
   
@@ -347,61 +353,62 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
   const liveBB = calculateBB(livePrices, 20);
   
   return (
-    <div className="space-y-6 bg-[#030712] min-h-screen text-slate-200 pb-12 relative overflow-hidden">
+    <div className="space-y-6 min-h-screen pb-12 relative overflow-hidden">
       
       {/* Subtle Glow Backgrounds */}
-      <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-indigo-900/10 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute top-[40%] left-[-100px] w-[500px] h-[500px] bg-emerald-900/5 rounded-full blur-[100px] pointer-events-none" />
+      <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-accent/10 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute top-[40%] left-[-100px] w-[500px] h-[500px] bg-success/5 rounded-full blur-[100px] pointer-events-none" />
 
       {/* Breadcrumb Navigation */}
-      <div className="flex items-center text-xs font-mono text-slate-500 uppercase tracking-widest mb-2 relative z-10 p-4 pb-0 max-w-[1600px] mx-auto">
-        <Link href="/market" className="hover:text-indigo-400 transition-colors">Market Data</Link>
-        <ChevronRight size={14} className="mx-2 text-slate-700" />
-        <span className="text-slate-300">{symbol}</span>
+      <div className="flex items-center text-[10px] font-mono font-bold text-text-muted uppercase tracking-widest mb-2 relative z-10 pt-4 max-w-[1600px] mx-auto px-4">
+        <Link href="/market" className="hover:text-accent transition-colors">Market Data</Link>
+        <ChevronRight size={14} className="mx-2 text-white/20" />
+        <span className="text-text">{symbol}</span>
       </div>
 
       <div className="max-w-[1600px] mx-auto px-4 relative z-10 space-y-6">
           {/* SECTION 1 - Header */}
-          <div className="bg-white/[0.02] border border-white/[0.05] p-6 lg:p-8 rounded-3xl shadow-2xl backdrop-blur-xl flex flex-col gap-4">
+          <GlassCard asymmetric="lg" className="p-6 lg:p-8 flex flex-col gap-4 overflow-visible">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
               <div className="flex flex-col">
-                <div className="flex items-center gap-3">
-                  <h1 className="text-4xl lg:text-5xl font-black text-white tracking-tight">{symbol}</h1>
-                  <span className="text-slate-400 text-lg font-light tracking-wide">{asset?.name || symbol}</span>
+                <div className="flex items-center gap-4">
+                  <h1 className="text-4xl lg:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-text via-text/80 to-text-muted tracking-tight drop-shadow-sm">{symbol}</h1>
+                  <span className="text-text-muted text-lg font-light tracking-wide">{asset?.name || symbol}</span>
                   {asset?.sector && (
-                    <span className="bg-indigo-500/10 border border-indigo-500/20 text-[10px] px-2 py-1 rounded text-indigo-400 uppercase font-mono tracking-widest">
+                    <span className="glass bg-accent/10 border border-accent/20 text-[10px] px-2 py-1 rounded-sm text-accent uppercase font-black tracking-widest shadow-[0_0_10px_rgba(var(--accent),0.2)]">
                       {asset.sector}
                     </span>
                   )}
                 </div>
                 <div className="flex items-center mt-4 gap-4">
-                    <div className={`text-4xl font-mono transition-colors duration-300 ${livePrice ? 'text-indigo-300' : 'text-white'}`}>
+                    <div className={`text-4xl font-mono font-black tracking-tighter transition-colors duration-300 ${livePrice ? 'text-accent drop-shadow-[0_0_10px_rgba(var(--accent),0.3)]' : 'text-text'}`}>
                     ${displayPrice > 100 ? displayPrice.toFixed(2) : displayPrice.toFixed(4)}
                     </div>
-                    <div className={`text-sm font-bold flex items-center ${changePct >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                    {changePct >= 0 ? <TrendingUp size={16} className="mr-1"/> : <TrendingDown size={16} className="mr-1"/>}
+                    <div className={`text-sm font-black flex items-center gap-1 ${changePct >= 0 ? "text-success drop-shadow-[0_0_5px_rgba(34,197,94,0.5)]" : "text-danger drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]"}`}>
+                    {changePct >= 0 ? <TrendingUp size={16}/> : <TrendingDown size={16}/>}
                     {Math.abs(changePct).toFixed(2)}% (24h)
                     </div>
                 </div>
               </div>
               
-              <div className="flex flex-col items-end gap-3 w-full md:w-auto">
+              <div className="flex flex-col items-end gap-4 w-full md:w-auto">
                 <Link 
                   href={`/predictions?symbol=${symbol}`}
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-xl text-sm font-bold tracking-wide transition-all shadow-[0_0_15px_rgba(99,102,241,0.2)] flex items-center gap-2 hover:scale-105"
+                  className="glass bg-accent hover:bg-accent/90 text-white px-6 py-3 rounded-crypto-sm text-[10px] uppercase font-black tracking-widest transition-all shadow-[0_0_20px_rgba(var(--accent),0.4)] flex items-center gap-2 hover:scale-105 border border-white/20"
                 >
                   <Brain size={16} /> Analyze in Prediction Studio
                 </Link>
-                <div className="flex items-center gap-3 bg-black/40 border border-white/5 rounded-lg p-3 w-full md:w-auto justify-between">
-                    <div className="flex items-center gap-2">
-                        <span className="text-xs text-slate-500 uppercase font-mono tracking-widest">Latest Signal</span>
+                <div className="flex items-center gap-4 glass bg-surface/50 border border-white/10 rounded-crypto-sm p-4 w-full md:w-auto justify-between shadow-inner">
+                    <div className="flex items-center gap-3">
+                        <span className="text-[9px] text-text-muted uppercase font-black tracking-widest">Latest Signal</span>
                         <DirectionBadge dir={latestPred.direction || "neutral"} />
                     </div>
+                    <div className="w-px h-6 bg-white/10 hidden md:block" />
                     <div className="flex flex-col items-end">
-                        <span className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">Confidence</span>
-                        <div className="w-24 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                        <span className="text-[9px] text-text-muted uppercase tracking-widest mb-1.5 font-black">Confidence</span>
+                        <div className="w-24 h-1.5 bg-black/50 rounded-full overflow-hidden border border-white/5">
                         <div 
-                            className="h-full bg-indigo-500" 
+                            className="h-full bg-accent shadow-[0_0_5px_rgba(var(--accent),0.5)]" 
                             style={{ width: `${latestPred.confidence || 0}%` }}
                         />
                         </div>
@@ -409,21 +416,21 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
                 </div>
               </div>
             </div>
-          </div>
+          </GlassCard>
           
           {/* SECTION 2 - Main Chart */}
-          <div className={`bg-white/[0.02] border border-white/[0.05] shadow-2xl backdrop-blur-xl rounded-3xl overflow-hidden p-4 ${isFullscreen ? 'fixed inset-0 z-50 rounded-none m-0 bg-[#030712] border-0' : ''}`}>
+          <GlassCard asymmetric="lg" className={`p-4 overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50 rounded-none m-0 bg-background border-0 backdrop-blur-none' : ''}`}>
             
             {/* Chart Actions Toolbar */}
-            <div className="flex flex-wrap justify-between items-center mb-4 gap-4">
+            <div className="flex flex-wrap justify-between items-center mb-4 gap-4 bg-surface/30 p-2 rounded-crypto-sm border border-white/5">
               <div className="flex gap-2 items-center">
-                <div className="flex bg-black/40 rounded-lg border border-white/5 p-1">
+                <div className="flex bg-black/40 rounded-sm border border-white/5 p-1 shadow-inner">
                   {["1m", "5m", "15m", "1h", "4h", "1d", "1w"].map(i => (
                     <button
                       key={i}
                       onClick={() => setIntervalState(i)}
-                      className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
-                        interval === i ? "bg-indigo-500/20 text-indigo-300" : "text-slate-500 hover:text-slate-300 hover:bg-white/5"
+                      className={`px-3 py-1.5 rounded-sm text-[10px] font-black uppercase tracking-widest transition-all ${
+                        interval === i ? "bg-accent/20 text-accent border border-accent/30 shadow-[0_0_10px_rgba(var(--accent),0.2)]" : "text-text-muted hover:text-text hover:bg-white/5 border border-transparent"
                       }`}
                     >
                       {i}
@@ -433,36 +440,38 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
                 
                 <div className="w-px h-6 bg-white/10 mx-2" />
                 
-                <button 
-                  onClick={() => setChartType('candlestick')}
-                  className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${chartType === 'candlestick' ? "bg-slate-800 text-white" : "text-slate-500 hover:bg-white/5"}`}
-                >
-                  Candles
-                </button>
-                <button 
-                  onClick={() => setChartType('line')}
-                  className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${chartType === 'line' ? "bg-slate-800 text-white" : "text-slate-500 hover:bg-white/5"}`}
-                >
-                  Line
-                </button>
+                <div className="flex bg-black/40 rounded-sm border border-white/5 p-1 shadow-inner">
+                  <button 
+                    onClick={() => setChartType('candlestick')}
+                    className={`px-3 py-1.5 rounded-sm text-[10px] font-black uppercase tracking-widest transition-all ${chartType === 'candlestick' ? "bg-white/10 text-text border border-white/20" : "text-text-muted hover:bg-white/5 border border-transparent"}`}
+                  >
+                    Candles
+                  </button>
+                  <button 
+                    onClick={() => setChartType('line')}
+                    className={`px-3 py-1.5 rounded-sm text-[10px] font-black uppercase tracking-widest transition-all ${chartType === 'line' ? "bg-white/10 text-text border border-white/20" : "text-text-muted hover:bg-white/5 border border-transparent"}`}
+                  >
+                    Line
+                  </button>
+                </div>
                 <div className="w-px h-6 bg-white/10 mx-2" />
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 px-2">
                   <span className="relative flex h-2 w-2 mr-1">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success/80"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-success shadow-[0_0_5px_rgba(34,197,94,0.8)]"></span>
                   </span>
-                  <span className="text-xs font-bold text-emerald-500 uppercase tracking-widest">Live</span>
+                  <span className="text-[10px] font-black text-success uppercase tracking-widest drop-shadow-[0_0_5px_rgba(34,197,94,0.5)]">Live</span>
                 </div>
               </div>
 
               <div className="flex items-center gap-2">
-                <div className="flex bg-black/40 rounded-lg border border-white/5 p-1 mr-2">
+                <div className="flex bg-black/40 rounded-sm border border-white/5 p-1 shadow-inner mr-2">
                   {["1D", "1W", "1M", "3M", "1Y", "ALL"].map(p => (
                     <button
                       key={p}
                       onClick={() => setPeriod(p)}
-                      className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
-                        period === p ? "bg-slate-800 text-white" : "text-slate-500 hover:text-slate-300"
+                      className={`px-3 py-1.5 rounded-sm text-[10px] font-black uppercase tracking-widest transition-all ${
+                        period === p ? "bg-white/10 text-text border border-white/20" : "text-text-muted hover:text-text border border-transparent"
                       }`}
                     >
                       {p}
@@ -472,119 +481,125 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
                 
                 <button 
                   onClick={() => setIsFullscreen(!isFullscreen)}
-                  className="p-2 rounded-lg text-slate-400 hover:bg-white/10 hover:text-white transition-colors"
+                  className="p-2 rounded-sm text-text-muted hover:bg-white/10 hover:text-text transition-colors border border-transparent hover:border-white/10"
                   title="Toggle Fullscreen"
                 >
-                  {isFullscreen ? <Minimize size={16} /> : <Maximize size={16} />}
+                  {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
                 </button>
                 <button 
                   onClick={handleForceSync}
                   disabled={syncing}
-                  className="flex items-center gap-2 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500 hover:text-white px-4 py-2 rounded-lg text-xs font-bold transition-colors border border-indigo-500/30 disabled:opacity-50"
+                  className="flex items-center gap-2 glass bg-accent/10 text-accent hover:bg-accent hover:text-white px-4 py-2 rounded-sm text-[10px] font-black uppercase tracking-widest transition-colors border border-accent/30 disabled:opacity-50"
                 >
-                  <RefreshCw size={14} className={syncing ? "animate-spin" : ""} />
+                  <RefreshCw size={12} className={syncing ? "animate-spin" : ""} />
                   {syncing ? "Syncing..." : "Force Sync"}
                 </button>
               </div>
             </div>
             
-            <div className="relative" style={{ height: isFullscreen ? 'calc(100vh - 100px)' : '480px' }}>
+            <div className="relative border border-white/5 rounded-crypto bg-black/20 p-2" style={{ height: isFullscreen ? 'calc(100vh - 100px)' : '480px' }}>
               <div ref={chartContainerRef} className="w-full h-full" />
               
               {/* Intraday Floating Tooltip */}
               {tooltipData && (
-                <div className="absolute top-4 left-4 z-10 bg-[#0a0a0a]/90 backdrop-blur-md border border-white/10 p-3 rounded-xl shadow-2xl flex gap-5 text-[10px] font-mono pointer-events-none tracking-widest uppercase">
-                  <div className="text-indigo-300 font-bold">{new Date(tooltipData.time * 1000).toLocaleString(undefined, {month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit'})}</div>
-                  <div className="text-slate-500">O <span className="text-white ml-1">{tooltipData.open?.toFixed(2)}</span></div>
-                  <div className="text-slate-500">H <span className="text-white ml-1">{tooltipData.high?.toFixed(2)}</span></div>
-                  <div className="text-slate-500">L <span className="text-white ml-1">{tooltipData.low?.toFixed(2)}</span></div>
-                  <div className="text-slate-500">C <span className="text-white ml-1">{tooltipData.close?.toFixed(2)}</span></div>
-                  <div className="text-slate-500">V <span className="text-white ml-1">{(tooltipData.volume / 1000).toFixed(1)}k</span></div>
+                <div className="absolute top-4 left-4 z-10 glass bg-surface/90 backdrop-blur-xl border border-white/10 p-4 rounded-crypto-sm shadow-2xl flex gap-6 text-[10px] font-mono pointer-events-none tracking-widest uppercase font-bold">
+                  <div className="text-accent drop-shadow-[0_0_5px_rgba(var(--accent),0.5)]">{new Date(tooltipData.time * 1000).toLocaleString(undefined, {month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit'})}</div>
+                  <div className="text-text-muted">O <span className="text-text ml-1">{tooltipData.open?.toFixed(2)}</span></div>
+                  <div className="text-text-muted">H <span className="text-text ml-1">{tooltipData.high?.toFixed(2)}</span></div>
+                  <div className="text-text-muted">L <span className="text-text ml-1">{tooltipData.low?.toFixed(2)}</span></div>
+                  <div className="text-text-muted">C <span className="text-text ml-1">{tooltipData.close?.toFixed(2)}</span></div>
+                  <div className="text-text-muted">V <span className="text-text ml-1">{(tooltipData.volume / 1000).toFixed(1)}k</span></div>
                 </div>
               )}
             </div>
-          </div>
+          </GlassCard>
 
           {/* SECTION 2B - Real-Time Analysis Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             
             {/* Real-Time Fundamentals */}
-            <div className="bg-white/[0.02] border border-white/[0.05] p-6 lg:p-8 rounded-3xl shadow-2xl backdrop-blur-xl">
-              <div className="flex justify-between items-center mb-8">
-                <h3 className="text-lg font-light text-white tracking-wide flex items-center gap-3">
-                    <div className="p-2 bg-indigo-500/10 rounded-lg"><Layers size={18} className="text-indigo-400" /></div>
+            <GlassCard asymmetric="md" className="p-8 relative overflow-hidden group">
+              <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity">
+                  <Layers size={100} className="text-text-muted" />
+              </div>
+              <div className="flex justify-between items-center mb-8 relative z-10">
+                <h3 className="text-xl font-black text-text tracking-tight flex items-center gap-3">
+                    <div className="p-2 glass bg-white/5 rounded-crypto-sm border border-white/10 shadow-inner"><Layers size={18} className="text-text" /></div>
                     Fundamental Snapshot
                 </h3>
                 <span className="flex h-2 w-2 relative">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent/80"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-accent shadow-[0_0_5px_rgba(var(--accent),0.8)]"></span>
                 </span>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-black/30 p-5 rounded-2xl border border-white/5 hover:border-white/10 transition-colors">
-                    <div className="text-[10px] text-slate-500 mb-2 font-mono uppercase tracking-widest flex items-center gap-2"><Info size={12}/> Market Cap</div>
-                    <div className={`text-xl font-mono transition-colors duration-300 ${livePrice ? 'text-white' : 'text-slate-400'}`}>
+              <div className="grid grid-cols-2 gap-4 relative z-10">
+                <div className="glass bg-black/40 p-5 rounded-crypto-sm border border-white/5 hover:border-white/20 transition-colors shadow-inner">
+                    <div className="text-[9px] text-text-muted mb-2 font-mono font-black uppercase tracking-widest flex items-center gap-2"><Info size={12}/> Market Cap</div>
+                    <div className={`text-2xl font-mono font-black tracking-tighter transition-colors duration-300 ${livePrice ? 'text-text' : 'text-text-muted'}`}>
                         ${displayMcap ? (displayMcap / 1e9).toFixed(2) + "B" : "N/A"}
                     </div>
                 </div>
-                <div className="bg-black/30 p-5 rounded-2xl border border-white/5 hover:border-white/10 transition-colors">
-                    <div className="text-[10px] text-slate-500 mb-2 font-mono uppercase tracking-widest flex items-center gap-2"><ActivitySquare size={12}/> 24h Volume</div>
-                    <div className={`text-xl font-mono transition-colors duration-300 ${liveVolume24h > 0 ? 'text-white' : 'text-slate-400'}`}>
+                <div className="glass bg-black/40 p-5 rounded-crypto-sm border border-white/5 hover:border-white/20 transition-colors shadow-inner">
+                    <div className="text-[9px] text-text-muted mb-2 font-mono font-black uppercase tracking-widest flex items-center gap-2"><ActivitySquare size={12}/> 24h Volume</div>
+                    <div className={`text-2xl font-mono font-black tracking-tighter transition-colors duration-300 ${liveVolume24h > 0 ? 'text-text' : 'text-text-muted'}`}>
                         ${liveVolume24h > 0 ? (liveVolume24h / 1e6).toFixed(2) + "M" : "Loading..."}
                     </div>
                 </div>
-                <div className="bg-black/30 p-5 rounded-2xl border border-white/5 hover:border-white/10 transition-colors">
-                    <div className="text-[10px] text-slate-500 mb-2 font-mono uppercase tracking-widest flex items-center gap-2"><CircleDot size={12}/> Circ. Supply</div>
-                    <div className={`text-xl font-mono transition-colors duration-300 ${circSupply > 0 ? 'text-white' : 'text-slate-400'}`}>
+                <div className="glass bg-black/40 p-5 rounded-crypto-sm border border-white/5 hover:border-white/20 transition-colors shadow-inner">
+                    <div className="text-[9px] text-text-muted mb-2 font-mono font-black uppercase tracking-widest flex items-center gap-2"><CircleDot size={12}/> Circ. Supply</div>
+                    <div className={`text-2xl font-mono font-black tracking-tighter transition-colors duration-300 ${circSupply > 0 ? 'text-text' : 'text-text-muted'}`}>
                         {circSupply > 0 ? (circSupply / 1e6).toFixed(2) + "M" : "Loading..."}
                     </div>
                 </div>
-                <div className="bg-black/30 p-5 rounded-2xl border border-white/5 hover:border-white/10 transition-colors">
-                    <div className="text-[10px] text-slate-500 mb-2 font-mono uppercase tracking-widest flex items-center gap-2"><TrendingUp size={12}/> All-Time High</div>
-                    <div className={`text-xl font-mono transition-colors duration-300 ${liveATH > 0 ? 'text-white' : 'text-slate-400'}`}>
+                <div className="glass bg-black/40 p-5 rounded-crypto-sm border border-white/5 hover:border-white/20 transition-colors shadow-inner">
+                    <div className="text-[9px] text-text-muted mb-2 font-mono font-black uppercase tracking-widest flex items-center gap-2"><TrendingUp size={12}/> All-Time High</div>
+                    <div className={`text-2xl font-mono font-black tracking-tighter transition-colors duration-300 ${liveATH > 0 ? 'text-text' : 'text-text-muted'}`}>
                         ${liveATH > 0 ? liveATH.toFixed(2) : "Loading..."}
                     </div>
                 </div>
               </div>
-            </div>
+            </GlassCard>
 
             {/* Real-Time Technical Analysis */}
-            <div className="bg-white/[0.02] border border-white/[0.05] p-6 lg:p-8 rounded-3xl shadow-2xl backdrop-blur-xl">
-              <div className="flex justify-between items-center mb-8">
-                <h3 className="text-lg font-light text-white tracking-wide flex items-center gap-3">
-                    <div className="p-2 bg-emerald-500/10 rounded-lg"><Activity size={18} className="text-emerald-400" /></div>
+            <GlassCard asymmetric="md" className="p-8 relative overflow-hidden group">
+              <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity">
+                  <Activity size={100} className="text-text-muted" />
+              </div>
+              <div className="flex justify-between items-center mb-8 relative z-10">
+                <h3 className="text-xl font-black text-text tracking-tight flex items-center gap-3">
+                    <div className="p-2 glass bg-success/10 rounded-crypto-sm border border-success/20 shadow-inner"><Activity size={18} className="text-success drop-shadow-[0_0_5px_currentColor]" /></div>
                     Technical Indicators
                 </h3>
                 <span className="flex h-2 w-2 relative">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success/80"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-success shadow-[0_0_5px_rgba(34,197,94,0.8)]"></span>
                 </span>
               </div>
               
-              <div className="space-y-4">
-                  <div className="flex justify-between items-center bg-black/30 p-4 rounded-2xl border border-white/5">
-                      <span className="text-xs text-slate-500 uppercase tracking-widest font-mono">RSI (14)</span>
+              <div className="space-y-4 relative z-10">
+                  <div className="flex justify-between items-center glass bg-black/40 p-4 rounded-crypto-sm border border-white/5 hover:border-white/20 transition-colors shadow-inner">
+                      <span className="text-[10px] text-text-muted uppercase tracking-widest font-mono font-black">RSI (14)</span>
                       <div className="flex items-center gap-4">
-                          <span className="font-mono text-white text-lg">{liveRSI.toFixed(2)}</span>
+                          <span className="font-mono font-black text-text text-xl">{liveRSI.toFixed(2)}</span>
                           <DirectionBadge dir={liveRSI > 60 ? "down" : liveRSI < 40 ? "up" : "neutral"} />
                       </div>
                   </div>
-                  <div className="flex justify-between items-center bg-black/30 p-4 rounded-2xl border border-white/5">
-                      <span className="text-xs text-slate-500 uppercase tracking-widest font-mono">MACD Div</span>
+                  <div className="flex justify-between items-center glass bg-black/40 p-4 rounded-crypto-sm border border-white/5 hover:border-white/20 transition-colors shadow-inner">
+                      <span className="text-[10px] text-text-muted uppercase tracking-widest font-mono font-black">MACD Div</span>
                       <div className="flex items-center gap-4">
-                          <span className="font-mono text-white text-lg">{liveMACD.toFixed(4)}</span>
+                          <span className="font-mono font-black text-text text-xl">{liveMACD.toFixed(4)}</span>
                           <DirectionBadge dir={liveMACD > 0 ? "up" : "down"} />
                       </div>
                   </div>
-                  <div className="flex justify-between items-center bg-black/30 p-4 rounded-2xl border border-white/5">
-                      <span className="text-xs text-slate-500 uppercase tracking-widest font-mono">Volatility (BB)</span>
+                  <div className="flex justify-between items-center glass bg-black/40 p-4 rounded-crypto-sm border border-white/5 hover:border-white/20 transition-colors shadow-inner">
+                      <span className="text-[10px] text-text-muted uppercase tracking-widest font-mono font-black">Volatility (BB)</span>
                       <div className="flex items-center gap-4">
-                          <span className="font-mono text-white text-lg">{liveBB.width.toFixed(4)}</span>
+                          <span className="font-mono font-black text-text text-xl">{liveBB.width.toFixed(4)}</span>
                           <VolatilityChip regime={liveBB.width > 0.1 ? "high" : liveBB.width > 0.05 ? "medium" : "low"} />
                       </div>
                   </div>
               </div>
-            </div>
+            </GlassCard>
           </div>
           
           {/* SECTION 3 - Chart Overlay Toggles */}
@@ -592,16 +607,16 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
             <div className="flex gap-4">
               <button 
                 onClick={() => setShowRSI(!showRSI)}
-                className={`px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest border transition-all ${
-                  showRSI ? "border-indigo-500 text-indigo-300 bg-indigo-500/10 shadow-[0_0_15px_rgba(99,102,241,0.2)]" : "border-white/10 text-slate-500 hover:border-white/20 hover:text-slate-300"
+                className={`px-5 py-2.5 rounded-crypto-sm text-[10px] font-black uppercase tracking-widest border transition-all ${
+                  showRSI ? "border-accent/50 text-accent glass bg-accent/10 shadow-[0_0_15px_rgba(var(--accent),0.2)]" : "border-white/10 text-text-muted hover:border-white/20 hover:text-text glass bg-surface/30"
                 }`}
               >
                 Toggle Chart RSI
               </button>
               <button 
                 onClick={() => setShowBB(!showBB)}
-                className={`px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest border transition-all ${
-                  showBB ? "border-indigo-500 text-indigo-300 bg-indigo-500/10 shadow-[0_0_15px_rgba(99,102,241,0.2)]" : "border-white/10 text-slate-500 hover:border-white/20 hover:text-slate-300"
+                className={`px-5 py-2.5 rounded-crypto-sm text-[10px] font-black uppercase tracking-widest border transition-all ${
+                  showBB ? "border-accent/50 text-accent glass bg-accent/10 shadow-[0_0_15px_rgba(var(--accent),0.2)]" : "border-white/10 text-text-muted hover:border-white/20 hover:text-text glass bg-surface/30"
                 }`}
               >
                 Toggle Chart BB
@@ -609,98 +624,107 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
             </div>
             
             {showRSI && (
-              <div className="bg-white/[0.02] border border-white/[0.05] p-6 rounded-3xl shadow-2xl backdrop-blur-xl">
-                <h3 className="text-xs font-mono uppercase tracking-widest text-slate-500 mb-4">Relative Strength Index History (14)</h3>
+              <GlassCard asymmetric="sm" className="p-6 overflow-hidden">
+                <h3 className="text-[10px] font-mono font-black uppercase tracking-widest text-text-muted mb-4">Relative Strength Index History (14)</h3>
                 <div className="h-48">
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={ohlcv.map((d:any, i:number) => ({ time: d.time, rsi: calculateRSI(ohlcv.map((x:any)=>x.close).slice(0, i+1), 14) }))}>
                       <XAxis dataKey="time" hide />
                       <YAxis domain={[0, 100]} hide />
                       <RechartsTooltip 
-                        contentStyle={{ backgroundColor: "#0a0a0a", borderColor: "rgba(255,255,255,0.1)", borderRadius: "8px", fontFamily: "monospace", fontSize: "10px" }} 
+                        contentStyle={{ backgroundColor: "rgba(10,10,15,0.9)", borderColor: "rgba(255,255,255,0.1)", borderRadius: "8px", fontFamily: "monospace", fontSize: "10px", fontWeight: "bold" }} 
                         labelFormatter={(label) => new Date(label * 1000).toLocaleString()}
                       />
-                      <ReferenceLine y={70} stroke="#f43f5e" strokeDasharray="3 3" label={{ value: "Overbought", fill: "#f43f5e", position: "insideTopLeft", fontSize: 10, fontFamily: "monospace" }} />
-                      <ReferenceLine y={30} stroke="#10b981" strokeDasharray="3 3" label={{ value: "Oversold", fill: "#10b981", position: "insideBottomLeft", fontSize: 10, fontFamily: "monospace" }} />
-                      <Area type="monotone" dataKey="rsi" stroke="#818cf8" fill="#818cf8" fillOpacity={0.1} strokeWidth={2} />
+                      <ReferenceLine y={70} stroke="rgba(239,68,68,0.5)" strokeDasharray="3 3" label={{ value: "OVERBOUGHT", fill: "rgba(239,68,68,0.8)", position: "insideTopLeft", fontSize: 9, fontFamily: "sans-serif", fontWeight: "bold", letterSpacing: "0.1em" }} />
+                      <ReferenceLine y={30} stroke="rgba(34,197,94,0.5)" strokeDasharray="3 3" label={{ value: "OVERSOLD", fill: "rgba(34,197,94,0.8)", position: "insideBottomLeft", fontSize: 9, fontFamily: "sans-serif", fontWeight: "bold", letterSpacing: "0.1em" }} />
+                      <Area type="monotone" dataKey="rsi" stroke="rgb(var(--accent))" fill="rgba(var(--accent), 0.1)" strokeWidth={2} />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
-              </div>
+              </GlassCard>
             )}
           </div>
           
           {/* SECTION 4 - Two Column Grid (History & Correlations) */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             
             {/* LEFT COLUMN: Prediction History */}
-            <div className="bg-white/[0.02] border border-white/[0.05] p-6 lg:p-8 rounded-3xl shadow-2xl backdrop-blur-xl">
-              <div className="flex justify-between items-center mb-8">
-                <h3 className="text-lg font-light text-white tracking-wide">Prediction History</h3>
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl font-mono font-bold text-indigo-400">{history.summary.accuracy_pct.toFixed(0)}%</span>
-                  <span className="text-[10px] uppercase tracking-widest text-slate-500">accuracy</span>
+            <GlassCard asymmetric="md" className="p-0 overflow-hidden flex flex-col">
+              <div className="p-8 border-b border-white/5 bg-surface/30">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h3 className="text-xl font-black text-text tracking-tight">Prediction History</h3>
+                    <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-1">AI signal accuracy audit log</p>
+                  </div>
+                  <div className="flex items-center gap-3 bg-black/40 px-4 py-2 rounded-crypto-sm border border-white/5">
+                    <span className="text-2xl font-mono font-black text-accent drop-shadow-[0_0_10px_rgba(var(--accent),0.5)]">{history.summary.accuracy_pct.toFixed(0)}%</span>
+                    <span className="text-[8px] uppercase tracking-widest font-black text-text-muted">accuracy</span>
+                  </div>
                 </div>
               </div>
               
-              <div className="space-y-3 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
-                {history.predictions.map((p: any, i: number) => (
-                  <div key={i} className={`flex items-center justify-between p-4 rounded-2xl border ${i % 2 === 0 ? "bg-black/30 border-white/5" : "bg-transparent border-transparent"}`}>
-                    <div className="flex items-center gap-4">
-                      <span className="text-xs font-mono text-slate-500 w-24">{p.date}</span>
-                      <div className="w-24"><DirectionBadge dir={p.direction} /></div>
-                      <span className="text-[10px] font-mono text-slate-500 w-12">{p.confidence ? p.confidence.toFixed(0) : 0}%</span>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <span className={`text-sm font-mono font-bold ${p.actual_return > 0 ? "text-emerald-400" : p.actual_return < 0 ? "text-red-400" : "text-slate-500"}`}>
-                        {p.actual_return !== null ? (p.actual_return > 0 ? "+" : "") + (p.actual_return * 100).toFixed(2) + "%" : "-"}
-                      </span>
-                      <div className="w-6 text-center text-lg">
-                        {p.was_correct === true && "✅"}
-                        {p.was_correct === false && "❌"}
-                        {p.was_correct === null && "⏳"}
+              <div className="flex-1 p-8">
+                <div className="space-y-3 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
+                  {history.predictions.map((p: any, i: number) => (
+                    <div key={i} className={`flex items-center justify-between p-4 rounded-crypto border transition-colors ${i % 2 === 0 ? "glass bg-black/30 border-white/5 hover:border-white/10" : "bg-transparent border-transparent hover:bg-white/[0.02]"}`}>
+                      <div className="flex items-center gap-4">
+                        <span className="text-[10px] font-mono font-bold text-text-muted w-28">{p.date}</span>
+                        <div className="w-28"><DirectionBadge dir={p.direction} /></div>
+                        <span className="text-[10px] font-mono font-black text-text-muted/60 w-12">{p.confidence ? p.confidence.toFixed(0) : 0}%</span>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <span className={`text-sm font-mono font-black ${p.actual_return > 0 ? "text-success drop-shadow-[0_0_5px_rgba(34,197,94,0.5)]" : p.actual_return < 0 ? "text-danger drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]" : "text-text-muted"}`}>
+                          {p.actual_return !== null ? (p.actual_return > 0 ? "+" : "") + (p.actual_return * 100).toFixed(2) + "%" : "-"}
+                        </span>
+                        <div className="w-6 text-center text-lg">
+                          {p.was_correct === true && <span className="drop-shadow-[0_0_5px_rgba(34,197,94,0.5)]">✅</span>}
+                          {p.was_correct === false && <span className="drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]">❌</span>}
+                          {p.was_correct === null && <span className="opacity-50">⏳</span>}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
+            </GlassCard>
             
             {/* RIGHT COLUMN: Correlated Coins */}
-            <div className="bg-white/[0.02] border border-white/[0.05] p-6 lg:p-8 rounded-3xl shadow-2xl backdrop-blur-xl">
-              <h3 className="text-lg font-light text-white tracking-wide mb-2">Matrix Correlations</h3>
-              <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-8 font-mono">
-                Asset relationship structural mapping
-              </p>
-              
-              <div className="space-y-3">
-                {correlations?.map((c: any, i: number) => (
-                  <Link href={`/coin/${c.symbol}`} key={c.symbol} className="flex items-center justify-between p-3 hover:bg-black/40 rounded-2xl border border-transparent hover:border-white/5 transition-all group">
-                    <div className="flex items-center gap-4 w-1/3">
-                      <span className="text-xs text-slate-600 font-mono">{i + 1}</span>
-                      <span className="font-mono font-bold text-white group-hover:text-indigo-400 transition-colors">{c.symbol}</span>
-                    </div>
-                    
-                    <div className="flex-1 flex items-center px-4">
-                      <div className="w-full bg-black/50 h-1.5 rounded-full overflow-hidden flex relative">
-                        <div className="absolute left-1/2 top-0 bottom-0 w-px bg-white/20 z-10" />
-                        {c.correlation > 0 ? (
-                          <div className="h-full bg-emerald-500 absolute left-1/2" style={{ width: `${c.correlation * 50}%` }} />
-                        ) : (
-                          <div className="h-full bg-red-500 absolute right-1/2" style={{ width: `${Math.abs(c.correlation) * 50}%` }} />
-                        )}
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center justify-end gap-4 w-1/4">
-                      <span className={`text-xs font-mono font-bold ${c.correlation > 0 ? "text-emerald-400" : "text-red-400"}`}>
-                        {c.correlation > 0 ? "+" : ""}{c.correlation.toFixed(2)}
-                      </span>
-                    </div>
-                  </Link>
-                ))}
+            <GlassCard asymmetric="md" className="p-0 overflow-hidden flex flex-col">
+              <div className="p-8 border-b border-white/5 bg-surface/30">
+                <h3 className="text-xl font-black text-text tracking-tight">Matrix Correlations</h3>
+                <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-1">Asset relationship structural mapping</p>
               </div>
-            </div>
+              
+              <div className="flex-1 p-8">
+                <div className="space-y-2">
+                  {correlations?.map((c: any, i: number) => (
+                    <Link href={`/coin/${c.symbol}`} key={c.symbol} className="flex items-center justify-between p-4 glass bg-surface/30 hover:bg-white/5 rounded-crypto border border-white/5 hover:border-white/20 transition-all group shadow-inner">
+                      <div className="flex items-center gap-4 w-1/3">
+                        <span className="text-[10px] text-text-muted font-mono font-black opacity-50">#{String(i + 1).padStart(2, '0')}</span>
+                        <span className="font-mono font-black text-text group-hover:text-accent transition-colors text-lg tracking-tight">{c.symbol}</span>
+                      </div>
+                      
+                      <div className="flex-1 flex items-center px-6">
+                        <div className="w-full bg-black/60 h-2 rounded-full overflow-hidden flex relative shadow-inner border border-white/5">
+                          <div className="absolute left-1/2 top-0 bottom-0 w-px bg-white/20 z-10" />
+                          {c.correlation > 0 ? (
+                            <div className="h-full bg-success absolute left-1/2 shadow-[0_0_5px_rgba(34,197,94,0.8)]" style={{ width: `${c.correlation * 50}%` }} />
+                          ) : (
+                            <div className="h-full bg-danger absolute right-1/2 shadow-[0_0_5px_rgba(239,68,68,0.8)]" style={{ width: `${Math.abs(c.correlation) * 50}%` }} />
+                          )}
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center justify-end gap-4 w-1/4">
+                        <span className={`text-xs font-mono font-black tracking-tight ${c.correlation > 0 ? "text-success drop-shadow-[0_0_5px_rgba(34,197,94,0.5)]" : "text-danger drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]"}`}>
+                          {c.correlation > 0 ? "+" : ""}{c.correlation.toFixed(3)}
+                        </span>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            </GlassCard>
           </div>
           
       </div>

@@ -1,71 +1,40 @@
 # Deployment & Infrastructure Specification
 
-This document details the configuration for local deployment, production hosting, automated CI/CD pipelines, and environment configuration management.
+This document details the configuration for local portability, desktop automation, mobile (Termux) deployment, and production split-stack cloud hosting.
 
 ---
 
-## 1. Local Environment Deployment
+## 1. Local One-Click Portability
 
-The local stack runs on a multi-container Docker compose architecture to replicate API and frontend services locally.
+To guarantee that the project can be spun up on any user's machine without dependency hell or missing runtime errors, we provide automated native installers and Docker solutions.
 
-### 1.1 Docker Compose Configuration (`docker-compose.yml`)
-Spins up the FastAPI backend and Next.js frontend. The ML worker can be executed inside the backend container or triggered as a command line run.
+### 1.1 Native Automated Installers (Recommended for local dev)
+These scripts check if the required environments (Node.js, Python, npm) are present. If not, they automatically download and install them using the native OS package managers (`winget`, `brew`, `apt`), build the isolated virtual environments, and boot the application.
 
-```yaml
-version: '3.8'
+- **Windows**: `start.bat` acts as a proxy for `install_windows.ps1`
+  - *Under the hood*: Uses `winget` to fetch Python 3.11 and Node.js. Automatically sets up the `venv`.
+- **macOS / Linux**: `start.sh` proxies to `install_unix.sh`
+  - *Under the hood*: Uses `brew` (macOS) or `apt` (Linux) to install dependencies.
+- **Android (Termux)**: `termux_start.sh`
+  - *Under the hood*: Uses `pkg` to install ARM-compatible binaries (`python`, `nodejs`, `rust`, `binutils`), resolving complex ML compilation errors on mobile devices before starting.
 
-services:
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    ports:
-      - "8000:8000"
-    volumes:
-      - ml_artifacts:/app/artifacts
-      - ./backend/.env:/app/.env
-    environment:
-      - ENVIRONMENT=development
-      - PORT=8000
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+### 1.2 Docker Environment
+The project is fully containerized. If a user simply has Docker Desktop installed, they can bypass all native installation checks.
 
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
-    environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
-    depends_on:
-      backend:
-        condition: service_healthy
-    restart: unless-stopped
-
-volumes:
-  ml_artifacts:
+```bash
+docker-compose up --build
 ```
-
-### 1.2 Execution Commands
-- Build and spin up the containers:
-  ```bash
-  docker-compose up --build
-  ```
-- Run the ETL pipeline manually inside the backend container to ingest data:
-  ```bash
-  docker-compose exec backend python -m ml.pipelines.etl_pipeline
-  ```
+This spins up:
+- `backend` container on port `8000` (FastAPI)
+- `frontend` container on port `3000` (Next.js)
 
 ---
 
-## 2. Production Environment Architecture
+## 2. Cloud Production Architecture (Split-Stack)
 
-For production, components are separated to optimize scalability, cost, and reliability.
+**CRITICAL ISSUE**: The Vercel platform enforces a strict 250MB limit on serverless functions. Because the ST-GCN backend relies on PyTorch (800MB+), Numpy, SciPy, and other heavy ML libraries, the backend **cannot** be deployed to Vercel Serverless. If attempted, Vercel will drop the backend silently, leaving an empty shell frontend.
+
+**SOLUTION**: We use a split-stack cloud architecture.
 
 ```text
   +-------------------------+                 +------------------------+
@@ -81,32 +50,22 @@ For production, components are separated to optimize scalability, cost, and reli
   |  - Docker Container     |
   |  - Auto-scales Web API  |
   +-------------------------+
-               ^
-               | (Deploys model)
-  +------------+------------+
-  |    ML Worker (Render)   |
-  |  - Background Worker    |
-  |  - Daily Cron Job       |
-  |  - Runs ETL & Training  |
-  +-------------------------+
 ```
 
-### 2.1 Backend Web Service (Render)
-- **Deployment Method**: Web Service running a Docker build.
-- **Port**: `8000` (FastAPI).
-- **Environment**: Production.
-- **Storage Disk**: A persistent volume (`/app/artifacts`) must be mounted to save model weights (`best_model.pt`) between redeployments, unless configured to save directly to an external store like AWS S3 or W&B.
+### 2.1 Backend Deployment (Render.com)
+The backend is designed to be 1-click deployed to Render.com using Infrastructure-as-Code via the `render.yaml` file located in the root directory.
 
-### 2.2 Frontend Server (Vercel)
-- **Deployment Method**: Serverless Deployment (standard Next.js target).
-- **Framework Preset**: Next.js.
-- **Environment Variable**: Set `NEXT_PUBLIC_API_URL` to point to the Render web service URL.
+- **Deployment Method**: Connect Render to your GitHub repo, and Render will automatically parse `render.yaml`.
+- **Runtime**: Python Web Service.
+- **Disk**: Mounts a 1GB persistent disk at `/opt/render/project/src/backend/database` to safely persist the SQLite database across redeployments.
+- **Scaling**: Fully handles ML and Web Sockets via Uvicorn.
 
-### 2.3 ML Pipelines Background Worker (Render)
-- **Deployment Method**: Background Worker.
-- **Runtime**: Python 3.11.
-- **Schedule**: Cron configuration `0 1 * * *` (Daily execution at 1:00 AM UTC).
-- **Execution Target**: Runs `python ml/pipelines/etl_pipeline.py` daily to ingest data, and exposes an endpoint or command to run training periodically.
+### 2.2 Frontend Deployment (Vercel.com)
+The frontend remains on Vercel for edge-cached Next.js delivery.
+
+- **Deployment Method**: Import the repository into Vercel and set the Framework Preset to Next.js.
+- **Routing Rules**: Vercel reads the included `frontend/vercel.json` to handle Next.js rewrites and production rules.
+- **Environment Variable**: You MUST set `NEXT_PUBLIC_API_URL` in your Vercel project settings to point to your new Render backend URL (e.g., `https://cryptograph-backend.onrender.com`).
 
 ---
 
@@ -114,59 +73,20 @@ For production, components are separated to optimize scalability, cost, and reli
 
 ### 3.1 Continuous Integration (`ci.yml`)
 Triggered on pull requests and pushes to the `main` branch.
-
-- **Tasks**:
-  1. Installs Python dependencies for Backend and ML.
-  2. Runs code linter (`ruff check .`).
-  3. Executes backend tests via `pytest` (`backend/tests/`).
-  4. Executes ML unit tests (`ml/tests/`) (excluding long integration/training cycles).
-  5. Installs Node.js, runs frontend code quality checks (`npm run lint`), and verifies Next.js builds successfully (`npm run build`).
+- **Tasks**: Installs Python and Node dependencies, runs `ruff`, executes PyTest, and verifies `npm run build` succeeds.
 
 ### 3.2 Continuous Deployment (`deploy.yml`)
-Triggered automatically on commits to the `main` branch after CI succeeds.
-
-- **Tasks**:
-  1. Triggers Render build via Webhook URL deployment trigger.
-     ```bash
-     curl -X POST https://api.render.com/deploy/srv-xxxx?key=yyyy
-     ```
-  2. Builds and Deploys the frontend application to Vercel production using the Vercel CLI tool.
+- Triggers a Render webhook (`curl -X POST https://api.render.com/deploy/srv-...`)
+- Deploys the frontend to Vercel using the Vercel CLI tool.
 
 ---
 
-## 4. Environment Variables & Secret Configuration
+## 4. Environment Variables
 
-To prevent leaks, environment variables are partitioned and stored in hosting environment panels.
+### 4.1 Backend (`backend/.env` or Render Dashboard)
+- `BINANCE_API_KEY`, `BINANCE_SECRET`
+- `GROQ_API_KEY` (For LLaMA 3 explanation models)
+- `FRED_API_KEY`
 
-### 4.1 Backend App Environment variables (`backend/.env`)
-- `ENVIRONMENT` (`production` / `development`)
-- `SUPABASE_URL` (Supabase API URI)
-- `SUPABASE_SERVICE_ROLE_KEY` (Supabase administrative DB bypass key)
-- `GROQ_API_KEY` (Groq API key for model explanation)
-- `LANGCHAIN_API_KEY` (LangChain API key for tracing)
-- `LANGCHAIN_TRACING_V2` (`true` / `false`)
-- `LANGCHAIN_PROJECT` (`stgcn-crypto`)
-- `SENTRY_DSN` (Sentry API DSN for API error reporting)
-
-### 4.2 ML pipeline Environment variables (`ml/.env`)
-- `SUPABASE_URL` (Supabase API URI)
-- `SUPABASE_SERVICE_ROLE_KEY` (Admin key to write features/predictions)
-- `BINANCE_API_KEY` (Binance exchange key)
-- `BINANCE_SECRET` (Binance signature secret)
-- `FRED_API_KEY` (Federal Reserve Economic Data API key)
-- `WANDB_API_KEY` (Weights & Biases API credential)
-- `SENTRY_DSN` (Sentry API DSN for script crashes)
-
-### 4.3 Frontend UI Client Environment variables (`frontend/.env.local`)
-- `NEXT_PUBLIC_API_URL` (URL of the active FastAPI backend)
-- `NEXT_PUBLIC_SUPABASE_URL` (Supabase public URL)
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY` (Supabase client-safe public key)
-
----
-
-## 5. Health Check & Error Monitoring Strategy
-
-- **Service Live Status**: Ping GET `/health` on the FastAPI server. This endpoint is tracked by Render to coordinate zero-downtime rolling updates.
-- **Application Crushes**: The FastAPI application utilizes the Sentry SDK middleware to automatically intercept and log unhandled exceptions (500 errors).
-- **ML Scripts Logging**: Pipeline executions (`etl_pipeline.py`, `training_pipeline.py`) wrap run-loops in try-except statements. Standard errors are piped to standard out, and severe errors trigger Sentry logging events.
-- **API Chains Monitoring**: LangSmith tracing tracks ChatGroq invocation speed, prompt layouts, and response token usages.
+### 4.2 Frontend (`frontend/.env.local` or Vercel Dashboard)
+- `NEXT_PUBLIC_API_URL`: Points to your Render API. Fallbacks to `http://localhost:8000` locally.

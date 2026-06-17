@@ -75,66 +75,73 @@ export function GlobalSearch() {
   if (!isOpen) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-32 bg-black/50 backdrop-blur-sm" onClick={() => setIsOpen(false)}>
+    <div className="fixed inset-0 z-[100] flex items-start justify-center pt-32 bg-background/60 backdrop-blur-xl transition-all duration-500" onClick={() => setIsOpen(false)}>
       <div 
-        className="w-full max-w-2xl bg-[#1a1a1a] rounded-xl border border-[#2a2a2a] shadow-2xl overflow-hidden"
+        className="w-full max-w-2xl flex flex-col gap-4 px-4"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center px-4 py-3 border-b border-[#2a2a2a]">
-          <Search className="text-[#94a3b8] mr-3" size={20} />
-          <input
-            ref={inputRef}
-            className="flex-1 bg-transparent border-none outline-none text-white text-lg placeholder-[#4a4a4a]"
-            placeholder="Search assets, sectors..."
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setSelectedIndex(0);
-            }}
-            onKeyDown={handleKeyDown}
-          />
-          <div className="text-xs text-[#4a4a4a] border border-[#2a2a2a] px-2 py-1 rounded bg-[#0f0f0f]">ESC</div>
+        {/* Search Input Pill */}
+        <div className="glass-panel rounded-crypto-lg p-2 shadow-[0_10px_40px_rgba(0,0,0,0.5)] transform animate-in fade-in slide-in-from-top-4 duration-500">
+          <div className="flex items-center px-4 py-2 bg-surface/40 rounded-crypto border border-white/5 focus-within:border-accent/50 focus-within:shadow-[0_0_20px_rgba(var(--accent),0.2)] transition-all duration-300">
+            <Search className="text-accent mr-3" size={24} />
+            <input
+              ref={inputRef}
+              className="flex-1 bg-transparent border-none outline-none text-text text-xl placeholder-text-muted font-sans"
+              placeholder="Decrypt assets, sectors..."
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setSelectedIndex(0);
+              }}
+              onKeyDown={handleKeyDown}
+            />
+            <div className="text-[10px] text-text-muted/60 font-mono tracking-widest border border-white/10 px-2 py-1 rounded-md bg-white/5 uppercase">ESC</div>
+          </div>
         </div>
         
+        {/* Results */}
         {filteredAssets.length > 0 ? (
-          <div className="py-2 max-h-96 overflow-y-auto">
+          <div className="py-2 max-h-[60vh] overflow-y-auto space-y-2" style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
             {filteredAssets.map((asset: any, idx: number) => (
               <Link
                 key={asset.id}
                 href={`/coin/${asset.symbol}`}
-                className={`flex items-center justify-between px-4 py-3 mx-2 rounded-lg cursor-pointer transition-colors ${
-                  idx === selectedIndex ? "bg-indigo-600/20 text-white" : "text-[#94a3b8] hover:bg-[#2a2a2a] hover:text-white"
+                className={`flex items-center justify-between px-6 py-4 rounded-crypto glass transition-all duration-300 transform block animate-in fade-in slide-in-from-bottom-4 ${
+                  idx === selectedIndex 
+                    ? "bg-accent/10 border-accent/40 shadow-[0_0_20px_rgba(var(--accent),0.15)] scale-[1.02]" 
+                    : "bg-surface/30 border-white/5 hover:bg-white/10 hover:border-white/20 hover:scale-[1.01]"
                 }`}
+                style={{ animationFillMode: 'both', animationDelay: `${idx * 50}ms` }}
                 onClick={() => setIsOpen(false)}
                 onMouseEnter={() => setSelectedIndex(idx)}
               >
-                <div className="flex items-center gap-3">
-                  <span className="font-bold font-mono text-white text-lg">{asset.symbol}</span>
-                  <span className="text-xs">{asset.name}</span>
-                  <span className="text-[10px] uppercase bg-[#2a2a2a] text-[#cbd5e1] px-1.5 py-0.5 rounded border border-[#3a3a3a]">{asset.sector}</span>
+                <div className="flex items-center gap-4">
+                  <span className="font-bold font-mono text-text text-xl tracking-wide">{asset.symbol}</span>
+                  <span className="text-sm text-text-muted font-light">{asset.name}</span>
+                  <span className="text-[10px] uppercase bg-white/5 text-text-muted px-2 py-1 rounded-sm border border-white/10 tracking-widest">{asset.sector}</span>
                 </div>
                 <div className="flex items-center gap-4">
                   {asset.predicted_direction && (
-                    <span className={`text-[10px] uppercase px-1.5 py-0.5 rounded border font-bold ${
+                    <span className={`text-[10px] uppercase px-2 py-1 rounded-sm border font-bold tracking-widest ${
                       ['up', 'strong_up'].includes(asset.predicted_direction) 
-                      ? "bg-green-900/30 text-green-400 border-green-800" 
+                      ? "bg-success/10 text-success border-success/30 shadow-[0_0_10px_rgba(34,197,94,0.2)]" 
                       : ['down', 'strong_down'].includes(asset.predicted_direction)
-                      ? "bg-red-900/30 text-red-400 border-red-800"
-                      : "bg-[#2a2a2a] text-[#94a3b8] border-[#3a3a3a]"
+                      ? "bg-danger/10 text-danger border-danger/30 shadow-[0_0_10px_rgba(239,68,68,0.2)]"
+                      : "bg-white/5 text-text-muted border-white/10"
                     }`}>
                       {asset.predicted_direction.replace('_', ' ')}
                     </span>
                   )}
-                  <ChevronRight size={16} className={idx === selectedIndex ? "text-indigo-400" : "text-[#4a4a4a]"} />
+                  <ChevronRight size={18} className={`transition-all duration-300 ${idx === selectedIndex ? "text-accent translate-x-1" : "text-text-muted/40"}`} />
                 </div>
               </Link>
             ))}
           </div>
-        ) : (
-          <div className="py-12 text-center text-[#4a4a4a]">
-            No assets found matching "{query}"
+        ) : query ? (
+          <div className="glass-panel rounded-crypto p-12 text-center text-text-muted font-light text-lg animate-in fade-in">
+            No decryptions found matching <span className="font-mono text-text">&quot;{query}&quot;</span>
           </div>
-        )}
+        ) : null}
       </div>
     </div>,
     document.body

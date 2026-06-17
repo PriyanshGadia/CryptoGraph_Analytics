@@ -39,3 +39,56 @@ async def get_data_status(db: Session = Depends(get_db)):
             "graph":       "every 24 hours",
         }
     }
+
+
+@router.post("/refresh-all")
+async def trigger_refresh_all(db: Session = Depends(get_db)):
+    """
+    Manually triggers a full data refresh cycle:
+    1. Refreshes live technicals (RSI, MACD, returns) from Binance via CCXT
+    2. Clears the API response cache
+    3. Triggers a prediction broadcast to all connected WebSocket clients
+    """
+    results = {}
+
+    # 1. Refresh live technicals
+    try:
+        from app.api.routes.screener import refresh_live_technicals
+        tech_result = refresh_live_technicals(db=db)
+        results["technicals"] = tech_result.get("message", "done")
+    except Exception as e:
+        results["technicals"] = f"error: {e}"
+
+    # 2. Clear response cache
+    try:
+        from app.core.cache import _cache
+        cache_count = len(_cache)
+        _cache.clear()
+        results["cache"] = f"cleared {cache_count} entries"
+    except Exception as e:
+        results["cache"] = f"error: {e}"
+
+    # 3. Trigger prediction inference pipeline
+    try:
+        import subprocess
+        subprocess.Popen(["python", "ml/pipelines/inference_pipeline.py"])
+        results["inference"] = "pipeline triggered"
+    except Exception as e:
+        results["inference"] = f"error: {e}"
+        
+    # 4. Trigger prediction broadcast
+    try:
+        from app.api.routes.stream import FORCE_PREDICTION_BROADCAST
+        import app.api.routes.stream as stream_module
+        stream_module.FORCE_PREDICTION_BROADCAST = True
+        results["predictions_broadcast"] = "broadcast triggered"
+    except Exception as e:
+        results["predictions_broadcast"] = f"error: {e}"
+
+    return {
+        "status": "success",
+        "message": "Full refresh cycle completed",
+        "details": results,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+

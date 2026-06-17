@@ -1,6 +1,5 @@
-"""AI explanation routes using Groq LLM with fallback."""
+"""AI explanation routes using Groq LLM with fallback to system-based XAI."""
 from fastapi import APIRouter, Depends
-from groq import Groq
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from app.db.database import get_db
@@ -10,37 +9,240 @@ from app.core.security import decrypt_secret
 
 router = APIRouter(prefix="/explain", tags=["explain"])
 
-def generate_fallback_explanation(symbol: str, direction: str, confidence: float, shap_values: dict) -> str:
-    """Rule-based explanation when API key is missing."""
-    if not shap_values:
-        return f"The model predicts {symbol} will go {direction} with {confidence:.1f}% confidence based on quantitative analysis."
-        
-    top_feature = max(shap_values, key=shap_values.get) if shap_values else "recent price action"
-    return (
-        f"The ST-GCN model predicts {symbol} will move {direction} ({confidence:.1f}% confidence). "
-        f"This is primarily driven by '{top_feature}', which showed the strongest signal in recent trading data. "
-        f"Secondary factors include the broader market regime and technical patterns."
+
+def _safe_float(val) -> float:
+    """Safely convert a value to float, returning 0.0 on failure."""
+    if val is None:
+        return 0.0
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _filter_numeric_shap(shap_values: dict) -> dict:
+    """Filter SHAP values to only include numeric entries for Pydantic validation."""
+    if not shap_values or not isinstance(shap_values, dict):
+        return {}
+    result = {}
+    for k, v in shap_values.items():
+        fval = _safe_float(v)
+        if fval != 0.0 or v == 0 or v == 0.0:
+            result[k] = fval
+    return result
+
+
+def generate_system_explanation(symbol: str, direction: str, confidence: float,
+                                shap_values: dict, t_shap: dict = None,
+                                db: Session = None) -> str:
+    """
+    Rich, analyst-quality XAI explanation that requires NO API key.
+    Produces natural-language insight from SHAP values, T-SHAP attributions,
+    and live technical indicators.
+    """
+    dir_label = {
+        "strong_up": "rally strongly upward",
+        "up": "trend upward",
+        "neutral": "consolidate sideways",
+        "down": "decline",
+        "strong_down": "sell off sharply",
+    }.get(direction, f"move {direction}")
+
+    paragraphs = []
+
+    # --- Paragraph 1: Core Prediction Summary ---
+    conf_adj = "high" if confidence >= 75 else "moderate" if confidence >= 60 else "low"
+    paragraphs.append(
+        f"Our ST-GCN model forecasts {symbol} to {dir_label} over the next 24 hours "
+        f"with {conf_adj} confidence ({confidence:.1f}%). "
+        f"This signal emerges from a convergence of technical momentum, cross-asset graph structure, "
+        f"and on-chain metrics analyzed simultaneously."
     )
+
+    # --- Paragraph 2: Feature-Driven Analysis ---
+    numeric_shap = _filter_numeric_shap(shap_values)
+
+    # If no SHAP data, try to fetch live technicals from DB
+    live_tech = {}
+    if db:
+        try:
+            asset = db.query(Asset).filter(Asset.symbol == symbol).first()
+            if asset:
+                from sqlalchemy import text as sa_text
+                tech_row = db.execute(sa_text("""
+                    SELECT rsi_14, macd, macd_signal, returns_1d, returns_7d, volatility_7d, atr_14, bb_width
+                    FROM technical_features
+                    WHERE asset_id = :aid
+                    ORDER BY timestamp DESC LIMIT 1
+                """), {"aid": asset.id}).fetchone()
+                if tech_row:
+                    keys = ["rsi_14", "macd", "macd_signal", "returns_1d", "returns_7d",
+                            "volatility_7d", "atr_14", "bb_width"]
+                    for k, v in zip(keys, tech_row):
+                        if v is not None:
+                            live_tech[k] = float(v)
+        except Exception:
+            pass
+
+    # Merge SHAP with live tech for richer context
+    context = {**live_tech}
+    for k, v in numeric_shap.items():
+        context[k] = v
+
+    feature_insights = []
+
+    rsi = context.get("rsi_14")
+    if rsi is not None and rsi != 0:
+        if rsi < 25:
+            feature_insights.append(
+                f"RSI(14) sits at {rsi:.1f}, deep in oversold territory. "
+                f"Historically, readings below 25 precede a relief bounce within 48–72 hours "
+                f"as selling pressure exhausts itself."
+            )
+        elif rsi < 35:
+            feature_insights.append(
+                f"RSI(14) at {rsi:.1f} signals oversold conditions. Buyers often step in at these levels, "
+                f"though confirmation from volume is needed before calling a reversal."
+            )
+        elif rsi > 80:
+            feature_insights.append(
+                f"RSI(14) is elevated at {rsi:.1f}, indicating overbought conditions. "
+                f"While strong trends can stay overbought longer than expected, "
+                f"this level historically signals increased risk of a pullback."
+            )
+        elif rsi > 65:
+            feature_insights.append(
+                f"RSI(14) at {rsi:.1f} shows strong bullish momentum. "
+                f"The asset is trending firmly but hasn't yet reached exhaustion levels."
+            )
+        else:
+            feature_insights.append(
+                f"RSI(14) reads {rsi:.1f}, sitting in neutral territory with no extreme momentum signal."
+            )
+
+    macd = context.get("macd")
+    macd_sig = context.get("macd_signal")
+    if macd is not None and macd_sig is not None:
+        if macd > macd_sig and macd > 0:
+            feature_insights.append(
+                f"MACD ({macd:.4f}) is above both its signal line and the zero line — "
+                f"a classic bullish alignment indicating accelerating upward momentum."
+            )
+        elif macd > macd_sig:
+            feature_insights.append(
+                f"MACD has crossed above its signal line (bullish crossover), "
+                f"though it remains below zero, suggesting early-stage recovery."
+            )
+        elif macd < macd_sig and macd < 0:
+            feature_insights.append(
+                f"MACD ({macd:.4f}) is below both its signal line and zero — "
+                f"a bearish alignment pointing to sustained selling pressure."
+            )
+        elif macd < macd_sig:
+            feature_insights.append(
+                f"MACD has crossed below its signal line (bearish crossover). "
+                f"Momentum is fading even though the overall trend may still be positive."
+            )
+
+    ret_1d = context.get("returns_1d")
+    ret_7d = context.get("returns_7d")
+    if ret_1d is not None and ret_1d != 0:
+        pct_1d = ret_1d * 100
+        direction_word = "gained" if pct_1d > 0 else "lost"
+        feature_insights.append(
+            f"In the last 24 hours, {symbol} has {direction_word} {abs(pct_1d):.2f}%"
+            + (f", with a 7-day return of {ret_7d * 100:+.2f}%." if ret_7d else ".")
+        )
+
+    vol = context.get("volatility_7d")
+    if vol is not None and vol != 0:
+        vol_pct = vol * 100
+        if vol_pct > 6.5:
+            feature_insights.append(
+                f"7-day volatility is extreme at {vol_pct:.2f}%, "
+                f"meaning sharp price swings are likely. Position sizing should be reduced."
+            )
+        elif vol_pct > 4.0:
+            feature_insights.append(
+                f"Volatility is elevated at {vol_pct:.2f}% (7d), indicating an active market "
+                f"with higher-than-normal price fluctuations."
+            )
+        elif vol_pct < 1.5:
+            feature_insights.append(
+                f"Volatility is compressed at just {vol_pct:.2f}% (7d). "
+                f"Low-volatility periods often precede a breakout in either direction."
+            )
+
+    if feature_insights:
+        paragraphs.append(" ".join(feature_insights))
+    else:
+        paragraphs.append(
+            f"This prediction is derived from the model's analysis of {symbol}'s cross-asset correlations, "
+            f"technical structure, and market microstructure patterns in the graph neural network's attention layers."
+        )
+
+    # --- Paragraph 3: Graph Topology (T-SHAP) ---
+    if t_shap and isinstance(t_shap, dict):
+        attr_pct = t_shap.get("attributions_pct", {})
+        if attr_pct and isinstance(attr_pct, dict):
+            sorted_attr = sorted(attr_pct.items(), key=lambda x: abs(_safe_float(x[1])), reverse=True)
+            top_2 = sorted_attr[:2]
+            if top_2:
+                names = [f"{name} ({_safe_float(val):.1f}%)" for name, val in top_2]
+                paragraphs.append(
+                    f"The graph-structural analysis reveals that {symbol}'s prediction is most "
+                    f"influenced by its network connections to {' and '.join(names)}. "
+                    f"These correlated assets are transmitting either risk or momentum signals "
+                    f"through the correlation graph that the model captures via spatial convolution."
+                )
+
+    # --- Paragraph 4: Risk Assessment ---
+    if confidence >= 80:
+        risk_text = (
+            f"At {confidence:.1f}% confidence, this is a strong conviction signal. "
+            f"Multiple indicators are aligning in the same direction, reducing the probability "
+            f"of a false signal. However, no prediction is guaranteed — always use stop-losses."
+        )
+    elif confidence >= 65:
+        risk_text = (
+            f"With {confidence:.1f}% confidence, the model sees a likely move but with meaningful uncertainty. "
+            f"Consider this as one input among several. Pair it with your own research and risk tolerance."
+        )
+    else:
+        risk_text = (
+            f"At {confidence:.1f}% confidence, the model sees mixed or weak signals. "
+            f"The market may be in a transitional phase. Caution is warranted — "
+            f"avoid large directional bets until conviction strengthens."
+        )
+    paragraphs.append(risk_text)
+
+    return "\n\n".join(paragraphs)
+
 
 @router.get("/{symbol}", response_model=ExplainResponse)
 def explain_prediction(symbol: str, db: Session = Depends(get_db)):
     """
-    Returns AI-generated explanation for latest prediction using Groq LLaMA,
-    with a graceful fallback to rule-based templates if the key is missing.
+    Returns AI-generated explanation for latest prediction.
+    Uses Groq LLaMA if API key is set in app_settings, otherwise falls back
+    to a comprehensive system-based XAI engine that requires no API key.
     """
     asset = db.query(Asset).filter(Asset.symbol == symbol).first()
     if not asset:
         return ExplainResponse(symbol=symbol, explanation="Asset not found.", direction="unknown", confidence=0.0, top_features={})
-        
+
     pred = db.query(Prediction).filter(Prediction.asset_id == asset.id).order_by(desc(Prediction.predicted_at)).first()
-    
+
     if not pred:
         return ExplainResponse(symbol=symbol, explanation="No predictions available.", direction="unknown", confidence=0.0, top_features={})
-        
+
     direction = pred.direction or "unknown"
     confidence = pred.confidence or 0.0
-    shap_values = pred.shap_values or {}
-    
+    raw_shap = pred.shap_values or {}
+    t_shap_data = pred.t_shap_attributions  # May be dict or None
+
+    # Filter SHAP values for Pydantic — only keep numeric entries
+    numeric_shap = _filter_numeric_shap(raw_shap)
+
     # Fetch recent news
     news_records = db.query(AssetNews).filter(AssetNews.asset_id == asset.id).order_by(desc(AssetNews.published_at)).limit(3).all()
     news_headlines = []
@@ -49,20 +251,23 @@ def explain_prediction(symbol: str, db: Session = Depends(get_db)):
         news_headlines.append(f"[{record.source}] {record.headline}")
         if record.source and record.source not in news_sources:
             news_sources.append(record.source)
-    
+
+    # Check for Groq API key in app_settings table
     groq_key_record = db.query(AppSetting).filter(AppSetting.setting_key == "groq_api_key").first()
-    groq_api_key = decrypt_secret(groq_key_record.setting_value) if groq_key_record else None
+    groq_api_key = decrypt_secret(groq_key_record.setting_value) if groq_key_record and groq_key_record.setting_value else None
 
     if not groq_api_key:
-        explanation = generate_fallback_explanation(symbol, direction, confidence, shap_values)
+        # System-based XAI — no API key needed
+        explanation = generate_system_explanation(symbol, direction, confidence, raw_shap, t_shap_data, db=db)
     else:
-        if shap_values:
-            shap_str = "\n".join([f"- {k}: {v:.4f}" for k, v in shap_values.items()])
-            
+        # LLM-powered explanation
+        if numeric_shap:
+            shap_str = "\n".join([f"- {k}: {v:.4f}" for k, v in numeric_shap.items()])
+
             news_str = ""
             if news_headlines:
                 news_str = "\nRecent news for this asset includes:\n" + "\n".join([f"- {h}" for h in news_headlines]) + "\nSynthesize the quantitative signal with the qualitative news."
-                
+
             prompt = f"""You are a crypto market analyst. The ST-GCN model predicts {symbol} will go {direction} with {confidence:.1f}% confidence over the next 24 hours.
 The top contributing factors from the model are:
 {shap_str}
@@ -72,6 +277,7 @@ Explain in exactly 3-4 sentences why the model made this prediction in plain lan
             prompt = f"The model predicts {symbol} will go {direction} with {confidence:.1f}% confidence based on recent price action and market conditions. Explain in 2-3 sentences what this means for a non-technical investor."
 
         try:
+            from groq import Groq
             client = Groq(api_key=groq_api_key)
             completion = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
@@ -81,13 +287,15 @@ Explain in exactly 3-4 sentences why the model made this prediction in plain lan
             )
             explanation = completion.choices[0].message.content
         except Exception as e:
-            explanation = f"Failed to generate explanation (API Error): {str(e)}. Fallback: " + generate_fallback_explanation(symbol, direction, confidence, shap_values)
-            
+            # Fallback to system XAI if API call fails
+            explanation = generate_system_explanation(symbol, direction, confidence, raw_shap, t_shap_data, db=db)
+            explanation += f" (Note: LLM enhancement unavailable — {type(e).__name__})"
+
     return ExplainResponse(
         symbol=symbol,
         explanation=explanation,
         direction=direction,
         confidence=confidence,
-        top_features=shap_values,
+        top_features=numeric_shap,
         news_sources=news_sources
     )

@@ -11,3 +11,12 @@ pydantic-settings
 python-multipart
 gotrue
 prophet==1.1.5
+slowapi
+sqlalchemy
+yfinance
+cachetools
+cryptography
+ccxt
+networkx
+pandas
+requests

@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: cryptograph-backend
+    env: python
+    region: ohio
+    plan: starter
+    buildCommand: "pip install -r backend/requirements.txt"
+    startCommand: "cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.12
+      - key: PYTHONPATH
+        value: "/opt/render/project/src/backend"
+      # These environment variables can be securely added in the Render dashboard:
+      # - key: BINANCE_API_KEY
+      #   sync: false
+      # - key: BINANCE_SECRET
+      #   sync: false
+      # - key: GROQ_API_KEY
+      #   sync: false
+    disk:
+      name: sqlite-data
+      mountPath: /opt/render/project/src/backend/database
+      sizeGB: 1

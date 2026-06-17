@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Activity } from "lucide-react";
 
 export function LivePulse() {
   const [pulse, setPulse] = useState(false);
@@ -12,29 +11,21 @@ export function LivePulse() {
     let pulseTimeout: NodeJS.Timeout;
 
     const connect = () => {
-      // Use the NEXT_PUBLIC_API_URL or fallback to localhost, but convert http:// to ws://
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
       const wsUrl = baseUrl.replace(/^http/, "ws") + "/api/stream/predictions";
 
       ws = new WebSocket(wsUrl);
 
-      ws.onopen = () => {
-        setStatus("connected");
-      };
+      ws.onopen = () => setStatus("connected");
 
-      ws.onmessage = (event) => {
-        // We received a new set of predictions!
+      ws.onmessage = () => {
         setPulse(true);
-        // Pulse the indicator for 1 second
         clearTimeout(pulseTimeout);
-        pulseTimeout = setTimeout(() => {
-          setPulse(false);
-        }, 1000);
+        pulseTimeout = setTimeout(() => setPulse(false), 1000);
       };
 
       ws.onclose = () => {
         setStatus("disconnected");
-        // Attempt to reconnect after 5 seconds
         setTimeout(connect, 5000);
       };
 
@@ -53,22 +44,26 @@ export function LivePulse() {
   }, []);
 
   return (
-    <div className="mt-auto px-4 py-3">
-      <div className="flex items-center gap-2">
-        <div className="relative flex h-3 w-3">
-          {status === "connected" && pulse && (
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span>
-          )}
-          <span
-            className={`relative inline-flex rounded-full h-3 w-3 ${
-              status === "connected" ? "bg-success" : status === "connecting" ? "bg-warning animate-pulse" : "bg-danger"
-            }`}
-          ></span>
-        </div>
-        <span className="text-xs font-medium text-textMuted uppercase tracking-wider">
-          {status === "connected" ? "Live Stream Active" : status === "connecting" ? "Connecting..." : "Stream Offline"}
-        </span>
+    <div className="flex items-center gap-3 px-3 py-1.5 glass-panel rounded-crypto-sm">
+      <div className="flex items-center gap-1">
+        {/* Node 1 */}
+        <div className={`w-1.5 h-1.5 rounded-full transition-all duration-500 ${status === 'connected' ? 'bg-success shadow-[0_0_8px_rgba(34,197,94,0.8)]' : status === 'connecting' ? 'bg-warning animate-pulse' : 'bg-danger'}`} />
+        
+        {/* Synapse line */}
+        <div className={`w-3 h-[1px] transition-all duration-500 ${pulse ? 'bg-accent shadow-[0_0_5px_rgba(var(--accent),0.8)]' : 'bg-white/20'}`} />
+        
+        {/* Node 2 */}
+        <div className={`w-2 h-2 rounded-full transition-all duration-300 ${pulse ? 'bg-accent shadow-[0_0_10px_rgba(var(--accent),1)] scale-125' : 'bg-surface border border-white/20'}`} />
+        
+        {/* Synapse line */}
+        <div className={`w-3 h-[1px] transition-all duration-700 ${pulse ? 'bg-accent shadow-[0_0_5px_rgba(var(--accent),0.8)]' : 'bg-white/20'}`} />
+        
+        {/* Node 3 */}
+        <div className={`w-1.5 h-1.5 rounded-full transition-all duration-1000 ${status === 'connected' ? 'bg-success/60' : status === 'connecting' ? 'bg-warning/60' : 'bg-danger/60'}`} />
       </div>
+      <span className={`text-[9px] font-mono font-bold tracking-[0.2em] uppercase transition-colors duration-300 ${status === 'connected' ? 'text-success' : status === 'connecting' ? 'text-warning' : 'text-danger'}`}>
+        {status === "connected" ? "Live Stream" : status === "connecting" ? "Syncing..." : "Offline"}
+      </span>
     </div>
   );
 }

@@ -4,28 +4,53 @@
 
 @layer base {
   :root {
-    --background: #0f0f0f;
-    --surface: #1a1a1a;
-    --border: #2a2a2a;
-    --accent: #6366f1;
+    --background: #f8f6f0;
+    --surface: #f0ede8;
+    --border: #e2e8f0;
+    --accent: #7a1f2b;
     --success: #22c55e;
     --danger: #ef4444;
     --warning: #f59e0b;
-    --text: #f1f5f9;
+    --text: #1a1a1e;
+    --text-muted: #64748b;
+  }
+  
+  .dark {
+    --background: #0a0a0f;
+    --surface: #14141e;
+    --border: #2a2a2a;
+    --accent: #d4a547;
+    --success: #22c55e;
+    --danger: #ef4444;
+    --warning: #f59e0b;
+    --text: #f0ede8;
     --text-muted: #94a3b8;
   }
   
   body {
-    @apply bg-[var(--background)] text-[var(--text)] font-sans antialiased;
+    @apply bg-[var(--background)] text-[var(--text)] antialiased transition-colors duration-500;
   }
 
   h1, h2, h3, h4, h5, h6 {
-    @apply font-mono font-bold tracking-tight;
+    @apply font-sans font-bold tracking-tight;
+    letter-spacing: -0.02em;
+  }
+  
+  .number {
+    @apply font-mono font-medium tracking-wide;
   }
 }
 
-@layer utilities {
+@layer components {
+  .glass {
+    @apply backdrop-blur-md saturate-[180%] border transition-all duration-300;
+  }
+  
   .glass-panel {
-    @apply bg-surface/80 backdrop-blur-md border border-border;
+    @apply glass bg-white/60 border-white/30 shadow-[0_8px_32px_rgba(0,0,0,0.08)];
+  }
+  
+  .dark .glass-panel {
+    @apply glass bg-white/5 border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)];
   }
 }

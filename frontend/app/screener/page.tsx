@@ -6,30 +6,31 @@ import { fetcher } from "@/lib/api";
 import Link from "next/link";
 import { 
   Target, TrendingUp, Zap, Leaf, Building2, RefreshCw, 
-  ChevronDown, ChevronUp, Search, Download 
+  ChevronDown, ChevronUp, Search, Download, ShieldCheck
 } from "lucide-react";
 import { TableSkeleton } from "@/components/PageSkeleton";
+import { useCurrency, CURRENCY_SYMBOLS } from "@/components/CurrencyContext";
+import { GlassCard } from "@/components/ui/GlassCard";
 
 const DirectionBadge = ({ direction }: { direction: string }) => {
   const dir = direction?.toLowerCase() || "neutral";
-  if (dir === "strong_up") return <span className="bg-green-600 text-white text-[10px] uppercase px-2 py-1 rounded font-bold">STRONG BUY</span>;
-  if (dir === "up") return <span className="bg-green-500/20 text-green-400 border border-green-500/30 text-[10px] uppercase px-2 py-1 rounded font-bold">BUY</span>;
-  if (dir === "down") return <span className="bg-red-500/20 text-red-400 border border-red-500/30 text-[10px] uppercase px-2 py-1 rounded font-bold">SELL</span>;
-  if (dir === "strong_down") return <span className="bg-red-600 text-white text-[10px] uppercase px-2 py-1 rounded font-bold">STRONG SELL</span>;
-  return <span className="bg-[#2a2a2a] text-[#94a3b8] text-[10px] uppercase px-2 py-1 rounded font-bold">NEUTRAL</span>;
+  if (dir === "strong_up") return <span className="bg-success text-black text-[10px] uppercase px-3 py-1 rounded-crypto-sm font-black tracking-widest shadow-[0_0_10px_rgba(34,197,94,0.3)]">STRONG BUY</span>;
+  if (dir === "up") return <span className="bg-success/10 text-success border border-success/30 text-[10px] uppercase px-3 py-1 rounded-crypto-sm font-bold tracking-widest shadow-[0_0_10px_rgba(34,197,94,0.1)]">BUY</span>;
+  if (dir === "down") return <span className="bg-danger/10 text-danger border border-danger/30 text-[10px] uppercase px-3 py-1 rounded-crypto-sm font-bold tracking-widest shadow-[0_0_10px_rgba(239,68,68,0.1)]">SELL</span>;
+  if (dir === "strong_down") return <span className="bg-danger text-black text-[10px] uppercase px-3 py-1 rounded-crypto-sm font-black tracking-widest shadow-[0_0_10px_rgba(239,68,68,0.3)]">STRONG SELL</span>;
+  return <span className="bg-white/5 text-text-muted border border-white/10 text-[10px] uppercase px-3 py-1 rounded-crypto-sm font-bold tracking-widest">NEUTRAL</span>;
 };
 
 const VolatilityChip = ({ level }: { level: string }) => {
   const v = level?.toLowerCase() || "medium";
-  if (v === "extreme") return <span className="bg-purple-900/50 text-purple-400 border border-purple-800 text-[10px] uppercase px-2 py-0.5 rounded">EXTREME</span>;
-  if (v === "high") return <span className="bg-orange-900/50 text-orange-400 border border-orange-800 text-[10px] uppercase px-2 py-0.5 rounded">HIGH</span>;
-  if (v === "low") return <span className="bg-blue-900/50 text-blue-400 border border-blue-800 text-[10px] uppercase px-2 py-0.5 rounded">LOW</span>;
-  return <span className="bg-[#2a2a2a] text-[#94a3b8] text-[10px] uppercase px-2 py-0.5 rounded">MEDIUM</span>;
+  if (v === "extreme") return <span className="bg-danger/20 text-danger border border-danger/30 text-[9px] uppercase px-2 py-0.5 rounded font-black tracking-widest shadow-[0_0_5px_rgba(239,68,68,0.2)]">EXTREME</span>;
+  if (v === "high") return <span className="bg-warning/10 text-warning border border-warning/30 text-[9px] uppercase px-2 py-0.5 rounded font-bold tracking-widest">HIGH</span>;
+  if (v === "low") return <span className="bg-info/10 text-info border border-info/30 text-[9px] uppercase px-2 py-0.5 rounded font-bold tracking-widest">LOW</span>;
+  return <span className="bg-white/5 text-text-muted border border-white/10 text-[9px] uppercase px-2 py-0.5 rounded font-bold tracking-widest">MEDIUM</span>;
 };
 
-const BASE = "http://localhost:8000";
+const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-// A simple hook for debouncing if not centrally available
 function useDebounceLocal<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
   useEffect(() => {
@@ -42,20 +43,20 @@ function useDebounceLocal<T>(value: T, delay: number): T {
 const PresetCard = ({ icon: Icon, title, desc, onClick }: any) => (
   <button 
     onClick={onClick}
-    className="bg-[#1a1a1a] hover:bg-[#2a2a2a] p-4 rounded-xl border border-[#2a2a2a] text-left transition-colors flex items-start gap-4 w-full"
+    className="glass-panel hover:bg-white/5 p-5 rounded-crypto border border-white/5 hover:border-white/20 text-left transition-all flex items-start gap-4 w-full group relative overflow-hidden"
   >
-    <div className="bg-indigo-500/20 text-indigo-400 p-3 rounded-lg">
+    <div className="absolute top-0 left-0 w-full h-1 bg-white/5 group-hover:bg-accent/50 transition-colors" />
+    <div className="glass bg-accent/10 text-accent p-3 rounded-crypto-sm shadow-inner group-hover:scale-110 transition-transform">
       <Icon size={24} />
     </div>
     <div>
-      <h3 className="text-white font-bold mb-1">{title}</h3>
-      <p className="text-xs text-[#94a3b8]">{desc}</p>
+      <h3 className="text-text font-black mb-1 tracking-tight group-hover:text-accent transition-colors">{title}</h3>
+      <p className="text-xs text-text-muted font-light">{desc}</p>
     </div>
   </button>
 );
 
 export default function ScreenerPage() {
-  // Filter States
   const [direction, setDirection] = useState("all");
   const [sector, setSector] = useState("all");
   const [volatility, setVolatility] = useState("all");
@@ -66,11 +67,10 @@ export default function ScreenerPage() {
   const [minMcap, setMinMcap] = useState(0);
   const [sortBy, setSortBy] = useState("confidence");
   const [sortDir, setSortDir] = useState("desc");
-  
   const [filtersOpen, setFiltersOpen] = useState(true);
-  
-  // Realtime Live Data State
   const [liveData, setLiveData] = useState<Record<string, {price: number, volume: number}>>({});
+  
+  const { currency, formatPrice, exchangeRate } = useCurrency();
   
   useEffect(() => {
     const ws = new WebSocket(`${BASE.replace("http", "ws")}/api/stream/screener`);
@@ -87,14 +87,12 @@ export default function ScreenerPage() {
     return () => ws.close();
   }, []);
   
-  // Debounce for SWR
   const dMinConf = useDebounceLocal(minConf, 300);
   const dMaxConf = useDebounceLocal(maxConf, 300);
   const dMinRsi = useDebounceLocal(minRsi, 300);
   const dMaxRsi = useDebounceLocal(maxRsi, 300);
   const dMinMcap = useDebounceLocal(minMcap, 300);
 
-  // Build query string
   const query = new URLSearchParams({
     direction,
     sector,
@@ -115,11 +113,7 @@ export default function ScreenerPage() {
     setIsRefreshing(true);
     try {
       const res = await fetch(`${BASE}/api/screener/refresh`, { method: "POST" });
-      if (res.ok) {
-        mutate();
-      } else {
-        console.error("Refresh failed");
-      }
+      if (res.ok) mutate();
     } catch (err) {
       console.error(err);
     }
@@ -127,14 +121,12 @@ export default function ScreenerPage() {
   };
 
   const applyPreset = (preset: string) => {
-    // Reset defaults first
     setDirection("all"); setSector("all"); setVolatility("all");
     setMinConf(0); setMaxConf(100); setMinRsi(0); setMaxRsi(100); setMinMcap(0);
     setSortBy("confidence"); setSortDir("desc");
     
-    // Apply specific
     if (preset === "high_confidence_buys") {
-      setDirection("strong_up"); // Simplified for UI
+      setDirection("strong_up");
       setMinConf(75);
     } else if (preset === "oversold_bounces") {
       setMaxRsi(30);
@@ -160,22 +152,13 @@ export default function ScreenerPage() {
     setMinConf(0); setMaxConf(100); setMinRsi(0); setMaxRsi(100); setMinMcap(0);
     setSortBy("confidence"); setSortDir("desc");
   };
-  
-  const formatMcap = (val: number) => {
-    if (val >= 1e12) return `$${(val / 1e12).toFixed(1)}T`;
-    if (val >= 1e9) return `$${(val / 1e9).toFixed(1)}B`;
-    if (val >= 1e6) return `$${(val / 1e6).toFixed(1)}M`;
-    return `$${val.toLocaleString()}`;
-  };
 
   const exportCSV = () => {
     if (!results || results.length === 0) return;
-    
     const headers = ["Symbol", "Name", "Sector", "Direction", "Confidence", "RSI", "7D Return", "Volatility", "Market Cap"];
     const rows = results.map((r: any) => [
       r.symbol, r.name, r.sector, r.direction, r.confidence, r.rsi_14, r.returns_7d, r.volatility_regime, r.market_cap_usd
     ]);
-    
     const escapeCsvField = (field: any) => {
       if (field == null) return "";
       const str = String(field);
@@ -184,12 +167,10 @@ export default function ScreenerPage() {
       }
       return str;
     };
-
     const csvContent = "\uFEFF" + [
       headers.map(escapeCsvField).join(","),
       ...rows.map((row: any) => row.map(escapeCsvField).join(","))
     ].join("\n");
-    
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
@@ -202,16 +183,19 @@ export default function ScreenerPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 pt-8 max-w-[1600px] mx-auto">
       
       {/* HEADER */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-white font-mono">Market Scanner</h1>
-        <p className="text-sm text-[#94a3b8]">Find opportunities using AI-powered filters</p>
+      <div className="relative">
+        <div className="absolute top-[-50px] left-[-50px] w-64 h-64 bg-accent/5 rounded-full blur-[80px] pointer-events-none" />
+        <div className="relative z-10">
+          <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-text via-text/80 to-text-muted tracking-tight font-sans">Market Scanner</h1>
+          <p className="text-text-muted font-light tracking-wide mt-2">Find opportunities using AI-powered filters and neural signals</p>
+        </div>
       </div>
       
       {/* SECTION 1 - Presets */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 relative z-10">
         <PresetCard icon={Target} title="High Confidence Buys" desc="ST-GCN predicts up/strong_up with >75% confidence" onClick={() => applyPreset("high_confidence_buys")} />
         <PresetCard icon={TrendingUp} title="Oversold Bounces" desc="RSI below 30 with bullish prediction — potential reversals" onClick={() => applyPreset("oversold_bounces")} />
         <PresetCard icon={Zap} title="Volatility Breakouts" desc="Extreme volatility with strong buy signal — high risk/reward" onClick={() => applyPreset("volatility_breakouts")} />
@@ -221,25 +205,28 @@ export default function ScreenerPage() {
       </div>
       
       {/* SECTION 2 - Filters */}
-      <div className="bg-[#1a1a1a] rounded-xl border border-[#2a2a2a] overflow-hidden">
+      <GlassCard asymmetric="lg" className="p-0 overflow-hidden relative z-10">
         <div 
-          className="p-4 bg-[#232323] flex justify-between items-center cursor-pointer hover:bg-[#2a2a2a] transition-colors"
+          className="p-6 bg-surface/30 flex justify-between items-center cursor-pointer hover:bg-surface/50 transition-colors border-b border-white/5"
           onClick={() => setFiltersOpen(!filtersOpen)}
         >
-          <h2 className="text-white font-bold flex items-center gap-2">
-            Advanced Filters
+          <h2 className="text-text font-black flex items-center gap-3 tracking-tight">
+            <Search size={20} className="text-accent" />
+            Advanced Filtering Engine
           </h2>
-          {filtersOpen ? <ChevronUp className="text-[#94a3b8]" /> : <ChevronDown className="text-[#94a3b8]" />}
+          <div className="p-2 glass bg-white/5 rounded-full hover:bg-white/10 transition-colors">
+            {filtersOpen ? <ChevronUp size={16} className="text-text-muted" /> : <ChevronDown size={16} className="text-text-muted" />}
+          </div>
         </div>
         
         {filtersOpen && (
-          <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div className="p-8 grid grid-cols-1 md:grid-cols-3 gap-10 bg-surface/20">
             
             {/* Column 1 */}
-            <div className="space-y-4">
+            <div className="space-y-6">
               <div>
-                <label className="block text-xs font-bold text-[#94a3b8] uppercase mb-1">Direction</label>
-                <select className="w-full bg-[#0f0f0f] text-white p-2 rounded-md border border-[#2a2a2a]" value={direction} onChange={e => setDirection(e.target.value)}>
+                <label className="block text-[10px] font-bold text-text-muted uppercase tracking-widest mb-2">Direction</label>
+                <select className="w-full bg-surface/50 text-text p-3 rounded-crypto-sm border border-white/10 focus:border-accent focus:outline-none transition-colors font-mono text-sm" value={direction} onChange={e => setDirection(e.target.value)}>
                   <option value="all">All Directions</option>
                   <option value="strong_up">Strong Buy</option>
                   <option value="up">Buy</option>
@@ -249,8 +236,8 @@ export default function ScreenerPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-bold text-[#94a3b8] uppercase mb-1">Sector</label>
-                <select className="w-full bg-[#0f0f0f] text-white p-2 rounded-md border border-[#2a2a2a]" value={sector} onChange={e => setSector(e.target.value)}>
+                <label className="block text-[10px] font-bold text-text-muted uppercase tracking-widest mb-2">Sector</label>
+                <select className="w-full bg-surface/50 text-text p-3 rounded-crypto-sm border border-white/10 focus:border-accent focus:outline-none transition-colors font-mono text-sm" value={sector} onChange={e => setSector(e.target.value)}>
                   <option value="all">All Sectors</option>
                   <option value="layer1">Layer 1</option>
                   <option value="defi">DeFi</option>
@@ -263,9 +250,9 @@ export default function ScreenerPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-bold text-[#94a3b8] uppercase mb-1">Volatility</label>
-                <select className="w-full bg-[#0f0f0f] text-white p-2 rounded-md border border-[#2a2a2a]" value={volatility} onChange={e => setVolatility(e.target.value)}>
-                  <option value="all">All</option>
+                <label className="block text-[10px] font-bold text-text-muted uppercase tracking-widest mb-2">Volatility</label>
+                <select className="w-full bg-surface/50 text-text p-3 rounded-crypto-sm border border-white/10 focus:border-accent focus:outline-none transition-colors font-mono text-sm" value={volatility} onChange={e => setVolatility(e.target.value)}>
+                  <option value="all">All Regime</option>
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
                   <option value="high">High</option>
@@ -275,24 +262,24 @@ export default function ScreenerPage() {
             </div>
             
             {/* Column 2 */}
-            <div className="space-y-4">
+            <div className="space-y-6">
               <div>
-                <div className="flex justify-between items-end mb-1">
-                  <label className="block text-xs font-bold text-[#94a3b8] uppercase">Min Confidence</label>
-                  <span className="text-xs text-indigo-400 font-mono">{minConf}%</span>
+                <div className="flex justify-between items-end mb-2">
+                  <label className="block text-[10px] font-bold text-text-muted uppercase tracking-widest">Min Confidence</label>
+                  <span className="text-xs text-accent font-mono font-bold bg-accent/10 px-2 py-0.5 rounded border border-accent/20">{minConf}%</span>
                 </div>
-                <input type="range" min="0" max="100" value={minConf} onChange={e => setMinConf(Number(e.target.value))} className="w-full accent-indigo-500" />
+                <input type="range" min="0" max="100" value={minConf} onChange={e => setMinConf(Number(e.target.value))} className="w-full accent-accent" />
               </div>
               <div>
-                <div className="flex justify-between items-end mb-1">
-                  <label className="block text-xs font-bold text-[#94a3b8] uppercase">Max Confidence</label>
-                  <span className="text-xs text-indigo-400 font-mono">{maxConf}%</span>
+                <div className="flex justify-between items-end mb-2">
+                  <label className="block text-[10px] font-bold text-text-muted uppercase tracking-widest">Max Confidence</label>
+                  <span className="text-xs text-accent font-mono font-bold bg-accent/10 px-2 py-0.5 rounded border border-accent/20">{maxConf}%</span>
                 </div>
-                <input type="range" min="0" max="100" value={maxConf} onChange={e => setMaxConf(Number(e.target.value))} className="w-full accent-indigo-500" />
+                <input type="range" min="0" max="100" value={maxConf} onChange={e => setMaxConf(Number(e.target.value))} className="w-full accent-accent" />
               </div>
               <div>
-                <label className="block text-xs font-bold text-[#94a3b8] uppercase mb-1">Sort By</label>
-                <select className="w-full bg-[#0f0f0f] text-white p-2 rounded-md border border-[#2a2a2a]" value={sortBy} onChange={e => setSortBy(e.target.value)}>
+                <label className="block text-[10px] font-bold text-text-muted uppercase tracking-widest mb-2">Sort By</label>
+                <select className="w-full bg-surface/50 text-text p-3 rounded-crypto-sm border border-white/10 focus:border-accent focus:outline-none transition-colors font-mono text-sm" value={sortBy} onChange={e => setSortBy(e.target.value)}>
                   <option value="symbol">Symbol</option>
                   <option value="sector">Sector</option>
                   <option value="current_price">Price</option>
@@ -307,145 +294,166 @@ export default function ScreenerPage() {
             </div>
             
             {/* Column 3 */}
-            <div className="space-y-4 flex flex-col h-full">
+            <div className="space-y-6 flex flex-col h-full">
               <div>
-                <div className="flex justify-between items-end mb-1">
-                  <label className="block text-xs font-bold text-[#94a3b8] uppercase">RSI Range</label>
-                  <span className="text-xs text-[#94a3b8] font-mono">{minRsi} - {maxRsi}</span>
+                <div className="flex justify-between items-end mb-2">
+                  <label className="block text-[10px] font-bold text-text-muted uppercase tracking-widest">RSI Range</label>
+                  <span className="text-xs text-text-muted font-mono font-bold bg-white/5 px-2 py-0.5 rounded border border-white/10">{minRsi} - {maxRsi}</span>
                 </div>
-                <div className="flex gap-2">
-                  <input type="range" min="0" max="100" value={minRsi} onChange={e => setMinRsi(Math.min(Number(e.target.value), maxRsi))} className="w-1/2 accent-indigo-500" />
-                  <input type="range" min="0" max="100" value={maxRsi} onChange={e => setMaxRsi(Math.max(Number(e.target.value), minRsi))} className="w-1/2 accent-indigo-500" />
+                <div className="flex gap-4">
+                  <input type="range" min="0" max="100" value={minRsi} onChange={e => setMinRsi(Math.min(Number(e.target.value), maxRsi))} className="w-1/2 accent-accent" />
+                  <input type="range" min="0" max="100" value={maxRsi} onChange={e => setMaxRsi(Math.max(Number(e.target.value), minRsi))} className="w-1/2 accent-accent" />
                 </div>
-                <div className="flex justify-between text-[10px] mt-1 uppercase text-[#64748b]">
-                  <span className="text-green-500">&lt;30 Oversold</span>
-                  <span>Normal</span>
-                  <span className="text-red-500">&gt;70 Overbought</span>
+                <div className="flex justify-between text-[9px] mt-2 uppercase tracking-widest font-bold">
+                  <span className="text-success">&lt;30 Oversold</span>
+                  <span className="text-text-muted">Normal</span>
+                  <span className="text-danger">&gt;70 Overbought</span>
                 </div>
               </div>
               
-              <div className="mt-2">
-                <label className="block text-xs font-bold text-[#94a3b8] uppercase mb-1">Sort Direction</label>
-                <div className="flex bg-[#0f0f0f] rounded-md border border-[#2a2a2a] overflow-hidden">
-                  <button onClick={() => setSortDir("asc")} className={`flex-1 py-1.5 text-xs font-bold transition-colors ${sortDir === "asc" ? "bg-indigo-600 text-white" : "text-[#94a3b8] hover:text-white"}`}>↑ Asc</button>
-                  <button onClick={() => setSortDir("desc")} className={`flex-1 py-1.5 text-xs font-bold transition-colors ${sortDir === "desc" ? "bg-indigo-600 text-white" : "text-[#94a3b8] hover:text-white"}`}>↓ Desc</button>
+              <div>
+                <label className="block text-[10px] font-bold text-text-muted uppercase tracking-widest mb-2">Sort Direction</label>
+                <div className="flex bg-surface/50 rounded-crypto-sm border border-white/10 overflow-hidden p-1 gap-1">
+                  <button onClick={() => setSortDir("asc")} className={`flex-1 py-2 text-[10px] uppercase tracking-widest font-bold transition-all rounded-sm ${sortDir === "asc" ? "bg-accent/20 text-accent border border-accent/30 shadow-inner" : "text-text-muted hover:text-text hover:bg-white/5"}`}>↑ Ascending</button>
+                  <button onClick={() => setSortDir("desc")} className={`flex-1 py-2 text-[10px] uppercase tracking-widest font-bold transition-all rounded-sm ${sortDir === "desc" ? "bg-accent/20 text-accent border border-accent/30 shadow-inner" : "text-text-muted hover:text-text hover:bg-white/5"}`}>↓ Descending</button>
                 </div>
               </div>
               
               <div className="mt-auto pt-4">
-                <button onClick={handleReset} className="w-full py-2 bg-[#2a2a2a] hover:bg-[#3a3a3a] text-white font-bold rounded-md transition-colors text-sm">
-                  Reset Filters
+                <button onClick={handleReset} className="w-full py-3 glass bg-white/5 hover:bg-white/10 text-text font-bold rounded-crypto-sm transition-all text-xs uppercase tracking-widest border border-white/10 hover:border-white/20">
+                  Reset Constraints
                 </button>
               </div>
             </div>
             
           </div>
         )}
-      </div>
+      </GlassCard>
       
       {/* SECTION 3 - Results Table */}
-      <div className="bg-[#1a1a1a] rounded-xl border border-[#2a2a2a] overflow-hidden">
-        <div className="p-4 border-b border-[#2a2a2a] flex justify-between items-center bg-[#232323]">
-          <h2 className="text-white font-bold">
-            Showing {results ? results.length : "..."} assets
+      <GlassCard asymmetric="lg" className="p-0 overflow-hidden relative z-10">
+        <div className="p-6 border-b border-white/5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-surface/30">
+          <h2 className="text-text font-black text-lg tracking-tight flex items-center gap-3">
+            <span className="bg-accent/10 text-accent border border-accent/20 px-3 py-1 rounded-sm text-sm font-mono font-bold shadow-inner">
+                {results ? results.length : "..."}
+            </span>
+            Assets Discovered
           </h2>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-3">
             <button 
               onClick={refreshLiveTechnicals} 
               disabled={isRefreshing}
-              className="flex items-center gap-2 text-sm text-green-400 hover:text-green-300 transition-colors bg-green-500/10 px-3 py-1.5 rounded-md border border-green-500/30 disabled:opacity-50"
+              className="flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold text-success hover:text-success/80 transition-all glass bg-success/10 px-4 py-2 rounded-crypto-sm border border-success/30 disabled:opacity-50 shadow-[0_0_15px_rgba(34,197,94,0.1)]"
             >
-              <RefreshCw size={16} className={isRefreshing ? "animate-spin" : ""} /> {isRefreshing ? "Refreshing..." : "Live Refresh"}
+              <RefreshCw size={14} className={isRefreshing ? "animate-spin" : ""} /> {isRefreshing ? "Synchronizing..." : "Live Sync"}
             </button>
-            <button onClick={exportCSV} className="flex items-center gap-2 text-sm text-indigo-400 hover:text-indigo-300 transition-colors bg-indigo-500/10 px-3 py-1.5 rounded-md border border-indigo-500/30">
-              <Download size={16} /> Export CSV
+            <button onClick={exportCSV} className="flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold text-accent hover:text-accent/80 transition-all glass bg-accent/10 px-4 py-2 rounded-crypto-sm border border-accent/30 shadow-[0_0_15px_rgba(var(--accent),0.1)]">
+              <Download size={14} /> Export CSV
             </button>
           </div>
         </div>
         
         {isLoading ? (
-          <div className="p-6">
+          <div className="p-8">
             <TableSkeleton rows={15} />
           </div>
         ) : results && results.length > 0 ? (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto custom-scrollbar">
             <table className="w-full text-sm text-left">
-              <thead className="text-[10px] text-[#94a3b8] uppercase bg-[#0f0f0f]">
+              <thead className="text-[10px] text-text-muted uppercase tracking-widest bg-surface/50 font-mono border-b border-white/5 sticky top-0 z-10 backdrop-blur-md">
                 <tr>
-                  <th className="px-4 py-3 cursor-pointer hover:text-white transition-colors" onClick={() => {setSortBy('symbol'); setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}}>Asset</th>
-                  <th className="px-4 py-3 cursor-pointer hover:text-white transition-colors" onClick={() => {setSortBy('sector'); setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}}>Sector</th>
-                  <th className="px-4 py-3 cursor-pointer hover:text-white transition-colors text-right" onClick={() => {setSortBy('current_price'); setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}}>Price</th>
-                  <th className="px-4 py-3 cursor-pointer hover:text-white transition-colors" onClick={() => {setSortBy('direction'); setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}}>Direction</th>
-                  <th className="px-4 py-3 cursor-pointer hover:text-white transition-colors" onClick={() => {setSortBy('confidence'); setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}}>Confidence</th>
-                  <th className="px-4 py-3 cursor-pointer hover:text-white transition-colors" onClick={() => {setSortBy('rsi_14'); setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}}>RSI (14d)</th>
-                  <th className="px-4 py-3 cursor-pointer hover:text-white transition-colors" onClick={() => {setSortBy('returns_7d'); setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}}>7D Return</th>
-                  <th className="px-4 py-3 cursor-pointer hover:text-white transition-colors" onClick={() => {setSortBy('volatility_7d'); setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}}>Volatility</th>
-                  <th className="px-4 py-3 text-right cursor-pointer hover:text-white transition-colors" onClick={() => {setSortBy('market_cap_usd'); setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}}>Market Cap</th>
-                  <th className="px-4 py-3 text-center">Action</th>
+                  <th className="px-6 py-4 cursor-pointer hover:text-text transition-colors" onClick={() => {setSortBy('symbol'); setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}}>Asset</th>
+                  <th className="px-6 py-4 cursor-pointer hover:text-text transition-colors" onClick={() => {setSortBy('sector'); setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}}>Sector</th>
+                  <th className="px-6 py-4 cursor-pointer hover:text-text transition-colors text-right" onClick={() => {setSortBy('current_price'); setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}}>Live Price</th>
+                  <th className="px-6 py-4 cursor-pointer hover:text-text transition-colors" onClick={() => {setSortBy('direction'); setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}}>AI Direction</th>
+                  <th className="px-6 py-4 cursor-pointer hover:text-text transition-colors" onClick={() => {setSortBy('confidence'); setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}}>Confidence</th>
+                  <th className="px-6 py-4 cursor-pointer hover:text-text transition-colors" onClick={() => {setSortBy('rsi_14'); setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}}>RSI (14d)</th>
+                  <th className="px-6 py-4 cursor-pointer hover:text-text transition-colors" onClick={() => {setSortBy('returns_7d'); setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}}>7D Return</th>
+                  <th className="px-6 py-4 cursor-pointer hover:text-text transition-colors" onClick={() => {setSortBy('volatility_7d'); setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}}>Volatility</th>
+                  <th className="px-6 py-4 text-right cursor-pointer hover:text-text transition-colors" onClick={() => {setSortBy('market_cap_usd'); setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}}>Market Cap</th>
+                  <th className="px-6 py-4 text-center">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#2a2a2a]/50">
+              <tbody className="divide-y divide-white/5">
                 {results.map((row: any, i: number) => {
                   const live = liveData[row.symbol];
                   const displayPrice = live ? live.price : row.current_price;
                   
-                  // Scale Market Cap dynamically if we have a baseline price
-                  let displayMcap = row.market_cap_usd;
+                  let displayMcapUsd = row.market_cap_usd;
                   if (live && row.current_price && row.current_price > 0) {
-                    displayMcap = (live.price / row.current_price) * row.market_cap_usd;
+                    displayMcapUsd = (live.price / row.current_price) * row.market_cap_usd;
                   }
                   
+                  const getFormattedMcap = (usdVal: number) => {
+                      if (!usdVal) return "—";
+                      const localVal = usdVal * exchangeRate;
+                      const sym = CURRENCY_SYMBOLS[currency];
+                      if (localVal >= 1e12) return `${sym}${(localVal / 1e12).toFixed(1)}T`;
+                      if (localVal >= 1e9) return `${sym}${(localVal / 1e9).toFixed(1)}B`;
+                      if (localVal >= 1e6) return `${sym}${(localVal / 1e6).toFixed(1)}M`;
+                      return `${sym}${localVal.toLocaleString(undefined, {maximumFractionDigits: 0})}`;
+                  };
+                  
                   return (
-                  <tr key={i} className="hover:bg-[#2a2a2a]/30 transition-colors">
-                    <td className="px-4 py-3">
-                      <Link href={`/coin/${row.symbol}`} className="flex items-center gap-2 group">
-                        <span className="font-bold font-mono text-white group-hover:text-indigo-400">{row.symbol}</span>
+                  <tr key={i} className="hover:bg-white/[0.02] transition-colors group">
+                    <td className="px-6 py-4">
+                      <Link href={`/coin/${row.symbol}`} className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-surface/50 border border-white/10 flex items-center justify-center font-bold text-xs shadow-inner">
+                            {row.symbol.charAt(0)}
+                        </div>
+                        <span className="font-black font-sans tracking-tight text-text text-lg group-hover:text-accent transition-colors">{row.symbol}</span>
                       </Link>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className="text-[10px] uppercase bg-[#2a2a2a] text-[#cbd5e1] px-2 py-1 rounded">{row.sector}</span>
+                    <td className="px-6 py-4">
+                      <span className="text-[9px] uppercase bg-surface/80 border border-white/10 text-text-muted px-2.5 py-1 rounded-sm font-mono tracking-widest font-bold">{row.sector}</span>
                     </td>
-                    <td className="px-4 py-3 text-right font-mono font-bold text-white transition-all duration-300">
-                      <span className={live ? "text-indigo-300" : ""}>
-                        ${displayPrice > 1 ? displayPrice.toFixed(2) : displayPrice.toFixed(4)}
-                      </span>
+                    <td className="px-6 py-4 text-right font-mono font-bold text-text transition-all duration-300">
+                      <div className="flex items-center justify-end gap-2">
+                          {live && <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-accent"></span></span>}
+                          <span className={live ? "text-accent drop-shadow-[0_0_5px_rgba(var(--accent),0.5)]" : ""}>
+                            {formatPrice(displayPrice)}
+                          </span>
+                      </div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-6 py-4">
                       <DirectionBadge direction={row.direction} />
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-col gap-1 w-32">
-                        <span className="text-xs text-white font-mono">{(row.confidence).toFixed(0)}%</span>
-                        <div className="w-full bg-[#2a2a2a] h-1.5 rounded-full overflow-hidden">
-                          <div className="bg-indigo-500 h-full" style={{ width: `${row.confidence}%` }}></div>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-col gap-1.5 w-32">
+                        <div className="flex justify-between items-center text-[10px] text-text font-mono font-bold">
+                            <span>CONFIDENCE</span>
+                            <span>{(row.confidence).toFixed(0)}%</span>
+                        </div>
+                        <div className="w-full bg-background h-1.5 rounded-full overflow-hidden border border-white/5">
+                          <div className="bg-accent h-full shadow-[0_0_10px_currentColor] transition-all" style={{ width: `${row.confidence}%` }}></div>
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3 font-mono">
+                    <td className="px-6 py-4 font-mono font-bold text-xs">
                       <div className="flex items-center gap-2">
-                        <span className="text-white">{row.rsi_14?.toFixed(1) || 'N/A'}</span>
-                        {row.rsi_14 < 30 && <span className="text-[9px] bg-green-900/50 text-green-400 px-1 py-0.5 rounded border border-green-800">OVERSOLD</span>}
-                        {row.rsi_14 > 70 && <span className="text-[9px] bg-red-900/50 text-red-400 px-1 py-0.5 rounded border border-red-800">OVERBOUGHT</span>}
+                        <span className="text-text">{row.rsi_14?.toFixed(1) || 'N/A'}</span>
+                        {row.rsi_14 < 30 && <span className="text-[8px] bg-success/10 text-success px-1.5 py-0.5 rounded-sm border border-success/30 uppercase tracking-widest">OVS</span>}
+                        {row.rsi_14 > 70 && <span className="text-[8px] bg-danger/10 text-danger px-1.5 py-0.5 rounded-sm border border-danger/30 uppercase tracking-widest">OVB</span>}
                       </div>
                     </td>
-                    <td className={`px-4 py-3 font-mono font-bold ${row.returns_7d > 0 ? "text-green-400" : "text-red-400"}`}>
+                    <td className={`px-6 py-4 font-mono font-black text-xs ${row.returns_7d > 0 ? "text-success" : "text-danger"}`}>
                       {row.returns_7d > 0 ? "+" : ""}{(row.returns_7d * 100).toFixed(2)}%
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-6 py-4">
                       <VolatilityChip level={row.volatility_regime} />
                     </td>
-                    <td className="px-4 py-3 text-right font-mono text-[#cbd5e1] transition-all duration-300">
-                      <span className={live ? "text-indigo-200" : ""}>
-                        {formatMcap(displayMcap)}
+                    <td className="px-6 py-4 text-right font-mono text-text-muted text-xs transition-all duration-300">
+                      <span className={live ? "text-accent/70" : ""}>
+                        {getFormattedMcap(displayMcapUsd)}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-center gap-2">
-                        <Link href={`/coin/${row.symbol}`} className="text-xs bg-[#2a2a2a] hover:bg-[#3a3a3a] text-white px-3 py-1.5 rounded transition-colors font-bold border border-[#3a3a3a]">
-                          View
+                    <td className="px-6 py-4">
+                      <div className="flex justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Link href={`/coin/${row.symbol}`} className="text-[10px] uppercase tracking-widest glass bg-white/5 hover:bg-white/10 text-text px-3 py-2 rounded-crypto-sm transition-all font-bold border border-white/10 hover:border-white/20">
+                          Inspect
                         </Link>
-                        <Link href={`/predictions?symbol=${row.symbol}`} className="text-xs bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 px-3 py-1.5 rounded transition-colors font-bold border border-indigo-500/30">
-                          Forecast
+                        <Link href={`/predictions?symbol=${row.symbol}`} className="text-[10px] uppercase tracking-widest glass bg-accent/10 hover:bg-accent/20 text-accent px-3 py-2 rounded-crypto-sm transition-all font-bold border border-accent/20 hover:border-accent/40 shadow-inner hover:shadow-[0_0_15px_rgba(var(--accent),0.2)]">
+                          Pipeline
                         </Link>
                       </div>
                     </td>
@@ -455,18 +463,18 @@ export default function ScreenerPage() {
             </table>
           </div>
         ) : (
-          <div className="p-16 flex flex-col items-center justify-center text-center">
-            <div className="bg-[#2a2a2a] p-4 rounded-full mb-4">
-              <Search size={32} className="text-[#94a3b8]" />
+          <div className="p-20 flex flex-col items-center justify-center text-center">
+            <div className="glass bg-white/5 p-6 rounded-full mb-6 border border-white/10">
+              <Search size={48} className="text-text-muted opacity-50" />
             </div>
-            <h3 className="text-lg font-bold text-white mb-1">No assets match your filters</h3>
-            <p className="text-[#94a3b8] mb-6">Try relaxing the confidence or direction filters</p>
-            <button onClick={handleReset} className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded-lg font-bold transition-colors">
-              Reset Filters
+            <h3 className="text-2xl font-black text-text mb-2 tracking-tight">No assets match criteria</h3>
+            <p className="text-text-muted mb-8 font-light tracking-wide max-w-md">Try relaxing the confidence or direction constraints to find more opportunities.</p>
+            <button onClick={handleReset} className="glass bg-accent hover:bg-accent/90 text-white px-8 py-3.5 rounded-crypto font-black transition-all shadow-[0_0_20px_rgba(var(--accent),0.3)] hover:shadow-[0_0_30px_rgba(var(--accent),0.5)] uppercase tracking-widest text-xs">
+              Clear Constraints
             </button>
           </div>
         )}
-      </div>
+      </GlassCard>
       
     </div>
   );

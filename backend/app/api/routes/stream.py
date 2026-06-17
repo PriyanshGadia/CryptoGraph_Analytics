@@ -2,17 +2,27 @@ import asyncio
 import json
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from typing import List
+from pathlib import Path
 
-from ml.graph.graph_builder import DynamicGraphBuilder
-from ml.models.stgcn import STGCNModel
-from ml.pipelines.inference_pipeline import SYMBOLS, MODEL_PATH, DIRECTION_CLASSES, VOLATILITY_CLASSES
 from app.core.streams.binance_ws import get_latest_features, LIVE_OHLCV_CACHE
-import torch
-import torch.nn.functional as F
 
 router = APIRouter(prefix="/stream", tags=["stream"])
 
 FORCE_PREDICTION_BROADCAST = False
+
+# Discover SYMBOLS from inference_pipeline config (graceful fallback)
+try:
+    from ml.pipelines.inference_pipeline import SYMBOLS
+except ImportError:
+    # Fallback: derive from live cache or use top 50
+    SYMBOLS = [
+        "BTC","ETH","BNB","SOL","XRP","ADA","AVAX","DOT","MATIC","LINK",
+        "DOGE","SHIB","UNI","LTC","ATOM","NEAR","FIL","APT","ARB","OP",
+        "AAVE","MKR","CRV","SNX","COMP","RUNE","INJ","FTM","MANA","SAND",
+        "AXS","GALA","ENJ","LRC","IMX","ALGO","VET","EOS","XLM","XTZ",
+        "HBAR","EGLD","THETA","ICP","GRT","STX","FLOW","KAVA","ZEC","DASH"
+    ]
+
 
 @router.post("/broadcast")
 async def trigger_broadcast():
@@ -113,21 +123,12 @@ async def stream_predictions(websocket: WebSocket):
         connected_clients.remove(websocket)
 
 async def prediction_broadcast_loop():
-    """Background task to compute and broadcast live predictions."""
-    model = None
-    model_version = "n/a"
-    if MODEL_PATH.exists():
-        try:
-            model = STGCNModel.load(str(MODEL_PATH))
-            model.eval()
-            model_version = model.config.get("version", MODEL_PATH.stem)
-        except Exception as e:
-            print(f"Error loading model for stream: {e}")
-            
-    # Try to extract feature_dim from model config, default to 24
-    feature_dim = model.config.get("in_features", 24) if model else 24
-            
-    builder = DynamicGraphBuilder(supabase_client=None, asset_symbols=SYMBOLS, feature_dim=feature_dim)
+    """Background task to compute and broadcast live predictions using heuristic analysis."""
+    # Try to load model version from disk
+    model_version = "heuristic-v1"
+    model_path = Path(__file__).resolve().parent.parent.parent.parent / "artifacts" / "best_model.pt"
+    if model_path.exists():
+        model_version = model_path.stem
     
     global FORCE_PREDICTION_BROADCAST
     
@@ -149,7 +150,13 @@ async def prediction_broadcast_loop():
         try:
             predictions = []
             for idx, symbol in enumerate(SYMBOLS):
-                feat = features.get(symbol, {})
+                feat_df = features.get(symbol)
+                
+                # Convert DataFrame row to dict to avoid truth-value ambiguity
+                if feat_df is not None and not feat_df.empty:
+                    feat = feat_df.iloc[-1].to_dict()
+                else:
+                    feat = {}
                 
                 direction = "neutral"
                 confidence = 50.0

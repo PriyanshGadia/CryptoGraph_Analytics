@@ -7,15 +7,17 @@ import { ComposedChart, Area, Line, Bar, XAxis, YAxis, Tooltip, ResponsiveContai
 import Link from "next/link";
 import { ChartSkeleton, StatCardSkeleton } from "@/components/PageSkeleton";
 import { ScrollToTop } from "@/components/ScrollToTop";
+import { GlassCard } from "@/components/ui/GlassCard";
+import { Target, Activity, TrendingUp, Cpu } from "lucide-react";
 
-const BASE = "http://localhost:8000";
+const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 function DirectionBadge({ dir }: { dir: string }) {
-  if (dir === "strong_up") return <span className="px-2 py-0.5 rounded-full bg-green-950 text-green-400 border border-green-800 text-xs">Strong Buy</span>;
-  if (dir === "up") return <span className="px-2 py-0.5 rounded-full bg-green-900/50 text-green-300 border border-green-700/50 text-xs">Buy</span>;
-  if (dir === "strong_down") return <span className="px-2 py-0.5 rounded-full bg-red-950 text-red-400 border border-red-800 text-xs">Strong Sell</span>;
-  if (dir === "down") return <span className="px-2 py-0.5 rounded-full bg-red-900/50 text-red-300 border border-red-700/50 text-xs">Sell</span>;
-  return <span className="px-2 py-0.5 rounded-full bg-[#1a1a1a] text-gray-400 border border-gray-700 text-xs">Neutral</span>;
+  if (dir === "strong_up") return <span className="px-3 py-1 rounded-crypto-sm bg-success/20 text-success border border-success/30 text-[10px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(34,197,94,0.1)]">Strong Buy</span>;
+  if (dir === "up") return <span className="px-3 py-1 rounded-crypto-sm bg-success/10 text-success border border-success/20 text-[10px] font-bold uppercase tracking-widest">Buy</span>;
+  if (dir === "strong_down") return <span className="px-3 py-1 rounded-crypto-sm bg-danger/20 text-danger border border-danger/30 text-[10px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(239,68,68,0.1)]">Strong Sell</span>;
+  if (dir === "down") return <span className="px-3 py-1 rounded-crypto-sm bg-danger/10 text-danger border border-danger/20 text-[10px] font-bold uppercase tracking-widest">Sell</span>;
+  return <span className="px-3 py-1 rounded-crypto-sm bg-surface/80 text-text-muted border border-white/10 text-[10px] font-bold uppercase tracking-widest">Neutral</span>;
 }
 
 export default function PerformancePage() {
@@ -26,11 +28,11 @@ export default function PerformancePage() {
   const { data, isLoading } = useSWR(`${BASE}/api/performance?days=${days}`, fetcher);
   
   if (isLoading) return (
-    <div className="space-y-6">
+    <div className="space-y-8 pt-8 max-w-[1600px] mx-auto">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-white font-mono">Model Performance Tracker</h1>
+        <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-text via-text/80 to-text-muted tracking-tight">Model Diagnostics</h1>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <StatCardSkeleton />
         <StatCardSkeleton />
         <StatCardSkeleton />
@@ -43,16 +45,18 @@ export default function PerformancePage() {
       </div>
     </div>
   );
-  if (!data) return <div className="p-8 text-red-400">Error loading metrics.</div>;
+  if (!data) return <div className="p-12 text-center text-danger font-mono border border-danger/20 bg-danger/5 rounded-crypto">Tensor stream corrupted. Error loading metrics.</div>;
   
   const overallAcc = data.overall_accuracy * 100;
-  const accColor = overallAcc > 55 ? "text-green-400" : overallAcc > 45 ? "text-amber-400" : "text-red-400";
+  const accColor = overallAcc > 55 ? "text-success" : overallAcc > 45 ? "text-warning" : "text-danger";
+  const accShadow = overallAcc > 55 ? "drop-shadow-[0_0_10px_rgba(34,197,94,0.3)]" : "";
   
   const stratRet = data.strategy_return_pct;
-  const retColor = stratRet > 0 ? "text-green-400" : "text-red-400";
+  const retColor = stratRet > 0 ? "text-success" : "text-danger";
+  const retShadow = stratRet > 0 ? "drop-shadow-[0_0_10px_rgba(34,197,94,0.3)]" : "drop-shadow-[0_0_10px_rgba(239,68,68,0.3)]";
   
   const sharpe = data.strategy_sharpe;
-  const sharpeColor = sharpe > 1.0 ? "text-green-400" : sharpe > 0.5 ? "text-amber-400" : "text-red-400";
+  const sharpeColor = sharpe > 1.0 ? "text-success" : sharpe > 0.5 ? "text-warning" : "text-danger";
   
   const assetEntries = Object.entries(data.per_asset_accuracy || {}).map(([sym, stats]: [string, any]) => ({
     symbol: sym,
@@ -62,118 +66,162 @@ export default function PerformancePage() {
      
   const visibleAssets = showAll ? assetEntries : assetEntries.slice(0, 20);
 
-  // Confusion matrix max value for color scaling
   let maxVal = 1;
   data.confusion_matrix.forEach((row: number[]) => {
     row.forEach(val => { if (val > maxVal) maxVal = val; });
   });
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-white font-mono">Model Performance Tracker</h1>
-        <div className="flex bg-[#1a1a1a] rounded-lg border border-[#2a2a2a] p-1">
+    <div className="space-y-8 pt-8 max-w-[1600px] mx-auto">
+      
+      {/* HEADER */}
+      <div className="relative flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-4">
+        <div className="absolute top-[-50px] left-[-50px] w-64 h-64 bg-accent/5 rounded-full blur-[80px] pointer-events-none" />
+        <div className="relative z-10">
+          <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-text via-text/80 to-text-muted flex items-center gap-4 tracking-tight">
+            <div className="p-3 glass bg-accent/10 rounded-crypto shadow-inner shadow-accent/20">
+                <Target className="text-accent" size={32} />
+            </div>
+            Model Diagnostics
+          </h1>
+          <p className="text-text-muted mt-3 font-light tracking-wide max-w-xl">
+            Evaluate predictive performance, calibration metrics, and neural strategy returns.
+          </p>
+        </div>
+        
+        <div className="flex bg-surface/50 rounded-crypto-sm border border-white/10 p-1 backdrop-blur-md relative z-10">
           {[7, 30, 90].map(d => (
             <button
               key={d}
               onClick={() => setDays(d)}
-              className={`px-4 py-1.5 rounded-md text-sm font-bold transition-colors ${
-                days === d ? "bg-indigo-600 text-white" : "text-[#94a3b8] hover:text-white"
+              className={`px-6 py-2 rounded-sm text-[10px] uppercase tracking-widest font-black transition-all ${
+                days === d ? "bg-accent text-white shadow-[0_0_15px_rgba(var(--accent),0.5)]" : "text-text-muted hover:text-text hover:bg-white/5"
               }`}
             >
-              {d}D
+              {d} Days
             </button>
           ))}
         </div>
       </div>
       
       {/* SECTION 1 - Hero Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-[#1a1a1a] p-6 rounded-xl border border-[#2a2a2a]">
-          <div className="text-sm text-[#94a3b8] mb-2 font-mono">Overall Accuracy</div>
-          <div className={`text-4xl font-bold font-mono ${accColor}`}>
-            {overallAcc.toFixed(1)}%
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 relative z-10">
+        <GlassCard asymmetric="sm" className="p-6 group relative overflow-hidden flex flex-col justify-between h-36 border border-white/10 hover:border-white/20 hover:bg-white/[0.02]">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-success/5 rounded-full blur-[40px] group-hover:bg-success/10 transition-colors pointer-events-none" />
+          <div className="text-[10px] text-text-muted uppercase tracking-widest font-bold flex items-center gap-2">
+              <Activity size={12} className="text-success" />
+              Global Accuracy
           </div>
-        </div>
-        <div className="bg-[#1a1a1a] p-6 rounded-xl border border-[#2a2a2a]">
-          <div className="text-sm text-[#94a3b8] mb-2 font-mono">Total Scored</div>
-          <div className="text-4xl font-bold font-mono text-white">
+          <div className={`text-5xl font-black font-sans tracking-tight ${accColor} ${accShadow}`}>
+            {overallAcc.toFixed(1)}<span className="text-2xl text-text-muted">%</span>
+          </div>
+        </GlassCard>
+        
+        <GlassCard asymmetric="sm" className="p-6 group relative overflow-hidden flex flex-col justify-between h-36 border border-white/10 hover:border-white/20 hover:bg-white/[0.02]">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-accent/5 rounded-full blur-[40px] group-hover:bg-accent/10 transition-colors pointer-events-none" />
+          <div className="text-[10px] text-text-muted uppercase tracking-widest font-bold flex items-center gap-2">
+              <Cpu size={12} className="text-accent" />
+              Tensors Scored
+          </div>
+          <div className="text-5xl font-black font-sans tracking-tight text-text">
             {data.total_scored}
           </div>
-        </div>
-        <div className="bg-[#1a1a1a] p-6 rounded-xl border border-[#2a2a2a]">
-          <div className="text-sm text-[#94a3b8] mb-2 font-mono">Strategy Return</div>
-          <div className={`text-4xl font-bold font-mono ${retColor}`}>
-            {stratRet > 0 ? "+" : ""}{stratRet.toFixed(1)}%
+        </GlassCard>
+        
+        <GlassCard asymmetric="sm" className="p-6 group relative overflow-hidden flex flex-col justify-between h-36 border border-white/10 hover:border-white/20 hover:bg-white/[0.02]">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-success/5 rounded-full blur-[40px] group-hover:bg-success/10 transition-colors pointer-events-none" />
+          <div className="text-[10px] text-text-muted uppercase tracking-widest font-bold flex items-center gap-2">
+              <TrendingUp size={12} className={stratRet > 0 ? "text-success" : "text-danger"} />
+              Strategy Alpha
           </div>
-        </div>
-        <div className="bg-[#1a1a1a] p-6 rounded-xl border border-[#2a2a2a]">
-          <div className="text-sm text-[#94a3b8] mb-2 font-mono">Strategy Sharpe</div>
-          <div className={`text-4xl font-bold font-mono ${sharpeColor}`}>
+          <div className={`text-5xl font-black font-sans tracking-tight ${retColor} ${retShadow}`}>
+            {stratRet > 0 ? "+" : ""}{stratRet.toFixed(1)}<span className="text-2xl text-text-muted">%</span>
+          </div>
+        </GlassCard>
+        
+        <GlassCard asymmetric="sm" className="p-6 group relative overflow-hidden flex flex-col justify-between h-36 border border-white/10 hover:border-white/20 hover:bg-white/[0.02]">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-warning/5 rounded-full blur-[40px] group-hover:bg-warning/10 transition-colors pointer-events-none" />
+          <div className="text-[10px] text-text-muted uppercase tracking-widest font-bold flex items-center gap-2">
+              <Target size={12} className="text-warning" />
+              Sharpe Ratio
+          </div>
+          <div className={`text-5xl font-black font-sans tracking-tight ${sharpeColor}`}>
             {sharpe.toFixed(2)}
           </div>
-        </div>
+        </GlassCard>
       </div>
       
       {/* SECTION 2 - Rolling Accuracy */}
-      <div className="bg-[#1a1a1a] p-6 rounded-xl border border-[#2a2a2a]">
-        <h3 className="text-lg font-bold text-white font-mono mb-1">Rolling Prediction Accuracy Over Time</h3>
-        <p className="text-sm text-[#94a3b8] mb-6">50% = random baseline — anything above is model skill</p>
+      <GlassCard asymmetric="md" className="p-8 relative z-10">
+        <h3 className="text-xl font-black text-text tracking-tight mb-1 flex items-center gap-3">
+          Rolling Validation Curve
+        </h3>
+        <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mb-8">Baseline 50% = Random Walk · Values above indicate predictive skill</p>
         
-        <div className="h-[280px]">
+        <div className="h-[320px]">
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={data.rolling_accuracy}>
-              <XAxis dataKey="date" stroke="#4a4a4a" tick={{fill: '#94a3b8', fontSize: 12}} />
-              <YAxis domain={[0, 100]} stroke="#4a4a4a" tick={{fill: '#94a3b8'}} />
-              <Tooltip contentStyle={{ backgroundColor: "#0f0f0f", borderColor: "#2a2a2a", color: "#fff" }} />
-              <ReferenceLine y={50} stroke="#f59e0b" strokeDasharray="3 3" />
-              <Area type="monotone" dataKey="accuracy_7d" fill="#6366f1" stroke="none" fillOpacity={0.1} />
-              <Line type="monotone" dataKey="accuracy_7d" stroke="#6366f1" strokeWidth={2} dot={false} name="7-Day Acc" />
-              <Line type="monotone" dataKey="accuracy_30d" stroke="#f59e0b" strokeWidth={2} strokeDasharray="5 5" dot={false} name="30-Day Acc" />
+            <ComposedChart data={data.rolling_accuracy} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <XAxis dataKey="date" stroke="rgba(255,255,255,0.1)" tick={{fill: 'rgba(255,255,255,0.5)', fontSize: 10, fontFamily: 'monospace'}} tickMargin={10} />
+              <YAxis domain={[0, 100]} stroke="rgba(255,255,255,0.1)" tick={{fill: 'rgba(255,255,255,0.5)', fontSize: 10, fontFamily: 'monospace'}} />
+              <Tooltip 
+                contentStyle={{ backgroundColor: "rgba(10, 10, 15, 0.9)", borderColor: "rgba(255, 255, 255, 0.1)", color: "#fff", borderRadius: "12px", boxShadow: "0 10px 25px rgba(0,0,0,0.5)", backdropFilter: "blur(10px)" }} 
+                itemStyle={{ fontFamily: 'monospace', fontSize: '12px' }}
+                labelStyle={{ fontWeight: 'bold', marginBottom: '8px', color: 'rgba(255,255,255,0.7)' }}
+              />
+              <ReferenceLine y={50} stroke="rgba(234,179,8,0.5)" strokeDasharray="3 3" />
+              <defs>
+                <linearGradient id="accGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="rgba(var(--accent), 0.3)" stopOpacity={1}/>
+                  <stop offset="95%" stopColor="rgba(var(--accent), 0)" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <Area type="monotone" dataKey="accuracy_7d" fill="url(#accGrad)" stroke="none" />
+              <Line type="monotone" dataKey="accuracy_7d" stroke="rgb(var(--accent))" strokeWidth={3} dot={false} name="7D Average" />
+              <Line type="monotone" dataKey="accuracy_30d" stroke="#eab308" strokeWidth={2} strokeDasharray="4 4" dot={false} name="30D Average" />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
-      </div>
+      </GlassCard>
       
       {/* SECTION 3 - Matrix & Calibration */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 relative z-10">
         
         {/* Confusion Matrix */}
-        <div className="bg-[#1a1a1a] p-6 rounded-xl border border-[#2a2a2a]">
-          <h3 className="text-lg font-bold text-white font-mono mb-1">Prediction Confusion Matrix</h3>
-          <p className="text-sm text-[#94a3b8] mb-6">Rows = predicted, Columns = actual outcome</p>
+        <GlassCard asymmetric="sm" className="p-8">
+          <h3 className="text-xl font-black text-text tracking-tight mb-1 flex items-center gap-3">
+            Confusion Matrix
+          </h3>
+          <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mb-8">Rows = Predicted · Columns = Actual Outcome</p>
           
-          <div className="grid grid-cols-6 gap-1">
-            {/* Header row */}
+          <div className="grid grid-cols-6 gap-2">
             <div className="text-[10px] text-center p-1"></div>
             {data.confusion_labels.map((l: string) => (
-              <div key={`col-${l}`} className="text-[10px] uppercase text-[#94a3b8] font-mono text-center flex items-center justify-center">
-                {l.replace("_", " ")}
+              <div key={`col-${l}`} className="text-[9px] uppercase text-text-muted font-bold tracking-widest text-center flex items-center justify-center">
+                {l.replace("_", "\n")}
               </div>
             ))}
             
-            {/* Data rows */}
             {data.confusion_matrix.map((row: number[], i: number) => (
               <div className="contents" key={`row-${i}`}>
-                <div className="text-[10px] uppercase text-[#94a3b8] font-mono flex items-center justify-end pr-2 text-right break-words">
+                <div className="text-[9px] uppercase text-text-muted font-bold tracking-widest flex items-center justify-end pr-3 text-right">
                   {data.confusion_labels[i].replace("_", " ")}
                 </div>
                 {row.map((val: number, j: number) => {
                   const isDiagonal = i === j;
                   const intensity = Math.min(val / maxVal, 1);
                   
-                  let bgColor = `rgba(99, 102, 241, ${intensity * 0.8 + 0.1})`; // indigo scale
+                  let bgColor = `rgba(var(--accent), ${intensity * 0.8 + 0.05})`;
                   if (isDiagonal) {
-                    bgColor = `rgba(34, 197, 94, ${intensity * 0.8 + 0.1})`; // green scale for correct
+                    bgColor = `rgba(34, 197, 94, ${intensity * 0.8 + 0.1})`;
                   }
-                  if (val === 0) bgColor = "#1a1a1a";
+                  if (val === 0) bgColor = "rgba(255,255,255,0.02)";
                   
                   return (
                     <div 
                       key={`cell-${i}-${j}`} 
-                      className="aspect-square flex items-center justify-center rounded text-white text-sm font-bold font-mono cursor-pointer transition-transform hover:scale-105"
+                      className="aspect-square flex items-center justify-center rounded-crypto-sm text-white text-xs font-black font-mono cursor-crosshair transition-all hover:scale-105 border border-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.1)]"
                       style={{ backgroundColor: bgColor }}
-                      title={`Predicted ${data.confusion_labels[i]}, actually ${data.confusion_labels[j]}: ${val} times`}
+                      title={`Predicted ${data.confusion_labels[i]}, actually ${data.confusion_labels[j]}: ${val} instances`}
                     >
                       {val > 0 ? val : ""}
                     </div>
@@ -182,96 +230,119 @@ export default function PerformancePage() {
               </div>
             ))}
           </div>
-        </div>
+        </GlassCard>
         
         {/* Confidence Calibration */}
-        <div className="bg-[#1a1a1a] p-6 rounded-xl border border-[#2a2a2a]">
-          <h3 className="text-lg font-bold text-white font-mono mb-1">Confidence Calibration</h3>
-          <p className="text-sm text-[#94a3b8] mb-6">When the model says 80% confident, is it right 80% of the time?</p>
+        <GlassCard asymmetric="sm" className="p-8">
+          <h3 className="text-xl font-black text-text tracking-tight mb-1 flex items-center gap-3">
+            Confidence Calibration
+          </h3>
+          <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mb-8">Expected vs Actual Precision per Decile</p>
           
-          <div className="h-[240px]">
+          <div className="h-[260px]">
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={data.confidence_calibration}>
-                <XAxis dataKey="confidence_range" stroke="#4a4a4a" tick={{fill: '#94a3b8', fontSize: 10}} angle={-45} textAnchor="end" />
-                <YAxis domain={[0, 100]} stroke="#4a4a4a" tick={{fill: '#94a3b8', fontSize: 10}} />
-                <Tooltip contentStyle={{ backgroundColor: "#0f0f0f", borderColor: "#2a2a2a", color: "#fff" }} />
-                {/* Diagonal line logic: just draw a line from (x=0, y=0) to (x=end, y=100), Recharts ReferenceLine segment works */}
-                <Bar dataKey="actual_accuracy" fill="#6366f1" radius={[4, 4, 0, 0]} name="Actual Accuracy" />
+              <ComposedChart data={data.confidence_calibration} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
+                <XAxis dataKey="confidence_range" stroke="rgba(255,255,255,0.1)" tick={{fill: 'rgba(255,255,255,0.5)', fontSize: 9, fontFamily: 'monospace'}} angle={-30} textAnchor="end" tickMargin={5} />
+                <YAxis domain={[0, 100]} stroke="rgba(255,255,255,0.1)" tick={{fill: 'rgba(255,255,255,0.5)', fontSize: 10, fontFamily: 'monospace'}} />
+                <Tooltip 
+                    contentStyle={{ backgroundColor: "rgba(10, 10, 15, 0.9)", borderColor: "rgba(255, 255, 255, 0.1)", color: "#fff", borderRadius: "12px", backdropFilter: "blur(10px)" }} 
+                    itemStyle={{ fontFamily: 'monospace', fontSize: '12px' }}
+                />
+                <Bar dataKey="actual_accuracy" fill="rgb(var(--accent))" radius={[4, 4, 0, 0]} name="Empirical Accuracy" />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
-          <p className="text-xs text-[#64748b] mt-4 text-center">
-             Bars above the line = model is conservative with confidence (good)<br/>
-             Bars below the line = model is overconfident (bad)
+          <p className="text-[10px] text-text-muted mt-4 text-center border-t border-white/5 pt-4 uppercase tracking-widest">
+             <span className="text-success font-bold">Over-performing</span> = Conservative · <span className="text-danger font-bold">Under-performing</span> = Overconfident
           </p>
-        </div>
+        </GlassCard>
       </div>
       
       {/* SECTION 4 - Per Direction */}
-      <div className="bg-[#1a1a1a] p-6 rounded-xl border border-[#2a2a2a]">
-        <h3 className="text-lg font-bold text-white font-mono mb-4">Accuracy by Predicted Direction</h3>
-        <div className="space-y-4">
+      <GlassCard asymmetric="md" className="p-8 relative z-10">
+        <h3 className="text-xl font-black text-text tracking-tight mb-8">Precision by Intent Vector</h3>
+        <div className="space-y-6">
           {[
-            { label: "Strong Buy", key: "strong_up", color: "bg-green-500" },
-            { label: "Buy", key: "up", color: "bg-green-400" },
-            { label: "Neutral", key: "neutral", color: "bg-gray-500" },
-            { label: "Sell", key: "down", color: "bg-red-400" },
-            { label: "Strong Sell", key: "strong_down", color: "bg-red-500" },
+            { label: "Strong Buy", key: "strong_up", color: "bg-success shadow-[0_0_10px_rgba(34,197,94,0.5)]" },
+            { label: "Buy", key: "up", color: "bg-success/60" },
+            { label: "Neutral", key: "neutral", color: "bg-text-muted" },
+            { label: "Sell", key: "down", color: "bg-danger/60" },
+            { label: "Strong Sell", key: "strong_down", color: "bg-danger shadow-[0_0_10px_rgba(239,68,68,0.5)]" },
           ].map(d => {
             const acc = (data.per_direction_accuracy?.[d.key] || 0) * 100;
             return (
-              <div key={d.key} className="flex items-center gap-4">
-                <div className="w-28 text-right"><DirectionBadge dir={d.key} /></div>
-                <div className="flex-1 h-3 bg-[#0f0f0f] rounded-full overflow-hidden relative">
-                  <div className="absolute left-[50%] top-0 bottom-0 w-px bg-[#4a4a4a] z-10" />
-                  <div className={`h-full ${d.color}`} style={{ width: `${acc}%` }} />
+              <div key={d.key} className="flex items-center gap-6 group">
+                <div className="w-32 text-right"><DirectionBadge dir={d.key} /></div>
+                <div className="flex-1 h-3 bg-surface border border-white/5 rounded-full overflow-hidden relative">
+                  <div className="absolute left-[50%] top-0 bottom-0 w-px bg-white/20 z-10" />
+                  <div className={`h-full transition-all duration-1000 ${d.color}`} style={{ width: `${acc}%` }} />
                 </div>
-                <div className="w-16 text-right font-mono text-white font-bold">{acc.toFixed(0)}%</div>
+                <div className="w-20 text-right font-mono text-text font-black text-lg group-hover:text-accent transition-colors">{acc.toFixed(1)}%</div>
               </div>
             );
           })}
         </div>
-      </div>
+      </GlassCard>
       
       {/* SECTION 5 - Per Asset */}
-      <div className="bg-[#1a1a1a] p-6 rounded-xl border border-[#2a2a2a]">
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="text-lg font-bold text-white font-mono">Accuracy by Asset</h3>
-          <input 
-            type="text" 
-            placeholder="Search symbol..." 
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="bg-[#0f0f0f] border border-[#2a2a2a] rounded-lg px-3 py-1.5 text-sm text-white placeholder-[#4a4a4a] focus:outline-none focus:border-indigo-500"
-          />
+      <GlassCard asymmetric="lg" className="p-0 relative z-10 overflow-hidden">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 p-8 border-b border-white/5 bg-surface/30">
+          <div>
+            <h3 className="text-xl font-black text-text tracking-tight">Asset Isolation Metrics</h3>
+            <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-1">Cross-sectional model performance</p>
+          </div>
+          <div className="relative">
+              <input 
+                type="text" 
+                placeholder="Query symbol..." 
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="bg-surface/50 border border-white/10 rounded-crypto-sm pl-4 pr-10 py-3 text-sm text-text placeholder-text-muted focus:outline-none focus:border-accent transition-colors w-full md:w-64 font-mono font-bold hover:bg-surface/80 shadow-inner"
+              />
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted">
+                  ⌘F
+              </div>
+          </div>
         </div>
         
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto custom-scrollbar p-0">
           <table className="w-full text-sm text-left">
-            <thead className="text-xs text-[#94a3b8] uppercase bg-[#0f0f0f] border-b border-[#2a2a2a]">
+            <thead className="text-[10px] text-text-muted uppercase tracking-widest bg-surface/50 font-mono border-b border-white/5">
               <tr>
-                <th className="px-4 py-3">Asset</th>
-                <th className="px-4 py-3 text-right">Accuracy</th>
-                <th className="px-4 py-3 text-right">Correct</th>
-                <th className="px-4 py-3 text-right">Wrong</th>
-                <th className="px-4 py-3 text-right">Avg Conf</th>
-                <th className="px-4 py-3 text-right">Best Dir</th>
+                <th className="px-8 py-5">Node Identity</th>
+                <th className="px-8 py-5 text-right">Hit Rate</th>
+                <th className="px-8 py-5 text-right">True Positives</th>
+                <th className="px-8 py-5 text-right">False Positives</th>
+                <th className="px-8 py-5 text-right">Mean Certainty</th>
+                <th className="px-8 py-5 text-right">Optimal Vector</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-white/5">
               {visibleAssets.map(a => {
                 const a_acc = a.accuracy * 100;
-                const a_color = a_acc >= 60 ? "text-green-400" : a_acc >= 50 ? "text-amber-400" : "text-red-400";
+                const a_color = a_acc >= 60 ? "text-success drop-shadow-[0_0_5px_rgba(34,197,94,0.3)]" : a_acc >= 50 ? "text-warning" : "text-danger";
                 return (
-                  <tr key={a.symbol} className="border-b border-[#2a2a2a]/50 hover:bg-[#2a2a2a]/30">
-                    <td className="px-4 py-3 font-mono font-bold text-white">
-                      <Link href={`/coin/${a.symbol}`} className="hover:text-indigo-400">{a.symbol}</Link>
+                  <tr key={a.symbol} className="hover:bg-white/[0.02] transition-colors group">
+                    <td className="px-8 py-4 font-sans font-black text-lg text-text">
+                      <Link href={`/coin/${a.symbol}`} className="hover:text-accent transition-colors flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-surface/50 border border-white/10 flex items-center justify-center font-bold text-xs shadow-inner text-text-muted group-hover:text-accent">
+                            {a.symbol.charAt(0)}
+                          </div>
+                          {a.symbol}
+                      </Link>
                     </td>
-                    <td className={`px-4 py-3 text-right font-mono font-bold ${a_color}`}>{a_acc.toFixed(1)}%</td>
-                    <td className="px-4 py-3 text-right text-green-400">{a.correct}</td>
-                    <td className="px-4 py-3 text-right text-red-400">{a.wrong}</td>
-                    <td className="px-4 py-3 text-right text-[#94a3b8]">{(a.avg_confidence * 100).toFixed(1)}%</td>
-                    <td className="px-4 py-3 text-right"><DirectionBadge dir={a.best_direction} /></td>
+                    <td className={`px-8 py-4 text-right font-mono font-black text-lg ${a_color}`}>{a_acc.toFixed(1)}%</td>
+                    <td className="px-8 py-4 text-right font-mono text-success font-bold">{a.correct}</td>
+                    <td className="px-8 py-4 text-right font-mono text-danger font-bold">{a.wrong}</td>
+                    <td className="px-8 py-4 text-right font-mono text-text-muted">
+                        <div className="flex items-center justify-end gap-2">
+                            <span>{(a.avg_confidence * 100).toFixed(1)}%</span>
+                            <div className="w-12 h-1.5 bg-background rounded-full overflow-hidden">
+                                <div className="h-full bg-accent" style={{width: `${a.avg_confidence*100}%`}} />
+                            </div>
+                        </div>
+                    </td>
+                    <td className="px-8 py-4 text-right"><DirectionBadge dir={a.best_direction} /></td>
                   </tr>
                 );
               })}
@@ -280,14 +351,16 @@ export default function PerformancePage() {
         </div>
         
         {!showAll && assetEntries.length > 20 && (
-          <button 
-            onClick={() => setShowAll(true)}
-            className="w-full mt-4 py-2 border border-[#2a2a2a] rounded-lg text-sm text-[#94a3b8] hover:text-white hover:border-[#4a4a4a] transition-colors"
-          >
-            Show All
-          </button>
+          <div className="p-6 border-t border-white/5 bg-surface/10">
+              <button 
+                onClick={() => setShowAll(true)}
+                className="w-full py-4 glass bg-white/5 border border-white/10 hover:border-white/20 rounded-crypto text-xs font-black uppercase tracking-widest text-text transition-all shadow-inner hover:bg-white/10"
+              >
+                Reveal Entire Graph
+              </button>
+          </div>
         )}
-      </div>
+      </GlassCard>
       
       <ScrollToTop />
     </div>

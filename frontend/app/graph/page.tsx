@@ -3,14 +3,14 @@
 import useSWR from "swr";
 import { fetcher, GraphResponse } from "@/lib/api";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { RefreshCcw, ZoomIn } from "lucide-react";
+import { RefreshCcw, ZoomIn, Activity } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useMemo, useRef, useState, useEffect, useCallback } from "react";
 import * as d3 from "d3-force";
 
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
   ssr: false,
-  loading: () => <Skeleton className="w-full h-[600px] rounded-xl" />,
+  loading: () => <Skeleton className="w-full h-[600px] rounded-crypto-lg" />,
 });
 
 const SECTOR_COLORS: Record<string, string> = {
@@ -149,10 +149,10 @@ export default function GraphPage() {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center h-full space-y-4">
-        <div className="text-danger bg-danger/10 p-4 rounded-md border border-danger/20">
+        <div className="text-danger bg-danger/10 p-4 rounded-crypto border border-danger/20">
           Failed to load graph data
         </div>
-        <button onClick={() => mutate()} className="flex items-center gap-2 px-4 py-2 bg-surface hover:bg-border transition-colors rounded-md text-text border border-border">
+        <button onClick={() => mutate()} className="flex items-center gap-2 px-6 py-3 glass hover:bg-white/10 transition-colors rounded-crypto text-text border border-white/10">
           <RefreshCcw size={16} /> Retry
         </button>
       </div>
@@ -160,13 +160,13 @@ export default function GraphPage() {
   }
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="mb-4">
-        <h1 className="text-3xl font-bold text-text">Network Graph</h1>
-        <p className="text-textMuted mt-1">Spatial-Temporal Graph — {graphData.nodes.length} assets, {graphData.links.length} connections</p>
+    <div className="h-[calc(100vh-8rem)] flex flex-col relative w-full pt-8">
+      <div className="mb-6 relative z-10 px-4 max-w-6xl mx-auto w-full">
+        <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-text via-text/80 to-text-muted tracking-tight font-sans">Topological Graph</h1>
+        <p className="text-text-muted font-light tracking-wide mt-2">Spatial-Temporal Graph — {graphData.nodes.length} assets, {graphData.links.length} connections</p>
       </div>
 
-      <div ref={containerRef} className="flex-1 w-full bg-surface rounded-xl border border-border overflow-hidden relative" style={{ minHeight: "calc(100vh - 160px)" }}>
+      <div ref={containerRef} className="flex-1 w-full relative">
         {isLoading || !data ? (
           <Skeleton className="w-full h-full" />
         ) : (
@@ -185,10 +185,10 @@ export default function GraphPage() {
             }}
             linkColor={linkColor}
             linkWidth={linkWidth}
-            backgroundColor="#0f0f0f"
-            d3AlphaDecay={0.02}
-            d3VelocityDecay={0.3}
-            cooldownTime={8000}
+            backgroundColor="transparent"
+            d3AlphaDecay={0.06}
+            d3VelocityDecay={0.4}
+            cooldownTime={4000}
             onEngineStop={() => {
               if (graphRef.current && !hasZoomed.current) {
                 graphRef.current.zoomToFit(400, 40);
@@ -200,62 +200,77 @@ export default function GraphPage() {
         )}
 
         {/* Controls panel */}
-        <div className="absolute top-4 right-4 bg-[#1a1a1a] p-4 rounded-lg border border-border space-y-3 z-10">
-          <div className="text-xs font-mono font-bold text-textMuted uppercase tracking-wider">Controls</div>
-          <button onClick={() => graphRef.current?.zoomToFit(400, 40)} className="w-full flex items-center gap-2 px-3 py-2 bg-accent/10 hover:bg-accent/20 text-accent rounded text-xs font-bold transition-colors">
-            <ZoomIn size={14} /> Zoom to Fit
+        <div className="absolute top-4 right-4 glass-panel p-5 rounded-crypto border border-white/5 space-y-4 z-10 w-64 shadow-2xl backdrop-blur-2xl">
+          <div className="text-[10px] font-mono font-bold text-accent uppercase tracking-widest flex items-center gap-2">
+            <Activity size={14} /> Network Controls
+          </div>
+          <button onClick={() => graphRef.current?.zoomToFit(400, 40)} className="w-full flex justify-center items-center gap-2 px-4 py-2.5 glass bg-accent/10 hover:bg-accent/20 text-accent rounded-crypto-sm text-xs font-bold transition-all border border-accent/20 shadow-[0_0_15px_rgba(var(--accent),0.1)]">
+            <ZoomIn size={14} /> Center Graph
           </button>
-          <button onClick={() => mutate()} className="w-full flex items-center gap-2 px-3 py-2 bg-surface hover:bg-border text-text rounded text-xs transition-colors">
-            <RefreshCcw size={14} /> Reload
+          <button onClick={() => mutate()} className="w-full flex justify-center items-center gap-2 px-4 py-2.5 glass bg-surface/50 hover:bg-white/10 text-text rounded-crypto-sm text-xs transition-colors border border-white/5">
+            <RefreshCcw size={14} /> Refresh Data
           </button>
-          <div className="flex gap-2 text-xs">
-            <span className="px-2 py-1 bg-accent/10 text-accent rounded font-mono">{graphData.nodes.length} Assets</span>
-            <span className="px-2 py-1 bg-surface text-textMuted rounded font-mono">{graphData.links.length} Edges</span>
+          <div className="flex gap-2 text-[10px] uppercase tracking-widest font-mono pt-2 border-t border-white/10">
+            <span className="flex-1 text-center py-1.5 bg-success/10 text-success rounded-crypto-sm border border-success/20">{graphData.nodes.length} Nodes</span>
+            <span className="flex-1 text-center py-1.5 bg-warning/10 text-warning rounded-crypto-sm border border-warning/20">{graphData.links.length} Edges</span>
           </div>
         </div>
 
         {/* Legend */}
-        <div className="absolute bottom-4 left-4 bg-black/80 p-3 rounded-lg border border-border backdrop-blur-sm z-10">
-          <div className="text-xs font-mono font-bold text-textMuted mb-2 uppercase tracking-wider">Sectors</div>
-          {Object.entries(SECTOR_LABELS).map(([key, label]) => (
-            <div key={key} className="flex items-center gap-2 mb-1 text-xs text-text">
-              <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: SECTOR_COLORS[key] }} /> {label}
-            </div>
-          ))}
-          <div className="border-t border-border my-2" />
-          <div className="text-xs font-mono font-bold text-textMuted mb-2 uppercase tracking-wider">Edges</div>
-          {Object.entries({ correlation: "Correlation", sector: "Sector", market_cap: "Market Cap" }).map(([key, label]) => (
-            <div key={key} className="flex items-center gap-2 mb-1 text-xs text-text">
-              <div className="w-4 h-0.5 rounded" style={{ backgroundColor: EDGE_STYLES[key]?.color }} /> {label}
-            </div>
-          ))}
+        <div className="absolute bottom-4 left-4 glass-panel p-5 rounded-crypto border border-white/5 shadow-2xl backdrop-blur-2xl z-10">
+          <div className="text-[10px] font-mono font-bold text-accent mb-3 uppercase tracking-widest">Sectors</div>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+              {Object.entries(SECTOR_LABELS).map(([key, label]) => (
+                <div key={key} className="flex items-center gap-2 text-xs text-text/80 font-medium">
+                  <div className="w-2 h-2 rounded-full shadow-[0_0_8px_currentColor]" style={{ backgroundColor: SECTOR_COLORS[key], color: SECTOR_COLORS[key] }} /> {label}
+                </div>
+              ))}
+          </div>
+          <div className="border-t border-white/10 my-4" />
+          <div className="text-[10px] font-mono font-bold text-accent mb-3 uppercase tracking-widest">Connection Types</div>
+          <div className="space-y-2.5">
+              {Object.entries({ correlation: "Price Correlation", sector: "Sector Relation", market_cap: "Size Equivalence" }).map(([key, label]) => (
+                <div key={key} className="flex items-center gap-3 text-xs text-text/80 font-medium">
+                  <div className="w-6 h-0.5 rounded shadow-[0_0_8px_currentColor]" style={{ backgroundColor: EDGE_STYLES[key]?.color, color: EDGE_STYLES[key]?.color }} /> {label}
+                </div>
+              ))}
+          </div>
         </div>
 
         {/* Selected node panel */}
         {selectedNode && (
-          <div className="absolute top-4 left-4 w-64 bg-[#1a1a1a] p-4 rounded-lg border border-border z-20 space-y-3">
+          <div className="absolute top-4 left-4 w-72 glass-panel p-6 rounded-crypto border border-white/10 z-20 space-y-4 shadow-2xl backdrop-blur-2xl animate-in fade-in slide-in-from-left-4">
             <div className="flex justify-between items-start">
-              <div className="font-mono text-2xl font-bold text-text">{selectedNode.symbol}</div>
-              <button onClick={() => setSelectedNode(null)} className="text-textMuted hover:text-text text-xs">✕</button>
+              <div className="font-sans text-3xl font-black text-text tracking-tight">{selectedNode.symbol}</div>
+              <button onClick={() => setSelectedNode(null)} className="text-text-muted hover:text-text text-sm transition-colors w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/10">✕</button>
             </div>
-            <span className="inline-block px-2 py-1 rounded-full text-xs font-bold" style={{ backgroundColor: selectedNode.color + "20", color: selectedNode.color }}>
+            
+            <div className="inline-flex px-3 py-1 rounded-sm text-[10px] font-bold uppercase tracking-widest border" style={{ backgroundColor: selectedNode.color + "15", color: selectedNode.color, borderColor: selectedNode.color + "30" }}>
               {selectedNode.sector || "other"}
-            </span>
-            <div className="text-sm text-textMuted">
-              Market Cap: <span className="text-text font-mono">{formatMarketCap(selectedNode.market_cap_usd)}</span>
             </div>
-            {selectedNode.predicted_direction && (
-              <div className="text-sm text-textMuted">
-                Prediction: <span className={`font-bold ${selectedNode.predicted_direction?.includes("up") ? "text-success" : selectedNode.predicted_direction?.includes("down") ? "text-danger" : "text-textMuted"}`}>
-                  {selectedNode.predicted_direction}
-                </span>
-              </div>
-            )}
-            {selectedNode.confidence != null && (
-              <div className="text-sm text-textMuted">
-                Confidence: <span className="text-accent font-mono">{(selectedNode.confidence * 100).toFixed(1)}%</span>
-              </div>
-            )}
+            
+            <div className="space-y-3 pt-2">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[10px] text-text-muted uppercase tracking-widest font-mono">Market Cap</span>
+                  <span className="text-lg font-mono font-bold text-text">{formatMarketCap(selectedNode.market_cap_usd)}</span>
+                </div>
+                
+                {selectedNode.predicted_direction && (
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[10px] text-text-muted uppercase tracking-widest font-mono">AI Signal</span>
+                    <span className={`text-sm font-bold uppercase tracking-widest ${selectedNode.predicted_direction?.includes("up") ? "text-success" : selectedNode.predicted_direction?.includes("down") ? "text-danger" : "text-text-muted"}`}>
+                      {selectedNode.predicted_direction.replace('_', ' ')}
+                    </span>
+                  </div>
+                )}
+                
+                {selectedNode.confidence != null && (
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[10px] text-text-muted uppercase tracking-widest font-mono">Confidence Matrix</span>
+                    <span className="text-xl font-mono font-black text-text">{(selectedNode.confidence * 100).toFixed(1)}%</span>
+                  </div>
+                )}
+            </div>
           </div>
         )}
       </div>

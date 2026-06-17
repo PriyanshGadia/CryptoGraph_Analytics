@@ -22,6 +22,7 @@ export interface Asset {
   rsi_14?: number;
   macd?: number;
   volatility_regime?: string;
+  volume_24h?: number;
 }
 
 export interface Prediction {
@@ -54,14 +55,30 @@ export interface GraphResponse {
   edges: GraphEdge[];
 }
 
+export interface RiskAlert {
+  severity: string;
+  type: string;
+  message: string;
+  affected_assets: string[];
+  recommendation: string;
+}
+
 export interface RiskData {
   market_regime: string;
   average_volatility: number;
   correlation_clusters: Record<string, string[]>;
-  top_movers: any[];
-  risk_alerts: string[];
+  top_volatile: Array<{
+    symbol: string;
+    name: string;
+    volatility_7d: number;
+    returns_1d: number;
+    current_price: number;
+  }>;
+  risk_alerts: RiskAlert[];
   up_pct: number;
   down_pct: number;
+  neutral_pct: number;
+  total_assets_monitored: number;
 }
 
 export interface ExplainResponse {
@@ -124,11 +141,12 @@ export const apiService = {
   getGraphLatest: () => api.get<GraphResponse>('/api/graph/latest').then(res => res.data),
   getRisk: () => api.get<RiskData>('/api/risk').then(res => res.data),
   getExplain: (symbol: string) => api.get<ExplainResponse>(`/api/explain/${symbol}`).then(res => res.data),
-  getSettings: () => api.get<Record<string, string>>('/api/settings').then(res => res.data),
+  getSettings: () => api.get<{values: Record<string, string>, configured: Record<string, boolean>}>('/api/settings').then(res => res.data),
   updateSettings: (settings: Record<string, string>) => api.post<{status: string, message: string}>('/api/settings', { settings }).then(res => res.data),
   getPortfolio: () => api.get<PortfolioResponse>('/api/portfolio').then(res => res.data),
   getPortfolioTrades: (limit = 100, offset = 0) => api.get<PortfolioTradesResponse>(`/api/portfolio/trades?limit=${limit}&offset=${offset}`).then(res => res.data),
   triggerExecution: () => api.post('/api/portfolio/execute').then(res => res.data),
   gradeTrade: (tradeId: number, grade: number, notes: string) => api.post(`/api/portfolio/trades/${tradeId}/grade`, { grade, notes }).then(res => res.data),
   confirmWeb3Trade: (tradeId: number, txHash: string) => api.post(`/api/portfolio/trades/${tradeId}/confirm`, { tx_hash: txHash }).then(res => res.data),
+  triggerRefreshAll: () => api.post('/api/status/refresh-all').then(res => res.data),
 };

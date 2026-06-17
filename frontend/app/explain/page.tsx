@@ -3,7 +3,7 @@
 import { useState } from "react";
 import useSWR from "swr";
 import { fetcher, Asset, apiService, ExplainResponse } from "@/lib/api";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { GlassCard } from "@/components/ui/GlassCard";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Badge } from "@/components/ui/Badge";
 import { MessageSquare, Bot, AlertCircle } from "lucide-react";
@@ -34,102 +34,104 @@ export default function ExplainPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="space-y-8 max-w-5xl mx-auto pt-8">
       <div>
-        <h1 className="text-3xl font-bold text-text">Explain Predictions</h1>
-        <p className="text-textMuted mt-1">Get LLM-generated rationale behind the model's forecasting</p>
+        <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-text via-text/80 to-text-muted tracking-tight font-sans">Explain Predictions</h1>
+        <p className="text-text-muted font-light tracking-wide mt-2">Get LLM-generated rationale behind the ST-GCN forecasting.</p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Select Asset</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-4">
-            <select
-              value={selectedSymbol}
-              onChange={(e) => setSelectedSymbol(e.target.value)}
-              className="flex-1 bg-surface border border-border rounded-md px-4 py-2 text-text focus:outline-none focus:ring-2 focus:ring-accent"
-              disabled={assetsLoading || isExplaining}
-            >
-              {assetsLoading ? (
-                <option>Loading assets...</option>
-              ) : (
-                assets?.map((asset) => (
-                  <option key={asset.id} value={asset.symbol}>
-                    {asset.symbol} - {asset.name}
-                  </option>
-                ))
-              )}
-            </select>
-            <button
-              onClick={handleExplain}
-              disabled={!selectedSymbol || isExplaining || assetsLoading}
-              className="bg-accent hover:bg-accent/80 text-white px-6 py-2 rounded-md font-semibold flex items-center gap-2 disabled:opacity-50 transition-colors"
-            >
-              <Bot size={20} />
-              {isExplaining ? "Analyzing..." : "Explain"}
-            </button>
-          </div>
-        </CardContent>
-      </Card>
+      <GlassCard variant="auto" asymmetric="lg" className="p-8 relative overflow-hidden">
+        {/* Glow */}
+        <div className="absolute top-0 right-0 w-64 h-64 bg-accent/5 rounded-full blur-[80px] pointer-events-none" />
+        
+        <h2 className="text-sm font-bold font-mono tracking-widest uppercase text-accent mb-6">Select Asset</h2>
+        <div className="flex flex-col sm:flex-row gap-4 relative z-10">
+          <select
+            value={selectedSymbol}
+            onChange={(e) => setSelectedSymbol(e.target.value)}
+            className="flex-1 bg-surface/50 border border-white/10 rounded-crypto-sm px-5 py-3 text-text focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/50 transition-all font-mono"
+            disabled={assetsLoading || isExplaining}
+          >
+            {assetsLoading ? (
+              <option>Loading assets...</option>
+            ) : (
+              assets?.map((asset) => (
+                <option key={asset.id} value={asset.symbol}>
+                  {asset.symbol} - {asset.name}
+                </option>
+              ))
+            )}
+          </select>
+          <button
+            onClick={handleExplain}
+            disabled={!selectedSymbol || isExplaining || assetsLoading}
+            className="glass bg-accent/20 hover:bg-accent/30 text-accent px-8 py-3 rounded-crypto-sm font-bold flex justify-center items-center gap-3 disabled:opacity-50 transition-all border border-accent/30 hover:shadow-[0_0_15px_rgba(var(--accent),0.2)] tracking-widest uppercase text-xs"
+          >
+            <Bot size={18} />
+            {isExplaining ? "Analyzing..." : "Explain Rationale"}
+          </button>
+        </div>
+      </GlassCard>
 
       {error && (
-        <div className="bg-danger/10 border border-danger/20 text-danger p-4 rounded-md flex items-center gap-3">
+        <div className="bg-danger/10 border border-danger/20 text-danger p-5 rounded-crypto flex items-center gap-3 animate-in fade-in slide-in-from-top-2 font-mono text-sm shadow-[0_0_15px_rgba(239,68,68,0.15)]">
           <AlertCircle size={20} />
           {error}
         </div>
       )}
 
       {isExplaining && (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="space-y-3">
-              <Skeleton className="h-6 w-1/3" />
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-5/6" />
+        <GlassCard variant="auto" asymmetric="lg" className="p-8">
+            <div className="flex items-center gap-3 mb-6">
+                <div className="w-5 h-5 rounded-full border-2 border-accent/20 border-t-accent animate-spin" />
+                <span className="text-xs font-mono tracking-widest uppercase text-accent animate-pulse">Generating neural interpretation...</span>
             </div>
-          </CardContent>
-        </Card>
+            <div className="space-y-4">
+              <Skeleton className="h-6 w-1/3 rounded-crypto-sm bg-white/5" />
+              <Skeleton className="h-4 w-full rounded-sm bg-white/5" />
+              <Skeleton className="h-4 w-full rounded-sm bg-white/5" />
+              <Skeleton className="h-4 w-5/6 rounded-sm bg-white/5" />
+            </div>
+        </GlassCard>
       )}
 
       {explanation && !isExplaining && (
-        <Card className="border-accent/30 shadow-[0_0_15px_rgba(99,102,241,0.1)]">
-          <CardHeader className="border-b border-border bg-surface/50 pb-4">
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2 text-xl">
-                <MessageSquare className="text-accent" />
+        <GlassCard variant="auto" asymmetric="xl" className="p-0 border-accent/30 shadow-[0_0_30px_rgba(var(--accent),0.1)] overflow-hidden animate-in fade-in slide-in-from-bottom-4">
+          <div className="border-b border-white/10 bg-surface/30 p-6 sm:p-8">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <h2 className="flex items-center gap-3 text-2xl font-black text-text font-sans tracking-tight">
+                <MessageSquare className="text-accent" size={24} />
                 Analysis for {explanation.symbol}
-              </CardTitle>
-              <Badge variant={explanation.direction.toLowerCase() === 'up' ? 'success' : 'destructive'}>
-                {explanation.direction.toUpperCase()}
-              </Badge>
+              </h2>
+              <div className={`px-4 py-1.5 rounded-crypto-sm text-xs font-bold uppercase tracking-widest border shadow-lg ${explanation.direction.toLowerCase().includes('up') ? 'bg-success/10 text-success border-success/30 shadow-success/20' : explanation.direction.toLowerCase().includes('down') ? 'bg-danger/10 text-danger border-danger/30 shadow-danger/20' : 'bg-text-muted/10 text-text-muted border-white/10'}`}>
+                {explanation.direction.replace('_', ' ')}
+              </div>
             </div>
-          </CardHeader>
-          <CardContent className="pt-6">
+          </div>
+          
+          <div className="p-6 sm:p-8">
             <div className="prose prose-invert max-w-none">
               {explanation.explanation.split('\n').map((paragraph, i) => (
-                <p key={i} className="text-text/90 leading-relaxed mb-4 last:mb-0">
+                <p key={i} className="text-text/90 leading-relaxed mb-6 last:mb-0 text-sm sm:text-base font-light tracking-wide">
                   {paragraph}
                 </p>
               ))}
             </div>
             
             {explanation.news_sources && explanation.news_sources.length > 0 && (
-              <div className="mt-6 pt-4 border-t border-border">
-                <div className="text-xs text-textMuted uppercase tracking-wider font-bold mb-2">Market Context</div>
-                <div className="flex flex-wrap gap-2">
+              <div className="mt-8 pt-6 border-t border-white/10">
+                <div className="text-[10px] text-text-muted uppercase tracking-widest font-mono font-bold mb-4">Market Context Sources</div>
+                <div className="flex flex-wrap gap-2.5">
                   {explanation.news_sources.map((source, idx) => (
-                    <Badge key={idx} variant="outline" className="text-textMuted bg-surface">
+                    <span key={idx} className="text-xs text-text-muted bg-surface/50 border border-white/5 px-3 py-1.5 rounded-crypto-sm hover:text-text hover:bg-white/5 transition-colors cursor-default">
                       {source}
-                    </Badge>
+                    </span>
                   ))}
                 </div>
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </GlassCard>
       )}
     </div>
   );

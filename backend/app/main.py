@@ -83,9 +83,8 @@ app.include_router(stream.router, prefix="/api")
 @app.on_event("startup")
 async def startup_event():
     import asyncio
-    from ml.pipelines.inference_pipeline import SYMBOLS
+    from app.api.routes.stream import SYMBOLS, prediction_broadcast_loop, screener_broadcast_loop
     from app.core.streams.binance_ws import binance_ws_loop, populate_static_features
-    from app.api.routes.stream import prediction_broadcast_loop, screener_broadcast_loop
     
     # Populate static cache using our synchronous DB session setup
     try:
@@ -95,10 +94,44 @@ async def startup_event():
     except Exception as e:
         print(f"Error populating static features: {e}")
         
+    async def auto_refresh_loop():
+        """Background task to run the scheduler automatically every hour."""
+        while True:
+            await asyncio.sleep(3600)  # Sleep for 1 hour
+            print("[Scheduler] Auto-running hourly full data refresh...")
+            try:
+                db = SessionLocal()
+                # 1. Refresh live technicals
+                try:
+                    from app.api.routes.screener import refresh_live_technicals
+                    refresh_live_technicals(db=db)
+                except Exception as e:
+                    print(f"[Scheduler] Technicals error: {e}")
+                
+                # 2. Clear response cache
+                try:
+                    from app.core.cache import _cache
+                    _cache.clear()
+                except Exception as e:
+                    print(f"[Scheduler] Cache error: {e}")
+                    
+                # 3. Trigger prediction broadcast
+                try:
+                    from app.api.routes.stream import FORCE_PREDICTION_BROADCAST
+                    import app.api.routes.stream as stream_module
+                    stream_module.FORCE_PREDICTION_BROADCAST = True
+                except Exception as e:
+                    print(f"[Scheduler] Broadcast error: {e}")
+            except Exception as e:
+                print(f"[Scheduler] Database session error: {e}")
+            finally:
+                db.close()
+        
     # Start the async background loops
     asyncio.create_task(binance_ws_loop(SYMBOLS))
     asyncio.create_task(prediction_broadcast_loop())
     asyncio.create_task(screener_broadcast_loop())
+    asyncio.create_task(auto_refresh_loop())
 
 @app.get("/health")
 async def health():

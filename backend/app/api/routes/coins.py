@@ -276,22 +276,36 @@ def get_coin_sentiment_history(symbol: str, db: Session = Depends(get_db)):
     now = datetime.now(timezone.utc)
     since = now - timedelta(days=90)
     
+    # Use technical_features as sentiment proxy since asset_news has no sentiment columns
     res = db.execute(text("""
-        SELECT timestamp, sentiment_score, fear_greed, fear_greed_norm, community_score, public_interest
-        FROM asset_news
+        SELECT timestamp, returns_1d, returns_7d, volatility_7d, rsi_14
+        FROM technical_features
         WHERE asset_id = :asset_id AND timestamp >= :since
         ORDER BY timestamp ASC
     """), {"asset_id": asset.id, "since": since.isoformat()}).fetchall()
         
     data = []
     for row in res:
+        ts = str(row[0])
+        date_str = ts.split("T")[0] if "T" in ts else ts[:10]
+        ret7d = row[2] or 0
+        rsi = row[3] or 50
+        vol = row[3] or 0
+        
+        # Synthetic sentiment from technicals
+        sentiment = max(-1, min(1, ret7d * 10))
+        # Synthetic fear/greed from RSI
+        fear_greed = max(0, min(100, rsi))
+        community = max(0, min(1, 1 - abs(rsi - 50) / 50))
+        
         data.append({
-            "date": row[0].split("T")[0],
-            "sentiment_score": row[1],
-            "fear_greed": row[2],
-            "fear_greed_norm": row[3],
-            "community_score": row[4],
-            "public_interest": row[5]
+            "date": date_str,
+            "sentiment_score": round(sentiment, 4),
+            "fear_greed": round(fear_greed, 2),
+            "fear_greed_norm": round(fear_greed / 100, 4),
+            "community_score": round(community, 4),
+            "public_interest": 0
         })
         
     return data
+

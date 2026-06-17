@@ -102,14 +102,15 @@ def screen_assets(
         live_cache = LIVE_OHLCV_CACHE.get(a.symbol)
         c_price = live_cache[-1]["close"] if live_cache else 0.0
         
-        # Build record
+        # Build record — convert decimal fraction to percentage
+        pct_change = (t_ret1d * 100) if t_ret1d else 0.0
         record = {
             "symbol": a.symbol,
             "name": a.name,
             "sector": a_sec,
             "market_cap_usd": a_mcap,
             "current_price": c_price,
-            "price_change_24h_pct": t_ret1d,
+            "price_change_24h_pct": round(pct_change, 2),
             "direction": p_dir,
             "confidence": p_conf,
             "volatility_regime": p_vol,
