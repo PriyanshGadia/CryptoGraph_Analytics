@@ -2,27 +2,28 @@
 Seeds predictions table with realistic mock data for all 50 assets.
 Run this once to populate the dashboard while the real model trains.
 """
-import os, random
+import os, random, json
+import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
-from dotenv import load_dotenv
-from supabase import create_client
 
-load_dotenv(Path(__file__).parent.parent / ".env")
-
-supabase = create_client(
-    os.environ["SUPABASE_URL"],
-    os.environ["SUPABASE_SERVICE_ROLE_KEY"]
-)
+DB_PATH = Path(__file__).parent.parent.parent.parent / "backend" / "cryptograph.db"
 
 DIRECTIONS = ["strong_up", "up", "neutral", "down", "strong_down"]
 VOLATILITY  = ["low", "medium", "high", "extreme"]
 DIRECTION_WEIGHTS = [0.15, 0.30, 0.25, 0.20, 0.10]
 
 def seed_predictions():
-    assets = supabase.table("assets").select("id, symbol").execute().data
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT id, symbol FROM assets")
+    assets = cursor.fetchall()
+
     if not assets:
         print("No assets found. Run binance_collector.py first.")
+        conn.close()
         return
 
     records = []
@@ -50,26 +51,30 @@ def seed_predictions():
             "fear_greed_norm": round(random.uniform(-0.1, 0.1), 4),
         }
 
-        records.append({
-            "asset_id":          asset["id"],
-            "timestamp":         now.isoformat(),
-            "predicted_at":      now.isoformat(),
-            "direction":         direction,
-            "confidence":        confidence,
-            "volatility_regime": volatility,
-            "shap_values":       shap_values,
-            "model_version":     "mock-v0.1"
-        })
+        records.append((
+            asset["id"],
+            now.isoformat(),
+            now.isoformat(),
+            direction,
+            confidence,
+            volatility,
+            json.dumps(shap_values),
+            "mock-v0.1"
+        ))
 
     # Delete any existing mock predictions first
-    supabase.table("predictions").delete().eq(
-        "model_version", "mock-v0.1"
-    ).execute()
+    cursor.execute("DELETE FROM predictions WHERE model_version = 'mock-v0.1'")
+    conn.commit()
 
-    supabase.table("predictions").insert(records).execute()
+    # Insert new predictions
+    cursor.executemany("""
+        INSERT INTO predictions (asset_id, timestamp, predicted_at, direction, confidence, volatility_regime, shap_values, model_version)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, records)
+    conn.commit()
 
     print(f"Seeded {len(records)} predictions for {len(assets)} assets")
-    print("Refresh your dashboard at http://localhost:3000")
+    conn.close()
 
 if __name__ == "__main__":
     seed_predictions()

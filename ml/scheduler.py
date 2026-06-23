@@ -2,11 +2,8 @@
 Scheduled data refresh for ST-GCN platform.
 Refresh intervals:
   OHLCV prices:    every 5 minutes  (Binance API)
-  Sentiment:       every 1 hour     (CoinGecko)
-  Fear & Greed:    every 1 hour     (Alternative.me)
   Technical feats: every 6 hours    (computed from OHLCV)
   Predictions:     every 24 hours   (mock inference)
-  Graph snapshots: every 24 hours   (correlation graph)
   Enrich assets:   every 24 hours   (sector + market cap from CoinGecko)
 """
 import time
@@ -26,37 +23,31 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler("scheduler.log", mode="a")
+        logging.FileHandler("scheduler.log", mode="a", encoding="utf-8")
     ]
 )
 log = logging.getLogger(__name__)
 
 INTERVALS = {
     "ohlcv":         300,     # 5 minutes
-    "fear_greed":    3600,    # 1 hour
-    "sentiment":     3600,    # 1 hour
     "features":      21600,   # 6 hours
     "predictions":   86400,   # 24 hours
-    "graph":         86400,   # 24 hours
     "enrich_assets": 86400,   # 24 hours - refreshes market cap daily
 }
 
 SCRIPTS = {
     "ohlcv":         "data/ingestion/binance_collector.py",
-    "fear_greed":    "data/ingestion/fear_greed_collector.py",
-    "sentiment":     "data/ingestion/sentiment_collector.py",
     "features":      "data/feature_engineering/technical_indicators.py",
     "predictions":   "pipelines/mock_inference.py",
-    "graph":         "pipelines/seed_graph_snapshots.py",
     "enrich_assets": "data/ingestion/enrich_assets.py",
 }
 
-last_run: dict[str, float] = {k: 0.0 for k in SCRIPTS}
-run_count: dict[str, int]  = {k: 0    for k in SCRIPTS}
+last_run = {k: 0.0 for k in SCRIPTS}
+run_count = {k: 0    for k in SCRIPTS}
 
 def run_script(name: str, path: str) -> bool:
     """Run a script. Returns True on success."""
-    log.info(f"▶ Starting: {name} ({path})")
+    log.info(f"Starting: {name} ({path})")
     start = time.time()
     try:
         result = subprocess.run(
@@ -68,17 +59,17 @@ def run_script(name: str, path: str) -> bool:
         elapsed = round(time.time() - start, 1)
         if result.returncode == 0:
             run_count[name] += 1
-            log.info(f"✅ Done: {name} in {elapsed}s (run #{run_count[name]})")
+            log.info(f"Done: {name} in {elapsed}s (run #{run_count[name]})")
             return True
         else:
-            log.error(f"❌ Failed: {name} after {elapsed}s\n"
+            log.error(f"Failed: {name} after {elapsed}s\n"
                       f"stderr: {result.stderr[-300:]}")
             return False
     except subprocess.TimeoutExpired:
-        log.error(f"⏱ Timeout: {name} exceeded 10 minutes")
+        log.error(f"Timeout: {name} exceeded 10 minutes")
         return False
     except Exception as e:
-        log.error(f"❌ Exception in {name}: {e}")
+        log.error(f"Exception in {name}: {e}")
         return False
 
 def format_next_run(name: str) -> str:
@@ -93,29 +84,26 @@ def format_next_run(name: str) -> str:
         return f"{remaining/3600:.1f}h"
 
 def print_status() -> None:
-    log.info("─── Scheduler Status ───────────────────────────────")
+    log.info("--- Scheduler Status -------------------------------")
     for name in SCRIPTS:
         next_in = format_next_run(name)
         runs    = run_count[name]
         log.info(f"  {name:<15} next in {next_in:<8} | runs: {runs}")
-    log.info("────────────────────────────────────────────────────")
+    log.info("----------------------------------------------------")
 
 def main() -> None:
-    log.info("🚀 ST-GCN Scheduler started")
-    log.info("Intervals: ohlcv=5min | sentiment=1hr | features=6hr | "
-             "predictions=24hr | graph=24hr | enrich_assets=24hr")
+    log.info("ST-GCN Scheduler started")
+    log.info("Intervals: ohlcv=5min | features=6hr | "
+             "predictions=24hr | enrich_assets=24hr")
     log.info("Press Ctrl+C to stop")
 
     # Run in this specific order on startup:
     # enrich_assets FIRST so sectors are set before any collector runs
     STARTUP_ORDER = [
         "enrich_assets",  # set sectors first
-        "fear_greed",
-        "sentiment",
         "ohlcv",          # now safe — sectors already exist
         "features",
         "predictions",
-        "graph",
     ]
 
     for name in STARTUP_ORDER:
@@ -123,7 +111,7 @@ def main() -> None:
         success = run_script(name, path)
         last_run[name] = time.time()
         if not success:
-            log.warning(f"Initial run of {name} failed — will retry at next interval")
+            log.warning(f"Initial run of {name} failed - will retry at next interval")
         time.sleep(10)  # stagger startup
 
     status_timer = time.time()
@@ -148,5 +136,5 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        log.info("⛔ Scheduler stopped by user")
+        log.info("Scheduler stopped by user")
         print_status()

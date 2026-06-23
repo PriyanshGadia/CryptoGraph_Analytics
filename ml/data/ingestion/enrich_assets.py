@@ -3,15 +3,10 @@ Enriches the assets table with sector classification and market cap from CoinGec
 Run once. No API key required.
 """
 import os, time, requests
+import sqlite3
 from pathlib import Path
-from dotenv import load_dotenv
-from supabase import create_client
 
-load_dotenv(Path(__file__).parent.parent.parent / ".env")
-supabase = create_client(
-    os.environ["SUPABASE_URL"],
-    os.environ["SUPABASE_SERVICE_ROLE_KEY"]
-)
+DB_PATH = Path(__file__).parent.parent.parent.parent / "backend" / "cryptograph.db"
 
 BASE = "https://api.coingecko.com/api/v3"
 
@@ -50,7 +45,12 @@ COIN_IDS = {
 }
 
 def enrich_assets():
-    assets = supabase.table("assets").select("id,symbol").execute().data
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT id, symbol FROM assets")
+    assets = cursor.fetchall()
 
     for asset in assets:
         symbol = asset["symbol"]
@@ -86,17 +86,18 @@ def enrich_assets():
             except Exception as e:
                 print(f"Error fetching {symbol}: {e}")
 
-        supabase.table("assets").update({
-            "sector": sector,
-            "market_cap_usd": market_cap,
-            "name": symbol
-        }).eq("id", asset["id"]).execute()
+        cursor.execute(
+            "UPDATE assets SET sector = ?, market_cap_usd = ?, name = ? WHERE id = ?",
+            (sector, market_cap, symbol, asset["id"])
+        )
+        conn.commit()
 
         print(f"Updated {symbol}: sector={sector}, market_cap=${market_cap:,.0f}"
               if market_cap else f"Updated {symbol}: sector={sector}, market_cap=None")
         time.sleep(1.5)
 
     print("Asset enrichment complete")
+    conn.close()
 
 if __name__ == "__main__":
     enrich_assets()
