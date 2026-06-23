@@ -7,7 +7,21 @@ Write-Host ""
 
 # Start Backend
 Write-Host "[*] Initializing Backend Server (FastAPI)..." -ForegroundColor Yellow
-Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"cd /d `"$PSScriptRoot\backend`" && set PYTHONPATH=`"$PSScriptRoot\backend;$PSScriptRoot`" && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload`"" -WindowStyle Normal
+$venvPython = "$PSScriptRoot\backend\venv\Scripts\python.exe"
+$venvValid = $false
+if (Test-Path $venvPython) {
+    $testVenv = & $venvPython --version 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        $venvValid = $true
+    }
+}
+
+if (-not $venvValid) {
+    Write-Host "[!] Virtual environment is missing or broken. Please run install_windows.ps1 first." -ForegroundColor Red
+    Pause
+    exit 1
+}
+Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"cd /d `"$PSScriptRoot\backend`" && set PYTHONPATH=`"$PSScriptRoot\backend;$PSScriptRoot`" && .\venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload`"" -WindowStyle Normal
 
 # Wait briefly
 Start-Sleep -Seconds 2

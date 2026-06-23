@@ -38,12 +38,51 @@ if (-not (Check-Command "node")) {
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $ScriptDir
 
+function Get-PythonExecutable {
+    $py = Get-Command "py" -ErrorAction SilentlyContinue
+    if ($py) { return "py -3" }
+
+    $python = Get-Command "python" -ErrorAction SilentlyContinue
+    if ($python -and $python.Length -gt 0) {
+        $test = & python --version 2>&1
+        if ($LASTEXITCODE -eq 0) { return "python" }
+    }
+
+    $wingetPath = "$env:LOCALAPPDATA\Programs\Python\Python311\python.exe"
+    if (Test-Path $wingetPath) { return "& `"$wingetPath`"" }
+
+    $wingetPath2 = "$env:PROGRAMFILES\Python311\python.exe"
+    if (Test-Path $wingetPath2) { return "& `"$wingetPath2`"" }
+
+    return $null
+}
+
 # 3. Setup Python Backend
 Write-Host "[*] Setting up Backend Environment..." -ForegroundColor Cyan
 Set-Location "$ScriptDir\backend"
-if (-not (Test-Path "venv")) {
-    Write-Host "    Creating virtual environment..."
-    python -m venv venv
+
+$pyCmd = Get-PythonExecutable
+if (-not $pyCmd) {
+    Write-Host "[!] Could not find a valid Python executable. If you just installed Python, please restart this terminal and run the script again." -ForegroundColor Red
+    Pause
+    exit 1
+}
+
+$venvValid = $false
+if (Test-Path "venv\Scripts\python.exe") {
+    $testVenv = & .\venv\Scripts\python.exe --version 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        $venvValid = $true
+    }
+}
+
+if (-not $venvValid) {
+    if (Test-Path "venv") {
+        Write-Host "    Found broken virtual environment, recreating..." -ForegroundColor Yellow
+        Remove-Item -Recurse -Force "venv"
+    }
+    Write-Host "    Creating virtual environment using $pyCmd..."
+    Invoke-Expression "$pyCmd -m venv venv"
 }
 Write-Host "    Installing Python requirements (this may take a while)..."
 .\venv\Scripts\python.exe -m pip install --upgrade pip > $null

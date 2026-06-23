@@ -13,20 +13,21 @@ pkg update -y && pkg upgrade -y
 
 echo "[*] Installing required binaries (Python, Node.js, Rust, Git, Build-essentials)..."
 # Rust and binutils are required on ARM to compile python wheels like cryptography or tokenizers
-pkg install python nodejs rust git binutils make clang libffi openssl -y
+pkg install python nodejs rust git binutils make clang libffi openssl cmake ninja pkg-config python-numpy python-pandas python-cryptography python-bcrypt -y
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
 echo "[*] Setting up Backend Virtual Environment..."
 cd "${DIR}/backend"
 if [ ! -d "venv" ]; then
-    python -m venv venv
+    python -m venv venv --system-site-packages
 fi
 source venv/bin/activate
 pip install --upgrade pip
 
 # Termux might struggle with pre-built wheels for some ML libraries.
-# Installing requirements...
+# We are using --system-site-packages so numpy, pandas, cryptography are already available.
+# Installing remaining requirements...
 MATHLIB=m pip install -r requirements.txt
 
 echo "[*] Setting up Frontend..."

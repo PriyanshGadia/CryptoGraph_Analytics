@@ -92,3 +92,18 @@ async def trigger_refresh_all(db: Session = Depends(get_db)):
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
+
+@router.post("/scheduler/start")
+async def start_scheduler():
+    """Starts the background scheduler."""
+    import subprocess
+    from pathlib import Path
+    
+    scheduler_path = Path("ml/scheduler.py").resolve()
+    
+    try:
+        # Start detached
+        subprocess.Popen(["python", str(scheduler_path)], cwd=str(scheduler_path.parent))
+        return {"status": "success", "message": "Scheduler started"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}

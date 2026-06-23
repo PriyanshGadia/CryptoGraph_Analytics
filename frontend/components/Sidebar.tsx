@@ -16,7 +16,7 @@ export function Sidebar() {
   const handleSync = async () => {
     setSyncing(true);
     try {
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/status/refresh-all`, { method: "POST" });
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/status/scheduler/start`, { method: "POST" });
     } catch (e) {
       console.error(e);
     }
@@ -64,24 +64,26 @@ export function Sidebar() {
   ];
 
   return (
-    <aside className={`absolute md:relative glass-panel flex flex-col transition-all duration-500 z-50 rounded-tl-[40px] rounded-br-[40px] rounded-tr-[10px] rounded-bl-[10px] my-2 shrink-0 ${collapsed ? "w-20 -translate-x-[120%] md:translate-x-0" : "w-64 translate-x-0"} h-[calc(100vh-1rem)] md:h-auto`}>
+    <aside className={`absolute md:relative glass-panel flex flex-col transition-all duration-75 z-50 rounded-tl-[40px] rounded-br-[40px] rounded-tr-[10px] rounded-bl-[10px] my-2 shrink-0 ${collapsed ? "w-20 -translate-x-[120%] md:translate-x-0" : "w-64 translate-x-0"} h-[calc(100vh-1rem)] md:h-auto`}>
       
       {/* Collapse Toggle */}
       <button 
         onClick={() => setCollapsed(!collapsed)}
-        className="absolute -right-3 top-10 bg-accent hover:scale-110 text-white p-1 rounded-crypto-sm shadow-[0_0_15px_rgba(var(--accent),0.5)] z-50 transition-all duration-300"
+        className="absolute -right-3 top-10 bg-accent hover:scale-110 text-white p-1 rounded-crypto-sm shadow-[0_0_15px_rgba(var(--accent),0.5)] z-50 transition-all duration-75"
       >
         {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
       </button>
 
       <div className={`p-6 border-b border-white/5 flex flex-col ${collapsed ? 'items-center' : ''}`}>
         {!collapsed ? (
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex flex-col mb-6 gap-3 w-full">
                 <div className="flex flex-col">
-                    <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-br from-text to-text-muted tracking-tight leading-none">ST-GCN</h1>
+                    <h1 className="text-2xl font-black text-text tracking-tight leading-none">ST-GCN</h1>
                     <span className="text-[10px] text-accent tracking-[0.3em] font-bold uppercase mt-1">Intelligence</span>
                 </div>
-                <LivePulse />
+                <div className="w-full">
+                    <LivePulse />
+                </div>
             </div>
         ) : (
             <div className="w-10 h-10 rounded-crypto-sm bg-gradient-to-tr from-accent to-orange-500 flex items-center justify-center text-white font-bold mb-6 shadow-lg shadow-accent/20">
@@ -109,7 +111,7 @@ export function Sidebar() {
             <div className="space-y-1">
               {group.items.map((item: any, iIdx) => {
                 const isActive = item.href ? pathname === item.href : false;
-                const commonClasses = `flex items-center gap-4 px-3 py-2.5 transition-all duration-300 group ${
+                const commonClasses = `flex items-center gap-4 px-3 py-2.5 transition-all duration-75 group ${
                   isActive 
                     ? "bg-accent/10 text-text border border-accent/30 shadow-[0_0_15px_rgba(var(--accent),0.1)] rounded-crypto" 
                     : "text-text-muted hover:text-text hover:bg-white/5 hover:translate-x-1 rounded-crypto-sm cursor-pointer"
@@ -117,7 +119,7 @@ export function Sidebar() {
                 
                 const content = (
                   <>
-                    <div className={`transition-all duration-300 ${isActive ? 'text-accent drop-shadow-[0_0_8px_rgba(var(--accent),0.5)] scale-110' : 'group-hover:text-accent group-hover:scale-110'}`}>
+                    <div className={`transition-all duration-75 ${isActive ? 'text-accent drop-shadow-[0_0_8px_rgba(var(--accent),0.5)] scale-110' : 'group-hover:text-accent group-hover:scale-110'}`}>
                         {item.icon}
                     </div>
                     {!collapsed && <span className="text-sm tracking-wide font-medium">{item.name}</span>}
