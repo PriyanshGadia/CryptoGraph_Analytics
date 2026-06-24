@@ -6,20 +6,24 @@ echo "==================================================="
 echo ""
 
 echo "[*] Requesting storage permissions..."
-termux-setup-storage
+termux-setup-storage || true
 
 echo "[*] Updating package list..."
 pkg update -y && pkg upgrade -y
 
 echo "[*] Installing required binaries (Python, Node.js, Rust, Git, Build-essentials)..."
-# Rust and binutils are required on ARM to compile python wheels like cryptography or tokenizers
-# python-numpy and python-pandas are prebuilt Termux packages — much faster than pip
 pkg install python nodejs rust git binutils make clang libffi openssl cmake ninja pkg-config -y
 
-# Install prebuilt scientific packages from Termux repos (avoids compiling from source)
+# Install prebuilt scientific packages into Termux's system Python
+# (avoids compiling numpy/pandas/cryptography from source — saves 30+ min)
+echo "[*] Installing system-level Python packages..."
 pip install numpy pandas cryptography 2>/dev/null || true
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+
+# Use Termux's $TMPDIR (writable), NOT /tmp (permission denied on Android)
+TERMUX_TMP="${TMPDIR:-$PREFIX/tmp}"
+mkdir -p "$TERMUX_TMP"
 
 # ===================================================================
 # BACKEND SETUP
@@ -27,10 +31,30 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 echo "[*] Setting up Backend Virtual Environment..."
 cd "${DIR}/backend"
 
-# Use --system-site-packages so Termux's prebuilt numpy/pandas/cryptography are available
+# If venv exists but was NOT created with --system-site-packages
+# (e.g. from a previous install_unix.sh run), nuke it and recreate.
+NEEDS_RECREATE=false
+if [ -d "venv" ]; then
+    if [ -f "venv/pyvenv.cfg" ]; then
+        SSP=$(grep -i "include-system-site-packages" venv/pyvenv.cfg | awk -F= '{print $2}' | tr -d ' ')
+        if [ "$SSP" != "true" ]; then
+            echo "    [!] Existing venv lacks system-site-packages. Recreating..."
+            NEEDS_RECREATE=true
+        fi
+    else
+        NEEDS_RECREATE=true
+    fi
+fi
+
+if [ "$NEEDS_RECREATE" = true ]; then
+    rm -rf venv
+fi
+
 if [ ! -d "venv" ]; then
+    echo "    Creating virtual environment with --system-site-packages..."
     python -m venv venv --system-site-packages
 fi
+
 source venv/bin/activate
 pip install --upgrade pip
 
@@ -39,11 +63,11 @@ pip install --upgrade pip
 #   - Remove 'ccxt' (depends on coincurve which fails to build on ARM64)
 #   - Remove packages already provided by Termux system (numpy, pandas, cryptography)
 echo "[*] Generating Termux-compatible requirements..."
-grep -viE '^(prophet|ccxt|numpy|pandas|cryptography)' requirements.txt > /tmp/requirements_termux.txt
+grep -viE '^(prophet|ccxt|numpy|pandas|cryptography)' requirements.txt > "${TERMUX_TMP}/requirements_termux.txt"
 
 echo "[*] Installing Python requirements (this may take a while)..."
-MATHLIB=m pip install -r /tmp/requirements_termux.txt
-rm -f /tmp/requirements_termux.txt
+MATHLIB=m pip install -r "${TERMUX_TMP}/requirements_termux.txt"
+rm -f "${TERMUX_TMP}/requirements_termux.txt"
 
 # Install ccxt WITHOUT coincurve (coincurve is only needed for certain exchange auth)
 echo "[*] Installing ccxt without native crypto dependencies..."
@@ -59,21 +83,43 @@ deactivate
 echo "[*] Setting up Frontend..."
 cd "${DIR}/frontend"
 
-# Next.js 14.2.x tries to download @next/swc-android-arm64 which doesn't exist.
-# We must:
-#   1. Set NEXT_PRIVATE_SKIP_SWC_DOWNLOAD to prevent the fatal 404 download
-#   2. Create a .babelrc to tell Next.js to use Babel instead of SWC
-# NOTE: .babelrc is NOT checked into git — it's only created on Termux at runtime.
-export NEXT_PRIVATE_SKIP_SWC_DOWNLOAD=1
-
-if [ ! -f ".babelrc" ]; then
-    echo "[*] Creating Babel config for Termux compatibility (SWC unavailable on ARM64)..."
-    echo '{ "presets": ["next/babel"] }' > .babelrc
-fi
-
 if [ ! -d "node_modules" ]; then
     npm install
 fi
+
+# ---------------------------------------------------------------
+# CRITICAL: Fix Next.js SWC on Android ARM64
+# ---------------------------------------------------------------
+# Next.js 14.2.x tries to download @next/swc-android-arm64 from npm
+# at dev-server startup. That package does NOT exist → fatal 404.
+#
+# The env var NEXT_PRIVATE_SKIP_SWC_DOWNLOAD is IGNORED by 14.2.x.
+# The .babelrc approach conflicts with next/font and CSS modules.
+#
+# REAL FIX: Install @next/swc-wasm-nodejs (universal WebAssembly build).
+# Next.js checks for WASM fallback BEFORE attempting the native download.
+# This gives us a fully working SWC on any architecture — no hacks needed.
+# ---------------------------------------------------------------
+NEXT_VERSION=$(node -e "try{console.log(require('./node_modules/next/package.json').version)}catch(e){console.log('')}")
+if [ -n "$NEXT_VERSION" ]; then
+    if [ ! -d "node_modules/@next/swc-wasm-nodejs" ]; then
+        echo "[*] Installing SWC WASM fallback for ARM64 (v${NEXT_VERSION})..."
+        npm install "@next/swc-wasm-nodejs@${NEXT_VERSION}" --save-optional 2>/dev/null || {
+            echo "    [!] Exact WASM version not found, trying latest 14.2.x..."
+            npm install "@next/swc-wasm-nodejs@^14.2.0" --save-optional 2>/dev/null || {
+                echo "    [!] WASM SWC unavailable — creating stub to prevent download crash..."
+                mkdir -p "node_modules/@next/swc-android-arm64"
+                echo "{\"name\":\"@next/swc-android-arm64\",\"version\":\"${NEXT_VERSION}\",\"main\":\"index.js\"}" \
+                    > "node_modules/@next/swc-android-arm64/package.json"
+                echo "module.exports = {};" > "node_modules/@next/swc-android-arm64/index.js"
+            }
+        }
+    fi
+fi
+
+# Clean up any leftover .babelrc from previous attempts
+# (not needed with WASM SWC — and it conflicts with CSS modules)
+rm -f .babelrc
 
 echo ""
 echo "[*] Launching Servers..."
@@ -86,9 +132,9 @@ source venv/bin/activate
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 &
 BACKEND_PID=$!
 
-# Start frontend in background (with SWC download disabled)
+# Start frontend in background
 cd "${DIR}/frontend"
-NEXT_PRIVATE_SKIP_SWC_DOWNLOAD=1 npm run dev &
+npm run dev &
 FRONTEND_PID=$!
 
 echo "[*] Servers are starting..."
