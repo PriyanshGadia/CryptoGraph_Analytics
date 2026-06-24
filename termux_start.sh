@@ -112,7 +112,7 @@ BACKEND_PID=$!
 
 # Start frontend in background
 cd "${DIR}/frontend"
-npm run dev -- -H 0.0.0.0 &
+npm run dev -- -H 0.0.0.0 --webpack &
 FRONTEND_PID=$!
 
 echo "[*] Servers are starting..."
