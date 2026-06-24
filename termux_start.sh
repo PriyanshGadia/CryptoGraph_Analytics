@@ -90,17 +90,14 @@ fi
 # ---------------------------------------------------------------
 # CRITICAL: Fix Next.js SWC on Android ARM64
 # ---------------------------------------------------------------
-# Next.js 14.2.x tries to download @next/swc-android-arm64 from npm.
-# That package does NOT exist -> fatal 404.
-# We force Babel compilation by providing a .babelrc.
-# (Since we removed next/font from layout.tsx, this works perfectly).
+# Next.js 14.2.x fatal crashes on Android if it cannot load a native SWC binary.
+# We fixed this by explicitly adding @next/swc-wasm-nodejs to package.json.
+# Next.js will automatically detect and load this WebAssembly fallback.
 # ---------------------------------------------------------------
 export NEXT_PRIVATE_SKIP_SWC_DOWNLOAD=1
 
-if [ ! -f ".babelrc" ]; then
-    echo "[*] Creating Babel config for Termux compatibility (SWC unavailable on ARM64)..."
-    echo '{ "presets": ["next/babel"] }' > .babelrc
-fi
+# Clean up any old .babelrc to ensure SWC WASM is strictly used
+rm -f .babelrc
 
 echo ""
 echo "[*] Launching Servers..."
