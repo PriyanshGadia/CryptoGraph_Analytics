@@ -90,36 +90,17 @@ fi
 # ---------------------------------------------------------------
 # CRITICAL: Fix Next.js SWC on Android ARM64
 # ---------------------------------------------------------------
-# Next.js 14.2.x tries to download @next/swc-android-arm64 from npm
-# at dev-server startup. That package does NOT exist → fatal 404.
-#
-# The env var NEXT_PRIVATE_SKIP_SWC_DOWNLOAD is IGNORED by 14.2.x.
-# The .babelrc approach conflicts with next/font and CSS modules.
-#
-# REAL FIX: Install @next/swc-wasm-nodejs (universal WebAssembly build).
-# Next.js checks for WASM fallback BEFORE attempting the native download.
-# This gives us a fully working SWC on any architecture — no hacks needed.
+# Next.js 14.2.x tries to download @next/swc-android-arm64 from npm.
+# That package does NOT exist -> fatal 404.
+# We force Babel compilation by providing a .babelrc.
+# (Since we removed next/font from layout.tsx, this works perfectly).
 # ---------------------------------------------------------------
-NEXT_VERSION=$(node -e "try{console.log(require('./node_modules/next/package.json').version)}catch(e){console.log('')}")
-if [ -n "$NEXT_VERSION" ]; then
-    if [ ! -d "node_modules/@next/swc-wasm-nodejs" ]; then
-        echo "[*] Installing SWC WASM fallback for ARM64 (v${NEXT_VERSION})..."
-        npm install "@next/swc-wasm-nodejs@${NEXT_VERSION}" --save-optional 2>/dev/null || {
-            echo "    [!] Exact WASM version not found, trying latest 14.2.x..."
-            npm install "@next/swc-wasm-nodejs@^14.2.0" --save-optional 2>/dev/null || {
-                echo "    [!] WASM SWC unavailable — creating stub to prevent download crash..."
-                mkdir -p "node_modules/@next/swc-android-arm64"
-                echo "{\"name\":\"@next/swc-android-arm64\",\"version\":\"${NEXT_VERSION}\",\"main\":\"index.js\"}" \
-                    > "node_modules/@next/swc-android-arm64/package.json"
-                echo "module.exports = {};" > "node_modules/@next/swc-android-arm64/index.js"
-            }
-        }
-    fi
-fi
+export NEXT_PRIVATE_SKIP_SWC_DOWNLOAD=1
 
-# Clean up any leftover .babelrc from previous attempts
-# (not needed with WASM SWC — and it conflicts with CSS modules)
-rm -f .babelrc
+if [ ! -f ".babelrc" ]; then
+    echo "[*] Creating Babel config for Termux compatibility (SWC unavailable on ARM64)..."
+    echo '{ "presets": ["next/babel"] }' > .babelrc
+fi
 
 echo ""
 echo "[*] Launching Servers..."
@@ -134,7 +115,7 @@ BACKEND_PID=$!
 
 # Start frontend in background
 cd "${DIR}/frontend"
-npm run dev &
+npm run dev -- -H 0.0.0.0 &
 FRONTEND_PID=$!
 
 echo "[*] Servers are starting..."
