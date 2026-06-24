@@ -20,16 +20,6 @@ def run_lstm_forecast(
       upper_bound:     list of 7 upper confidence prices (95%)
       model_used:      "LSTM"
     """
-    import torch
-    import torch.nn as nn
-    
-    # Hardware Optimizations for CPU Training Speed
-    import os
-    num_cores = os.cpu_count() or 4
-    torch.set_num_threads(num_cores)
-    if hasattr(torch.backends, 'mkldnn') and torch.backends.mkldnn.is_available():
-        torch.backends.mkldnn.enabled = True
-    
     # Normalize prices
     price_array = prices.values.astype(np.float32)
     price_min   = price_array.min()
@@ -38,6 +28,29 @@ def run_lstm_forecast(
     if price_range == 0:
         price_range = 1.0
     normalized  = (price_array - price_min) / price_range
+    
+    try:
+        import torch
+        import torch.nn as nn
+        
+        # Hardware Optimizations for CPU Training Speed
+        import os
+        num_cores = os.cpu_count() or 4
+        torch.set_num_threads(num_cores)
+        if hasattr(torch.backends, 'mkldnn') and torch.backends.mkldnn.is_available():
+            torch.backends.mkldnn.enabled = True
+    except ModuleNotFoundError:
+        # Fallback if torch is not installed in the FastAPI environment
+        last_price = price_array[-1]
+        trend = (price_array[-1] - price_array[-7]) / 7 if len(price_array) >= 7 else 0
+        forecast = [last_price + trend * i for i in range(1, forecast_days + 1)]
+        spread = np.std(np.diff(price_array)) * 2 if len(price_array) > 1 else price_range * 0.05
+        return {
+            "forecast_prices": [round(float(p), 6) for p in forecast],
+            "lower_bound":     [round(float(p - spread), 6) for p in forecast],
+            "upper_bound":     [round(float(p + spread), 6) for p in forecast],
+            "model_used":      "naive_trend (torch missing)"
+        }
     
     # Prepare sequences: lookback=14 days to predict next 1 day
     LOOKBACK = 14

@@ -43,7 +43,8 @@ async def stream_ticker(websocket: WebSocket, symbol: str):
         asset = db.query(Asset).filter(Asset.symbol == sym).first()
         db.close()
         
-        static_price = asset.current_price if asset else 0.0
+        cache_list = LIVE_OHLCV_CACHE.get(sym)
+        static_price = cache_list[-1]["close"] if cache_list and len(cache_list) > 0 else 0.0
         
         # Send initial static price immediately to activate UI 'Live' indicators
         await websocket.send_json({
