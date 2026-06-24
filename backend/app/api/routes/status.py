@@ -71,8 +71,8 @@ async def trigger_refresh_all(db: Session = Depends(get_db)):
     # 3. Trigger prediction inference pipeline
     try:
         import subprocess
-        subprocess.Popen(["python", "ml/pipelines/inference_pipeline.py"])
-        results["inference"] = "pipeline triggered"
+        subprocess.run(["python", "ml/pipelines/inference_pipeline.py"], check=True)
+        results["inference"] = "pipeline completed"
     except Exception as e:
         results["inference"] = f"error: {e}"
         

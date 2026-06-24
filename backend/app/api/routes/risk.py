@@ -42,7 +42,7 @@ def get_risk_data(db: Session = Depends(get_db)):
 
     # Calculate global confidence
     valid_confidences = [p.confidence for p in latest_preds if p.confidence is not None]
-    global_confidence = float(np.mean(valid_confidences) * 100) if valid_confidences else 0.0
+    global_confidence = float(np.mean(valid_confidences)) if valid_confidences else 0.0
 
     # 3. Get real volatility data from technical_features
     assets = db.query(Asset).all()
