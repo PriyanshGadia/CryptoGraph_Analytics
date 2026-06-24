@@ -11,6 +11,8 @@ export default function Dashboard() {
   const { data: statusData } = useSWR("/api/status", fetcher);
   const { data: riskData } = useSWR("/api/risk", fetcher);
   const { data: assets } = useSWR("/api/assets", fetcher);
+  const { data: graphData } = useSWR("/api/graph/latest", fetcher);
+  
   
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -59,12 +61,12 @@ export default function Dashboard() {
             <div className="flex flex-wrap justify-center gap-4">
                 <div className="w-32 h-32 rounded-full glass border border-accent/40 shadow-[0_0_30px_rgba(var(--accent),0.15)] flex flex-col items-center justify-center gap-1 animate-[float_4s_ease-in-out_infinite]">
                     <Activity size={20} className="text-accent" />
-                    <span className="text-2xl font-mono font-bold text-text">{statusData?.active_nodes || 0}</span>
+                    <span className="text-2xl font-mono font-bold text-text">{graphData?.nodes?.length || 0}</span>
                     <span className="text-[9px] uppercase tracking-widest font-mono text-text-muted">Nodes</span>
                 </div>
                 <div className="w-28 h-28 rounded-full glass border border-success/40 shadow-[0_0_30px_rgba(34,197,94,0.15)] flex flex-col items-center justify-center gap-1 mt-12 animate-[float_5s_ease-in-out_infinite_reverse]">
                     <Network size={18} className="text-success" />
-                    <span className="text-xl font-mono font-bold text-text">{statusData?.total_edges || 0}</span>
+                    <span className="text-xl font-mono font-bold text-text">{graphData?.edges?.length || 0}</span>
                     <span className="text-[8px] uppercase tracking-widest font-mono text-text-muted">Edges</span>
                 </div>
                 <div className="w-24 h-24 rounded-full glass border border-warning/40 shadow-[0_0_20px_rgba(245,158,11,0.15)] flex flex-col items-center justify-center gap-1 mt-4 animate-[float_3s_ease-in-out_infinite_0.5s]">

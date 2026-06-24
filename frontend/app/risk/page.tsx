@@ -182,7 +182,7 @@ export default function RiskPage() {
                       <Tooltip 
                         contentStyle={{ backgroundColor: "rgba(10, 10, 15, 0.9)", borderColor: "rgba(255, 255, 255, 0.1)", color: "#f1f5f9", borderRadius: "12px", backdropFilter: "blur(10px)" }} 
                         itemStyle={{ fontFamily: 'monospace', fontWeight: 'bold' }}
-                        formatter={(v: number) => [`${v.toFixed(2)}%`, "Volatility"]} 
+                        formatter={(v: any) => [`${Number(v).toFixed(2)}%`, "Volatility"]} 
                       />
                       <Bar dataKey="volatility" fill="rgb(var(--accent))" radius={[4, 4, 0, 0]} className="drop-shadow-[0_0_5px_rgba(var(--accent),0.5)]" />
                     </BarChart>

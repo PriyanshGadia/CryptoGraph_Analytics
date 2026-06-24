@@ -16,11 +16,12 @@ export function Sidebar() {
   const handleSync = async () => {
     setSyncing(true);
     try {
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/status/scheduler/start`, { method: "POST" });
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/status/refresh-all`, { method: "POST" });
+      window.location.reload();
     } catch (e) {
       console.error(e);
+      setSyncing(false);
     }
-    setTimeout(() => setSyncing(false), 2000);
   };
 
   const navGroups = [
@@ -76,12 +77,12 @@ export function Sidebar() {
 
       <div className={`p-6 border-b border-white/5 flex flex-col ${collapsed ? 'items-center' : ''}`}>
         {!collapsed ? (
-            <div className="flex flex-col mb-6 gap-3 w-full">
+            <div className="flex flex-col mb-6 gap-4 w-full">
                 <div className="flex flex-col">
-                    <h1 className="text-2xl font-black text-text tracking-tight leading-none">ST-GCN</h1>
-                    <span className="text-[10px] text-accent tracking-[0.3em] font-bold uppercase mt-1">Intelligence</span>
+                    <h1 className="text-xl font-black text-text tracking-tight whitespace-nowrap">ST-GCN</h1>
+                    <span className="text-[10px] text-accent tracking-[0.2em] font-bold uppercase whitespace-nowrap">Intelligence</span>
                 </div>
-                <div className="w-full">
+                <div className="w-full overflow-hidden">
                     <LivePulse />
                 </div>
             </div>

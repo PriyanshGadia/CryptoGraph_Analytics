@@ -397,7 +397,7 @@ export default function CorrelationsPage() {
                     cursor={{fill: 'rgba(255,255,255,0.05)'}} 
                     contentStyle={{ backgroundColor: "rgba(10, 10, 15, 0.9)", borderColor: "rgba(255, 255, 255, 0.1)", borderRadius: "12px", color: "#fff", backdropFilter: "blur(10px)" }} 
                     itemStyle={{ fontFamily: 'monospace', fontWeight: 'bold' }}
-                    formatter={(value: number) => [value.toFixed(4), 'Affinity Score']}
+                    formatter={(value: any) => [Number(value).toFixed(4), 'Affinity Score']}
                   />
                   <ReferenceLine x={0} stroke="rgba(255,255,255,0.1)" />
                   <Bar 

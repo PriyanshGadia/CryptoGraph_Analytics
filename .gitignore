@@ -54,6 +54,8 @@ out/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+# Termux-only: .babelrc is generated at runtime for ARM64 Babel fallback
+frontend/.babelrc
 
 # macOS
 .DS_Store

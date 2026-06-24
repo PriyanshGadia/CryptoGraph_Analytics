@@ -229,7 +229,7 @@ export default function SentimentPage() {
                   contentStyle={{ backgroundColor: "rgba(10, 10, 15, 0.9)", borderColor: "rgba(255, 255, 255, 0.1)", borderRadius: "12px", color: "#fff", backdropFilter: "blur(10px)" }} 
                   itemStyle={{ fontFamily: 'monospace', fontWeight: 'bold' }}
                   labelStyle={{ color: 'rgba(255,255,255,0.5)', marginBottom: '8px' }}
-                  formatter={(val: number, name: string) => [name === 'btc_price' ? `$${val.toLocaleString()}` : val, name === 'btc_price' ? 'BTC Price' : 'Index Level']}
+                  formatter={(val: any, name: any) => [name === 'btc_price' ? `$${Number(val).toLocaleString()}` : val, name === 'btc_price' ? 'BTC Price' : 'Index Level']}
                 />
                 <Area yAxisId="right" type="monotone" dataKey="fear_greed" fill="url(#colorFG)" stroke="none" fillOpacity={0.15} />
                 <Line yAxisId="left" type="monotone" dataKey="btc_price" stroke="#f1f5f9" strokeWidth={3} dot={false} className="drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]" />
@@ -257,7 +257,7 @@ export default function SentimentPage() {
                     cursor={{fill: 'rgba(255,255,255,0.05)'}} 
                     contentStyle={{ backgroundColor: "rgba(10, 10, 15, 0.9)", borderColor: "rgba(255, 255, 255, 0.1)", borderRadius: "12px", color: "#fff", backdropFilter: "blur(10px)" }}
                     itemStyle={{ fontFamily: 'monospace', fontWeight: 'bold' }}
-                    formatter={(v: number, n: string, props: any) => [`${v > 0 ? '+' : ''}${v.toFixed(3)} (${props.payload.asset_count} nodes)`, 'Vector']}
+                    formatter={(v: any, n: any, props: any) => [`${v > 0 ? '+' : ''}${Number(v).toFixed(3)} (${props.payload.asset_count} nodes)`, 'Vector']}
                   />
                   <ReferenceLine x={0} stroke="rgba(255,255,255,0.2)" strokeDasharray="3 3" />
                   <Bar dataKey="avg_sentiment" radius={[0, 4, 4, 0]} barSize={20}>

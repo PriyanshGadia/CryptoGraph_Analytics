@@ -40,6 +40,10 @@ def get_risk_data(db: Session = Depends(get_db)):
     else:
         regime = "sideways"
 
+    # Calculate global confidence
+    valid_confidences = [p.confidence for p in latest_preds if p.confidence is not None]
+    global_confidence = float(np.mean(valid_confidences) * 100) if valid_confidences else 0.0
+
     # 3. Get real volatility data from technical_features
     assets = db.query(Asset).all()
     asset_map = {a.id: a for a in assets}
@@ -161,6 +165,7 @@ def get_risk_data(db: Session = Depends(get_db)):
         "down_pct": round(down_count / total * 100, 1),
         "neutral_pct": round((total - up_count - down_count) / total * 100, 1),
         "total_assets_monitored": total,
+        "global_confidence": round(global_confidence, 2),
     }
 
 

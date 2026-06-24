@@ -48,7 +48,7 @@ class AssetNews(Base):
     headline = Column(String, nullable=False)
     source = Column(String)
     published_at = Column(DateTime(timezone=True))
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     asset = relationship("Asset", back_populates="news")
 
@@ -58,7 +58,7 @@ class OHLCV(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     asset_id = Column(String, ForeignKey("assets.id", ondelete="CASCADE"), nullable=False)
-    timestamp = Column(DateTime(timezone=True), nullable=False)
+    timestamp = Column(DateTime(timezone=True), nullable=False, index=True)
     open = Column(Float)
     high = Column(Float)
     low = Column(Float)
@@ -73,7 +73,7 @@ class Prediction(Base):
     id = Column(Integer, primary_key=True, index=True)
     asset_id = Column(String, ForeignKey("assets.id", ondelete="CASCADE"), nullable=False)
     timestamp = Column(DateTime(timezone=True), nullable=False)
-    predicted_at = Column(DateTime(timezone=True), server_default=func.now())
+    predicted_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     direction = Column(String)
     confidence = Column(Float)
     volatility_regime = Column(String)
