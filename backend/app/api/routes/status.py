@@ -71,7 +71,17 @@ async def trigger_refresh_all(db: Session = Depends(get_db)):
     # 3. Trigger prediction inference pipeline
     try:
         import subprocess
-        subprocess.run(["python", "ml/pipelines/inference_pipeline.py"], check=True)
+        from pathlib import Path
+        import os
+        
+        # Resolve the root directory (CryptoGraph_Analytics)
+        root_dir = Path(__file__).resolve().parent.parent.parent.parent.parent
+        script_path = root_dir / "ml" / "pipelines" / "inference_pipeline.py"
+        
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(root_dir)
+        
+        subprocess.run(["python", str(script_path)], check=True, cwd=str(root_dir), env=env)
         results["inference"] = "pipeline completed"
     except Exception as e:
         results["inference"] = f"error: {e}"
@@ -96,14 +106,19 @@ async def trigger_refresh_all(db: Session = Depends(get_db)):
 @router.post("/scheduler/start")
 async def start_scheduler():
     """Starts the background scheduler."""
-    import subprocess
-    from pathlib import Path
-    
-    scheduler_path = Path("ml/scheduler.py").resolve()
-    
     try:
+        import subprocess
+        from pathlib import Path
+        import os
+        
+        root_dir = Path(__file__).resolve().parent.parent.parent.parent.parent
+        scheduler_path = root_dir / "ml" / "scheduler.py"
+        
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(root_dir)
+        
         # Start detached
-        subprocess.Popen(["python", str(scheduler_path)], cwd=str(scheduler_path.parent))
+        subprocess.Popen(["python", str(scheduler_path)], cwd=str(root_dir), env=env)
         return {"status": "success", "message": "Scheduler started"}
     except Exception as e:
         return {"status": "error", "message": str(e)}

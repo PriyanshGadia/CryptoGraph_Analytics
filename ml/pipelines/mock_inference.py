@@ -36,7 +36,7 @@ def seed_predictions():
         if asset["symbol"] in SKIP_SYMBOLS:
             continue
         direction  = random.choices(DIRECTIONS, weights=DIRECTION_WEIGHTS, k=1)[0]
-        confidence = round(random.uniform(0.55, 0.95), 4)
+        confidence = round(random.uniform(55.0, 95.0), 2)
         volatility = random.choices(
             VOLATILITY,
             weights=[0.3, 0.4, 0.2, 0.1],
