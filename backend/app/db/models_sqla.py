@@ -67,6 +67,24 @@ class OHLCV(Base):
 
     asset = relationship("Asset", back_populates="ohlcv")
 
+class TechnicalFeature(Base):
+    __tablename__ = "technical_features"
+    __table_args__ = (UniqueConstraint('asset_id', 'timestamp', name='_tech_asset_timestamp_uc'),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    asset_id = Column(String, ForeignKey("assets.id", ondelete="CASCADE"), nullable=False)
+    timestamp = Column(DateTime(timezone=True), nullable=False, index=True)
+    rsi_14 = Column(Float)
+    returns_1d = Column(Float)
+    returns_7d = Column(Float)
+    volatility_7d = Column(Float)
+    macd = Column(Float)
+    macd_signal = Column(Float)
+    atr_14 = Column(Float)
+    bb_width = Column(Float)
+
+    asset = relationship("Asset")
+
 class Prediction(Base):
     __tablename__ = "predictions"
 
