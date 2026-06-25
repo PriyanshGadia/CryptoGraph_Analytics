@@ -18,6 +18,31 @@ from app.api.routes import (
 from app.db.database import engine, SessionLocal
 from app.db.models_sqla import Base, AppSetting
 from app.api.routes.forecast import limiter
+from sqlalchemy import text
+
+# Explicitly create technical_features to prevent Silent ORM failures on Android Termux
+try:
+    with engine.begin() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS technical_features (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                asset_id VARCHAR NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+                timestamp DATETIME NOT NULL,
+                rsi_14 FLOAT,
+                returns_1d FLOAT,
+                returns_7d FLOAT,
+                volatility_7d FLOAT,
+                macd FLOAT,
+                macd_signal FLOAT,
+                atr_14 FLOAT,
+                bb_width FLOAT,
+                CONSTRAINT _tech_asset_timestamp_uc UNIQUE(asset_id, timestamp)
+            )
+        """))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_technical_features_timestamp ON technical_features (timestamp)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_technical_features_id ON technical_features (id)"))
+except Exception as e:
+    print(f"Error ensuring technical_features table: {e}")
 
 # Initialize Database
 Base.metadata.create_all(bind=engine)

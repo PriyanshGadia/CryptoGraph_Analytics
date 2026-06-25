@@ -107,7 +107,10 @@ export PYTHONPATH="${DIR}/backend:${DIR}"
 # Start backend in background
 cd "${DIR}/backend"
 source venv/bin/activate
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+# Clean pycache to prevent stale code loading on Termux
+find . -name "*.pyc" -delete
+find . -name "__pycache__" -delete
+PYTHONDONTWRITEBYTECODE=1 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 &
 BACKEND_PID=$!
 
 # Start frontend in background
