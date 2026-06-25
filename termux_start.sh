@@ -110,6 +110,10 @@ source venv/bin/activate
 # Clean pycache to prevent stale code loading on Termux
 find . -name "*.pyc" -delete
 find . -name "__pycache__" -delete
+
+# Run rapid seed if DB is empty
+python scripts/quick_seed.py
+
 PYTHONDONTWRITEBYTECODE=1 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 &
 BACKEND_PID=$!
 
