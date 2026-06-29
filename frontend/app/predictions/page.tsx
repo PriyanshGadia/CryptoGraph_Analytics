@@ -276,6 +276,12 @@ function PredictionStudio() {
                       onClick={() => setSelectedSymbol(p.asset_symbol)}
                       className={`group text-left glass-flat shape-ledger border border-white/5 hover:border-white/20 p-6 transition-all duration-[var(--dur-hover)] ease-glide hover:bg-white/[0.04] hover:shadow-[0_0_30px_rgba(${isUp ? '34,197,94' : isDown ? '239,68,68' : '255,255,255'},0.1)] relative overflow-hidden`}
                     >
+                      
+                      {/* VERDICT STAMP */}
+                      <div className="absolute top-6 right-6 opacity-0 group-hover:opacity-10 transition-opacity pointer-events-none rotate-[-15deg] scale-[2.5]">
+                         {isUp ? <TrendingUp size={64} className="text-success" /> : isDown ? <TrendingDown size={64} className="text-danger" /> : <Minus size={64} className="text-text-muted" />}
+                      </div>
+                      
                       <div className="absolute top-0 left-0 w-full h-1 bg-white/5 group-hover:h-1.5 transition-all" style={{ backgroundColor: `rgba(${isUp ? '34,197,94' : isDown ? '239,68,68' : '255,255,255'}, 0.2)` }} />
                       
                       <div className="flex justify-between items-start mb-4">
@@ -300,6 +306,16 @@ function PredictionStudio() {
                           <VolatilityChip regime={p.volatility_regime || 'medium'} />
                         </div>
                       </div>
+
+                      {/* Conformal Prediction Interval Spread */}
+                      {p.confidence_interval && (
+                        <div className="mt-4 flex items-center justify-between bg-black/20 p-2 rounded-sm border border-white/5">
+                            <span className="text-[9px] uppercase tracking-widest font-mono text-text-muted">Expected Spread</span>
+                            <span className="text-[10px] font-mono font-bold text-text">
+                                [{p.confidence_interval[0].toFixed(1)}% - {p.confidence_interval[1].toFixed(1)}%]
+                            </span>
+                        </div>
+                      )}
 
                       {/* Confidence bar */}
                       <div className="mt-5 h-1.5 bg-background rounded-full overflow-hidden border border-white/5">

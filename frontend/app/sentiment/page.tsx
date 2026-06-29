@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useEffect, useState } from "react";
+import { apiService } from "@/lib/api";
 import { useChartPalette } from "@/lib/useChartPalette";
 import useSWR from "swr";
 import { fetcher } from "@/lib/api";
@@ -115,6 +116,11 @@ export default function SentimentPage() {
   const { data: fgHistory } = useSWR(`${BASE}/api/sentiment-data/fear-greed-history?days=365`, fetcher, { refreshInterval: 120000 });
   const { data: btcHistory } = useSWR(`${BASE}/api/sentiment-data/fear-greed-vs-btc?days=365`, fetcher, { refreshInterval: 120000 });
   const { data: sectorSent } = useSWR(`${BASE}/api/sentiment-data/sector-sentiment`, fetcher, { refreshInterval: 120000 });
+    const [synthesis, setSynthesis] = useState<any>(null);
+  useEffect(() => {
+    apiService.getLatestSynthesis().then(setSynthesis).catch(console.error);
+  }, []);
+
   const { data: trending } = useSWR(`${BASE}/api/sentiment-data/trending`, fetcher, { refreshInterval: 120000 });
 
   if (!fgHistory || !btcHistory || !sectorSent || !trending) return <ChartSkeleton />;
@@ -215,6 +221,37 @@ export default function SentimentPage() {
           </GlassCard>
         </div>
         
+                {/* SECTION 2.5 - Qualitative Synthesis */}
+        {synthesis && (
+          <GlassCard tier={2} shape="shape-squircle" className="p-8 relative overflow-hidden mb-8 group">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-accent/5 rounded-full blur-[80px] pointer-events-none" />
+            <h3 className="text-xl font-black text-text tracking-tight flex items-center gap-3 mb-6">
+              <div className="w-8 h-8 rounded-full glass bg-accent/10 border border-accent/20 flex items-center justify-center">
+                <MessageSquareShare className="text-accent" size={16} />
+              </div>
+              Swarm Synthesis Readout
+            </h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 relative z-10">
+              <div className="p-5 bg-surface/50 border border-white/5 rounded-sm hover:border-accent/30 transition-colors">
+                <h4 className="text-[10px] font-bold font-mono tracking-widest uppercase text-text-muted mb-3 pb-2 border-b border-white/5">Macro Economist</h4>
+                <p className="text-sm text-text/90 leading-relaxed font-light">{synthesis.macro_analysis}</p>
+              </div>
+              <div className="p-5 bg-surface/50 border border-white/5 rounded-sm hover:border-accent/30 transition-colors">
+                <h4 className="text-[10px] font-bold font-mono tracking-widest uppercase text-text-muted mb-3 pb-2 border-b border-white/5">On-Chain Detective</h4>
+                <p className="text-sm text-text/90 leading-relaxed font-light">{synthesis.onchain_analysis}</p>
+              </div>
+              <div className="p-5 bg-surface/50 border border-white/5 rounded-sm hover:border-accent/30 transition-colors">
+                <h4 className="text-[10px] font-bold font-mono tracking-widest uppercase text-text-muted mb-3 pb-2 border-b border-white/5">Sentiment Analyst</h4>
+                <p className="text-sm text-text/90 leading-relaxed font-light">{synthesis.sentiment_analysis}</p>
+              </div>
+            </div>
+            <div className="mt-4 text-right">
+              <span className="text-[9px] uppercase tracking-widest font-mono text-text-muted bg-black/40 px-2 py-1 rounded">Subject Asset: {synthesis.symbol}</span>
+            </div>
+          </GlassCard>
+        )}
+
         {/* SECTION 3 - Dual Axis: Fear & Greed vs BTC Price */}
         <GlassCard tier={2} shape="shape-squircle" className="p-0 overflow-hidden">
           <div className="p-8 border-b border-white/5 bg-surface/30">

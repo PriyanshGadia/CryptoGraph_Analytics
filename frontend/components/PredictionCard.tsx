@@ -26,6 +26,24 @@ export function PredictionCard({ asset }: { asset: Asset }) {
       {/* Background Ambient Glow */}
       <div className={`absolute -top-10 -right-10 w-40 h-40 rounded-full blur-[60px] opacity-10 transition-opacity duration-700 group-hover:opacity-30 ${isUp ? 'bg-success' : isDown ? 'bg-danger' : 'bg-accent'}`} />
 
+      {/* Verdict Stamp */}
+      {isStrong && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0 overflow-hidden opacity-10 group-hover:opacity-20 transition-opacity duration-500">
+          <div 
+            className={`w-48 h-48 flex items-center justify-center border-[8px] ${isUp ? 'border-success text-success' : 'border-danger text-danger'} 
+            animate-in zoom-in-150 duration-500 ease-out`}
+            style={{ 
+              clipPath: 'polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%)', 
+              transform: 'rotate(-15deg)'
+            }}
+          >
+            <div className="border-y-4 border-current py-2 px-6 w-full text-center transform -rotate-12 mt-2">
+              <span className="font-black text-3xl uppercase tracking-widest">{isUp ? 'LONG' : 'SHORT'}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex justify-between items-start relative z-10 mb-6">
         <div className="flex flex-col gap-1">
@@ -70,18 +88,43 @@ export function PredictionCard({ asset }: { asset: Asset }) {
             </div>
         </div>
 
-        {/* Radial Confidence Meter */}
-        <div className="bg-surface/30 rounded-sm p-4 border border-white/5 flex items-center justify-center relative">
-            <div className="relative flex items-center justify-center">
-              <svg className="transform -rotate-90 w-14 h-14">
-                <circle cx="28" cy="28" r="18" stroke="currentColor" strokeWidth="4" fill="transparent" className="text-white/10" />
-                <circle cx="28" cy="28" r="18" stroke="currentColor" strokeWidth="4" fill="transparent" strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} className={`${confidence > 75 ? 'text-accent' : confidence > 50 ? 'text-accent/60' : 'text-text-muted'} transition-all duration-1000 ease-out`} strokeLinecap="round" />
-              </svg>
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-[10px] font-mono font-bold text-text">{confidence.toFixed(0)}</span>
-                <span className="text-[8px] font-mono text-text-muted">%</span>
+        {/* Conformal Prediction Interval or Fallback Radial */}
+        <div className="bg-surface/30 rounded-sm p-4 border border-white/5 flex flex-col items-center justify-center relative min-w-[80px]">
+            {asset.confidence_interval ? (
+              <div className="flex flex-col w-full gap-1">
+                <div className="flex justify-between items-center text-[10px] font-mono text-text-muted">
+                  <span>{asset.confidence_interval[0].toFixed(1)}%</span>
+                  <span>{asset.confidence_interval[1].toFixed(1)}%</span>
+                </div>
+                <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden relative">
+                  {/* The active band */}
+                  <div 
+                    className="absolute h-full bg-accent/80 rounded-full" 
+                    style={{ 
+                      left: `${asset.confidence_interval[0]}%`, 
+                      width: `${asset.confidence_interval[1] - asset.confidence_interval[0]}%` 
+                    }} 
+                  />
+                  {/* The point estimate */}
+                  <div 
+                    className="absolute h-full w-0.5 bg-white shadow-[0_0_5px_white]"
+                    style={{ left: `${confidence}%` }}
+                  />
+                </div>
+                <span className="text-[8px] text-center text-text-muted uppercase tracking-widest mt-1">Conformal Band</span>
               </div>
-            </div>
+            ) : (
+              <div className="relative flex items-center justify-center">
+                <svg className="transform -rotate-90 w-14 h-14">
+                  <circle cx="28" cy="28" r="18" stroke="currentColor" strokeWidth="4" fill="transparent" className="text-white/10" />
+                  <circle cx="28" cy="28" r="18" stroke="currentColor" strokeWidth="4" fill="transparent" strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} className={`${confidence > 75 ? 'text-accent' : confidence > 50 ? 'text-accent/60' : 'text-text-muted'} transition-all duration-1000 ease-out`} strokeLinecap="round" />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="text-[10px] font-mono font-bold text-text">{confidence.toFixed(0)}</span>
+                  <span className="text-[8px] font-mono text-text-muted">%</span>
+                </div>
+              </div>
+            )}
         </div>
       </div>
     </GlassCard>

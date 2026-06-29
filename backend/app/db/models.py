@@ -11,11 +11,13 @@ class Asset(BaseModel):
     price_change_24h_pct: Optional[float] = None
     predicted_direction: Optional[str] = None
     confidence: Optional[float] = None
+    confidence_interval: Optional[List[float]] = None
 
 class Prediction(BaseModel):
     asset_symbol: str
     direction: str
     confidence: float
+    confidence_interval: Optional[List[float]] = None
     volatility_regime: str
     predicted_at: str
     model_version: str
@@ -32,12 +34,14 @@ class GraphNode(BaseModel):
     market_cap_usd: Optional[float] = None
     predicted_direction: Optional[str] = None
     confidence: Optional[float] = None
+    confidence_interval: Optional[List[float]] = None
 
 class GraphEdge(BaseModel):
     source: str
     target: str
     weight: float
     edge_type: str
+    motif_similarity: Optional[float] = None
 
 class GraphResponse(BaseModel):
     nodes: List[GraphNode]
@@ -57,6 +61,9 @@ class ExplainResponse(BaseModel):
     confidence: float
     top_features: Dict[str, float]
     news_sources: List[str] = []
+    bull_case: Optional[str] = None
+    bear_case: Optional[str] = None
+    risk_case: Optional[str] = None
 
 class TradeRecord(BaseModel):
     id: int

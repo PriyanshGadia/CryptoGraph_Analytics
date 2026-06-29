@@ -278,14 +278,20 @@ export default function PerformancePage() {
           
           <div className="h-[260px]">
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={data.confidence_calibration} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
+              <ComposedChart data={data.confidence_calibration.map((d: any) => {
+                  const upper = parseInt(d.confidence_range.split('-')[1]);
+                  return { ...d, ideal: isNaN(upper) ? d.actual_accuracy : upper };
+              })} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
                 <XAxis dataKey="confidence_range" stroke="rgba(255,255,255,0.1)" tick={{fill: palette.text, fontSize: 9, fontFamily: 'monospace'}} angle={-30} textAnchor="end" tickMargin={5} />
-                <YAxis domain={[0, 100]} stroke="rgba(255,255,255,0.1)" tick={{fill: palette.text, fontSize: 10, fontFamily: 'monospace'}} />
+                <YAxis yAxisId="left" domain={[0, 100]} stroke="rgba(255,255,255,0.1)" tick={{fill: palette.text, fontSize: 10, fontFamily: 'monospace'}} />
+                <YAxis yAxisId="right" orientation="right" hide />
                 <Tooltip 
                     contentStyle={{ backgroundColor: "rgba(10, 10, 15, 0.9)", borderColor: "rgba(255, 255, 255, 0.1)", color: "#fff", borderRadius: "12px", backdropFilter: "blur(10px)" }} 
                     itemStyle={{ fontFamily: 'monospace', fontSize: '12px' }}
                 />
-                <Bar dataKey="actual_accuracy" fill="rgb(212, 165, 71)" radius={[4, 4, 0, 0]} name="Empirical Accuracy" />
+                <Bar yAxisId="right" dataKey="bucket_counts" fill={palette.muted} fillOpacity={0.2} radius={[4, 4, 0, 0]} name="Frequency" />
+                <Line yAxisId="left" type="monotone" dataKey="ideal" stroke={palette.success} strokeDasharray="3 3" dot={false} name="Ideal Calibration" />
+                <Line yAxisId="left" type="monotone" dataKey="actual_accuracy" stroke={palette.accent} strokeWidth={3} dot={{r: 4, fill: palette.accent}} name="Empirical Accuracy" />
               </ComposedChart>
             </ResponsiveContainer>
           </div>

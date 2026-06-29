@@ -61,13 +61,26 @@ const HeatmapCell = memo(({
     classes += "ring-1 ring-white/50 z-20 shadow-[0_0_5px_rgba(255,255,255,0.2)] ";
   }
 
+  let cellText = "";
+  if (value > 0.7 || value < -0.7) cellText = "STRONG";
+  else if (value > 0.3 || value < -0.3) cellText = "MODERATE";
+  else cellText = "WEAK";
+  if (i === j) cellText = "IDENTITY";
+
   return (
     <div 
-      className={classes}
+      className={classes + " relative group overflow-hidden"}
       style={{ backgroundColor: bgColor }}
       onMouseEnter={() => onEnter(i, j, value, symA, symB)}
       onMouseLeave={onLeave}
-    />
+    >
+      <div className="absolute inset-0 flex items-center justify-center opacity-100 group-hover:opacity-0 transition-opacity duration-300">
+         <span className="text-[5px] leading-none font-mono font-bold text-white/40 truncate max-w-full px-[1px]">{cellText}</span>
+      </div>
+      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 delay-75 [mask-image:linear-gradient(to_bottom,white,white)]">
+         <span className="text-[7px] leading-none font-mono font-black text-white mix-blend-overlay">{value.toFixed(2)}</span>
+      </div>
+    </div>
   );
 });
 HeatmapCell.displayName = "HeatmapCell";
@@ -78,12 +91,13 @@ export default function CorrelationsPage() {
   const [days, setDays] = useState(30);
   const [selectedSector, setSelectedSector] = useState("all");
   const [cellSize, setCellSize] = useState(16);
+  const [basis, setBasis] = useState("Price Correlation");
   
   // Hover state
   const [hoveredCell, setHoveredCell] = useState<{i: number, j: number, val: number, symA: string, symB: string} | null>(null);
 
-  const { data: matrixData, isLoading: matrixLoading } = useSWR(`${BASE}/api/correlations/matrix?days=${days}`, fetcher, { refreshInterval: 300000 });
-  const { data: sectorData, isLoading: sectorLoading } = useSWR(`${BASE}/api/correlations/sector-average?days=${days}`, fetcher, { refreshInterval: 300000 });
+  const { data: matrixData, isLoading: matrixLoading } = useSWR(`${BASE}/api/correlations/matrix?days=${days}&basis=${basis}`, fetcher, { refreshInterval: 300000 });
+  const { data: sectorData, isLoading: sectorLoading } = useSWR(`${BASE}/api/correlations/sector-average?days=${days}&basis=${basis}`, fetcher, { refreshInterval: 300000 });
   const { data: assetsData } = useSWR(`${BASE}/api/assets`, fetcher, { refreshInterval: 300000 });
   
   const assetMap = useMemo(() => {
@@ -146,6 +160,21 @@ export default function CorrelationsPage() {
         </div>
         
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+          <div className="flex glass bg-surface/50 rounded-sm border border-white/10 p-1 shadow-inner">
+             {["Price Correlation", "On-Chain Motif Similarity"].map(b => (
+               <button
+                 key={b}
+                 onClick={() => setBasis(b)}
+                 className={`px-4 py-2 rounded-sm text-[10px] font-black uppercase tracking-widest transition-all ${
+                   basis === b 
+                     ? "bg-accent/20 text-accent border border-accent/30 shadow-[0_0_10px_rgba(var(--accent),0.2)]" 
+                     : "text-text-muted hover:text-text hover:bg-white/5 border border-transparent"
+                 }`}
+               >
+                 {b}
+               </button>
+             ))}
+          </div>
           <div className="relative">
             <select 
               value={selectedSector}

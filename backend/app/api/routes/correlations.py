@@ -16,9 +16,10 @@ router = APIRouter(prefix="/correlations", tags=["correlations"])
 @cached(ttl_seconds=300)
 def get_correlation_matrix(
     days: int = 30,
+    basis: str = "Price Correlation",
     db: Session = Depends(get_db)
 ):
-    """Computes Pearson correlation matrix for all assets using local DB."""
+    """Computes correlation matrix for all assets using local DB."""
     since = datetime.now(timezone.utc) - timedelta(days=days)
 
     # Batched query for all technical features in range
@@ -47,7 +48,41 @@ def get_correlation_matrix(
     if pivot.shape[1] < 2:
         return {"symbols": [], "matrix": [], "top_pairs": [], "period_days": days}
 
-    corr_matrix = pivot.corr(method="pearson").fillna(0.0)
+    if basis == "Motif Similarity":
+        latest_tech_query = text("""
+            SELECT asset_id, returns_1d, volatility_7d, rsi_14, macd, macd_signal
+            FROM technical_features
+            WHERE (asset_id, timestamp) IN (
+                SELECT asset_id, MAX(timestamp)
+                FROM technical_features
+                GROUP BY asset_id
+            )
+        """)
+        latest_tech_rows = db.execute(latest_tech_query).fetchall()
+        
+        tech_vectors = {}
+        for r in latest_tech_rows:
+            aid = r[0]
+            ret = (r[1] or 0.0) * 10
+            vol = (r[2] or 0.0) * 10
+            rsi = ((r[3] or 50.0) - 50) / 50
+            macd = r[4] or 0.0
+            sig = r[5] or 0.0
+            vec = np.array([ret, vol, rsi, macd, sig])
+            norm = np.linalg.norm(vec)
+            tech_vectors[aid] = vec / norm if norm > 0 else np.zeros(5)
+
+        aids = pivot.columns.tolist()
+        motif_matrix = np.zeros((len(aids), len(aids)))
+        for i, aid_a in enumerate(aids):
+            for j, aid_b in enumerate(aids):
+                vec_a = tech_vectors.get(aid_a, np.zeros(5))
+                vec_b = tech_vectors.get(aid_b, np.zeros(5))
+                motif_matrix[i, j] = float(np.dot(vec_a, vec_b))
+                
+        corr_matrix = pd.DataFrame(motif_matrix, index=aids, columns=aids).fillna(0.0)
+    else:
+        corr_matrix = pivot.corr(method="pearson").fillna(0.0)
 
     # Ordered symbols
     ordered_asset_ids = corr_matrix.columns.tolist()
@@ -90,6 +125,7 @@ def get_correlation_matrix(
 @cached(ttl_seconds=300)
 def get_sector_correlations(
     days: int = 30,
+    basis: str = "Price Correlation",
     db: Session = Depends(get_db)
 ):
     """Returns average intra-sector and inter-sector correlations using local DB."""
@@ -116,7 +152,41 @@ def get_sector_correlations(
     if pivot.shape[1] < 2:
         return {"sectors": [], "matrix": [], "intra_sector": {}}
 
-    corr_matrix = pivot.corr(method="pearson").fillna(0.0)
+    if basis == "Motif Similarity":
+        latest_tech_query = text("""
+            SELECT asset_id, returns_1d, volatility_7d, rsi_14, macd, macd_signal
+            FROM technical_features
+            WHERE (asset_id, timestamp) IN (
+                SELECT asset_id, MAX(timestamp)
+                FROM technical_features
+                GROUP BY asset_id
+            )
+        """)
+        latest_tech_rows = db.execute(latest_tech_query).fetchall()
+        
+        tech_vectors = {}
+        for r in latest_tech_rows:
+            aid = r[0]
+            ret = (r[1] or 0.0) * 10
+            vol = (r[2] or 0.0) * 10
+            rsi = ((r[3] or 50.0) - 50) / 50
+            macd = r[4] or 0.0
+            sig = r[5] or 0.0
+            vec = np.array([ret, vol, rsi, macd, sig])
+            norm = np.linalg.norm(vec)
+            tech_vectors[aid] = vec / norm if norm > 0 else np.zeros(5)
+
+        aids = pivot.columns.tolist()
+        motif_matrix = np.zeros((len(aids), len(aids)))
+        for i, aid_a in enumerate(aids):
+            for j, aid_b in enumerate(aids):
+                vec_a = tech_vectors.get(aid_a, np.zeros(5))
+                vec_b = tech_vectors.get(aid_b, np.zeros(5))
+                motif_matrix[i, j] = float(np.dot(vec_a, vec_b))
+                
+        corr_matrix = pd.DataFrame(motif_matrix, index=aids, columns=aids).fillna(0.0)
+    else:
+        corr_matrix = pivot.corr(method="pearson").fillna(0.0)
 
     sectors = sorted(set(asset_sector_map.values()))
     intra_sector = {}

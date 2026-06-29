@@ -94,6 +94,8 @@ class Prediction(Base):
     predicted_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     direction = Column(String)
     confidence = Column(Float)
+    confidence_interval_lower = Column(Float, nullable=True)
+    confidence_interval_upper = Column(Float, nullable=True)
     volatility_regime = Column(String)
     shap_values = Column(JSON)  # Legacy SHAP
     model_version = Column(String)

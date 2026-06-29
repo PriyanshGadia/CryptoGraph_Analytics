@@ -369,7 +369,10 @@ export default function ScreenerPage() {
             <TableSkeleton rows={15} />
           </div>
         ) : results && results.length > 0 ? (
-          <div className="overflow-x-auto custom-scrollbar">
+          <div className="overflow-x-auto custom-scrollbar relative overflow-hidden">
+            {isRefreshing && (
+              <div className="absolute left-0 right-0 h-32 bg-gradient-to-b from-transparent via-accent/5 to-accent/20 border-b border-accent/40 z-20 pointer-events-none animate-scanline mix-blend-plus-lighter" />
+            )}
             <table className="w-full text-sm text-left">
               <thead className="text-[10px] text-text-muted uppercase tracking-widest bg-surface/50 font-mono border-b border-white/5 sticky top-0 z-10 backdrop-blur-md">
                 <tr>

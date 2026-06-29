@@ -19,6 +19,7 @@ export interface Asset {
   price_change_24h_pct: number;
   predicted_direction: string;
   confidence: number;
+  confidence_interval?: [number, number];
   rsi_14?: number;
   macd?: number;
   volatility_regime?: string;
@@ -29,6 +30,7 @@ export interface Prediction {
   asset_symbol: string;
   direction: string;
   confidence: number;
+  confidence_interval?: [number, number];
   volatility_regime: string;
   predicted_at: string;
   model_version: string;
@@ -41,6 +43,7 @@ export interface GraphNode {
   market_cap_usd: number;
   predicted_direction: string;
   confidence: number;
+  confidence_interval?: [number, number];
 }
 
 export interface GraphEdge {
@@ -48,6 +51,7 @@ export interface GraphEdge {
   target: string;
   weight: number;
   edge_type: string;
+  motif_similarity?: number;
 }
 
 export interface GraphResponse {
@@ -88,6 +92,9 @@ export interface ExplainResponse {
   confidence: number;
   top_features: Record<string, number>;
   news_sources?: string[];
+  bull_case?: string;
+  bear_case?: string;
+  risk_case?: string;
 }
 
 export interface TradeRecord {
@@ -108,6 +115,9 @@ export interface TradeRecord {
     macro_analysis: string | null;
     onchain_analysis: string | null;
     sentiment_analysis: string | null;
+    bull_case?: string | null;
+    bear_case?: string | null;
+    risk_case?: string | null;
     cio_reasoning: string | null;
   } | null;
 }
@@ -149,4 +159,5 @@ export const apiService = {
   gradeTrade: (tradeId: number, grade: number, notes: string) => api.post(`/api/portfolio/trades/${tradeId}/grade`, { grade, notes }).then(res => res.data),
   confirmWeb3Trade: (tradeId: number, txHash: string) => api.post(`/api/portfolio/trades/${tradeId}/confirm`, { tx_hash: txHash }).then(res => res.data),
   triggerRefreshAll: () => api.post('/api/status/refresh-all').then(res => res.data),
+  getLatestSynthesis: () => api.get('/api/sentiment-data/latest-synthesis').then(res => res.data),
 };

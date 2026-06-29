@@ -23,7 +23,8 @@ def get_assets():
             current_price=data.get("current_price", 0.0),
             price_change_24h_pct=data.get("price_change_24h_pct", 0.0),
             predicted_direction=data.get("predicted_direction", "neutral"),
-            confidence=data.get("confidence", 0.0)
+            confidence=data.get("confidence", 0.0),
+            confidence_interval=data.get("confidence_interval", None)
         ))
         
     # Sort by market cap descending

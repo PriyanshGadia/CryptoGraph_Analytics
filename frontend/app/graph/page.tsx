@@ -228,6 +228,12 @@ export default function GraphPage() {
             }}
             linkColor={linkColor}
             linkWidth={linkWidth}
+            linkDirectionalParticleColor={(link: any) => {
+              const ms = link.motif_similarity || 0;
+              return ms > 0.4 ? "rgba(34, 197, 94, 0.9)" : ms < -0.4 ? "rgba(239, 68, 68, 0.9)" : "rgba(212, 165, 71, 0.8)";
+            }}
+            linkDirectionalParticleWidth={(link: any) => Math.max(2, (Math.abs(link.motif_similarity || 0.5) * 4))}
+            linkDirectionalParticleSpeed={(link: any) => 0.01 + (Math.abs(link.motif_similarity || 0.1) * 0.025)}
             backgroundColor="transparent"
             d3AlphaDecay={0.06}
             d3VelocityDecay={0.4}
@@ -238,7 +244,19 @@ export default function GraphPage() {
                 hasZoomed.current = true;
               }
             }}
-            onNodeClick={(node: any) => setSelectedNode(node)}
+            onNodeClick={(node: any) => {
+              setSelectedNode(node);
+              const nodeLinks = graphData.links.filter(
+                (l: any) => 
+                  l.source === node || 
+                  l.target === node || 
+                  l.source?.symbol === node.symbol || 
+                  l.target?.symbol === node.symbol
+              );
+              nodeLinks.forEach((link: any) => {
+                graphRef.current?.emitParticle(link);
+              });
+            }}
           />
         )}
 

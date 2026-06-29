@@ -79,6 +79,7 @@ def populate_static_features(db: Session, symbols: List[str]):
             "volatility_7d": static_dict["volatility_7d"],
             "predicted_direction": pred.direction if pred else "neutral",
             "confidence": pred.confidence if pred else 0.0,
+            "confidence_interval": [pred.confidence_interval_lower, pred.confidence_interval_upper] if pred and pred.confidence_interval_lower is not None else None,
         }
 
 def get_global_market_state() -> Dict[str, Dict]:

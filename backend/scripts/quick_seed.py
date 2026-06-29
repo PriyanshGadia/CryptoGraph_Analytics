@@ -77,8 +77,13 @@ def main():
                           (asset_id, ts, returns_1d))
                           
             # Insert fake prediction
-            c.execute("INSERT INTO predictions (asset_id, timestamp, predicted_at, direction, confidence, volatility_regime) VALUES (?, ?, ?, ?, ?, ?)",
-                      (asset_id, ts, datetime.now(timezone.utc).isoformat(), "strong_up", 85.5, "medium"))
+            confidence = 85.5
+            conformal_spread = 5.0
+            lower = confidence - conformal_spread
+            upper = min(100.0, confidence + conformal_spread)
+            
+            c.execute("INSERT INTO predictions (asset_id, timestamp, predicted_at, direction, confidence, confidence_interval_lower, confidence_interval_upper, volatility_regime) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                      (asset_id, ts, datetime.now(timezone.utc).isoformat(), "strong_up", confidence, lower, upper, "medium"))
 
         except Exception as e:
             print(f"Failed to fetch {sym}: {e}")

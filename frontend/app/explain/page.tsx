@@ -6,7 +6,11 @@ import { fetcher, Asset, apiService, ExplainResponse } from "@/lib/api";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Badge } from "@/components/ui/Badge";
-import { MessageSquare, Bot, AlertCircle } from "lucide-react";
+import { MessageSquare, Bot, AlertCircle, ChevronDown, ChevronUp, BarChart2, TrendingUp, TrendingDown } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
+import { useChartPalette } from "@/lib/useChartPalette";
+import dynamic from 'next/dynamic';
+const ForceGraph2D = dynamic(() => import('react-force-graph-2d'), { ssr: false });
 
 export default function ExplainPage() {
   const { data: assets, isLoading: assetsLoading } = useSWR<Asset[]>("/api/assets", fetcher, {
@@ -17,6 +21,8 @@ export default function ExplainPage() {
   const [explanation, setExplanation] = useState<ExplainResponse | null>(null);
   const [isExplaining, setIsExplaining] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showTranscript, setShowTranscript] = useState(false);
+  const palette = useChartPalette();
 
   const handleExplain = async () => {
     if (!selectedSymbol) return;
@@ -114,6 +120,38 @@ export default function ExplainPage() {
           </div>
           
           <div className="p-6 sm:p-8">
+            {explanation.top_features && Object.keys(explanation.top_features).length > 0 && (
+              <div className="mb-8 p-6 bg-surface/50 border border-white/5 rounded-sm">
+                <h3 className="text-sm font-bold font-mono tracking-widest uppercase text-accent mb-4 flex items-center gap-2">
+                  <BarChart2 size={16} /> Feature Attribution Subgraph
+                </h3>
+                <div className="h-64 w-full relative overflow-hidden rounded-sm border border-white/5 bg-black/20" style={{ cursor: 'crosshair' }}>
+                  <ForceGraph2D 
+                    width={800}
+                    height={256}
+                    graphData={{
+                        nodes: [
+                            { id: explanation.symbol, name: explanation.symbol, val: 20, color: 'rgba(var(--accent), 1)' },
+                            ...Object.entries(explanation.top_features).map(([k, v]) => ({ id: k, name: k, val: Math.max(2, v * 30), color: 'rgba(100, 116, 139, 0.8)' }))
+                        ],
+                        links: Object.entries(explanation.top_features).map(([k, v]) => ({ source: k, target: explanation.symbol, value: v }))
+                    }}
+                    nodeLabel="name"
+                    nodeColor="color"
+                    nodeRelSize={6}
+                    linkColor={() => 'rgba(255,255,255,0.2)'}
+                    linkWidth={(link) => link.value * 5}
+                    linkDirectionalParticles={3}
+                    linkDirectionalParticleWidth={(link) => link.value * 3}
+                    linkDirectionalParticleSpeed={(link) => link.value * 0.05}
+                    d3AlphaDecay={0.02}
+                    d3VelocityDecay={0.3}
+                    cooldownTicks={100}
+                    backgroundColor="transparent"
+                  />
+                </div>
+              </div>
+            )}
             <div className="prose prose-invert max-w-none">
               {explanation.explanation.split('\n').map((paragraph, i) => (
                 <p key={i} className="text-text/90 leading-relaxed mb-6 last:mb-0 text-sm sm:text-base font-light tracking-wide">
@@ -121,6 +159,41 @@ export default function ExplainPage() {
                 </p>
               ))}
             </div>
+            
+                        {/* Debate Council UI */}
+            {(explanation.bull_case || explanation.bear_case || explanation.risk_case) && (
+              <div className="mt-8 pt-6 border-t border-white/10">
+                <div className="text-[10px] text-text uppercase tracking-widest font-mono font-bold mb-4 flex items-center gap-2">
+                  <Bot size={14} className="text-accent" /> Debate Council (Multi-Agent Consensus)
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {explanation.bull_case && (
+                    <div className="p-5 glass bg-success/5 border border-success/20 rounded-sm">
+                      <div className="text-xs font-bold font-mono tracking-widest uppercase text-success mb-3 flex items-center gap-2">
+                        <TrendingUp size={14} /> Bull Persona
+                      </div>
+                      <p className="text-sm font-light text-text/80 leading-relaxed">{explanation.bull_case}</p>
+                    </div>
+                  )}
+                  {explanation.bear_case && (
+                    <div className="p-5 glass bg-danger/5 border border-danger/20 rounded-sm">
+                      <div className="text-xs font-bold font-mono tracking-widest uppercase text-danger mb-3 flex items-center gap-2">
+                        <TrendingDown size={14} /> Bear Persona
+                      </div>
+                      <p className="text-sm font-light text-text/80 leading-relaxed">{explanation.bear_case}</p>
+                    </div>
+                  )}
+                  {explanation.risk_case && (
+                    <div className="p-5 glass bg-warning/5 border border-warning/20 rounded-sm">
+                      <div className="text-xs font-bold font-mono tracking-widest uppercase text-warning mb-3 flex items-center gap-2">
+                        <AlertCircle size={14} /> Risk Overseer
+                      </div>
+                      <p className="text-sm font-light text-text/80 leading-relaxed">{explanation.risk_case}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
             
             {explanation.news_sources && explanation.news_sources.length > 0 && (
               <div className="mt-8 pt-6 border-t border-white/10">

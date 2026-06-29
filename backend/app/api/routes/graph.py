@@ -80,17 +80,48 @@ def _compute_correlation_graph(db: Session, top_n_edges: int = 100):
     pairs.sort(key=lambda x: abs(x[2]), reverse=True)
     pairs = pairs[:top_n_edges]
 
+    # Load latest technical features for Motif Mining (Structural Similarity)
+    latest_tech_query = text("""
+        SELECT asset_id, returns_1d, volatility_7d, rsi_14, macd, macd_signal
+        FROM technical_features
+        WHERE (asset_id, timestamp) IN (
+            SELECT asset_id, MAX(timestamp)
+            FROM technical_features
+            GROUP BY asset_id
+        )
+    """)
+    latest_tech_rows = db.execute(latest_tech_query).fetchall()
+    
+    tech_vectors = {}
+    for r in latest_tech_rows:
+        aid = r[0]
+        ret = (r[1] or 0.0) * 10
+        vol = (r[2] or 0.0) * 10
+        rsi = ((r[3] or 50.0) - 50) / 50
+        macd = r[4] or 0.0
+        sig = r[5] or 0.0
+        vec = np.array([ret, vol, rsi, macd, sig])
+        norm = np.linalg.norm(vec)
+        tech_vectors[aid] = vec / norm if norm > 0 else np.zeros(5)
+
     edges = []
     for aid_a, aid_b, weight in pairs:
         a = asset_map.get(aid_a)
         b = asset_map.get(aid_b)
         if a and b:
             edge_type = "positive_correlation" if weight > 0 else "negative_correlation"
+            
+            # Motif Similarity
+            vec_a = tech_vectors.get(aid_a, np.zeros(5))
+            vec_b = tech_vectors.get(aid_b, np.zeros(5))
+            motif_sim = float(np.dot(vec_a, vec_b))
+            
             edges.append(GraphEdge(
                 source=a.symbol,
                 target=b.symbol,
                 weight=round(abs(weight), 4),
                 edge_type=edge_type,
+                motif_similarity=round(max(-1.0, min(1.0, motif_sim)), 4)
             ))
 
     return list(nodes_dict.values()), edges

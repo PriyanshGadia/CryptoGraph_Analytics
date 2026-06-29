@@ -37,6 +37,47 @@ const SEVERITY_CONFIG: Record<string, { bg: string; border: string; icon: any; t
   low: { bg: "bg-success/10", border: "border-success/30", icon: CheckCircle, text: "text-success", shadow: "shadow-[0_0_15px_rgba(34,197,94,0.15)]" },
 };
 
+function RiskLivingGauge({ volatility, intervalSpread }: { volatility: number, intervalSpread?: number }) {
+  const normalizedVol = Math.min(Math.max(volatility, 0), 20) / 20; 
+  
+  // Bind pulse width and glow to intervalSpread (if it exists) instead of just volatility
+  const spread = intervalSpread || 0;
+  // If spread is 10%, it's highly uncertain. Normalize it (0 to 20 range)
+  const normalizedSpread = Math.min(Math.max(spread, 0), 20) / 20;
+  
+  const pulseDuration = intervalSpread ? 3 - (normalizedSpread * 2.5) : 3 - (normalizedVol * 2.5);
+  const glowOpacity = intervalSpread ? 0.1 + (normalizedSpread * 0.7) : 0.1 + (normalizedVol * 0.5);
+  // Wider spread = more red/orange hue, lower spread = green
+  const hue = intervalSpread ? 120 - (normalizedSpread * 120) : 120 - (normalizedVol * 120); 
+  
+  return (
+    <GlassCard tier={2} shape="shape-squircle" className="p-6 flex items-center gap-4 group hover:bg-white/[0.02] transition-colors border border-white/10 hover:border-white/20 h-32 relative overflow-hidden">
+       <div 
+          className="absolute inset-0 pointer-events-none transition-all duration-1000"
+          style={{ background: `radial-gradient(circle at center, hsla(${hue}, 80%, 50%, ${glowOpacity}) 0%, transparent ${intervalSpread ? 50 + (normalizedSpread * 50) : 70}%)` }}
+       />
+       <div className="p-3 rounded-sm glass bg-white/5 border border-white/10 relative z-10">
+         <div 
+           className="absolute inset-0 rounded-sm"
+           style={{
+              backgroundColor: `hsl(${hue}, 80%, 50%)`,
+              animation: `ping ${pulseDuration}s cubic-bezier(0, 0, 0.2, 1) infinite`,
+              opacity: 0.4
+           }}
+         />
+         <Activity size={24} style={{ color: `hsl(${hue}, 80%, 50%)` }} className="relative z-10 drop-shadow-[0_0_5px_currentColor]" />
+       </div>
+       <div className="relative z-10 flex flex-col justify-center">
+         <div className="text-3xl font-black font-sans text-text tracking-tight">{volatility.toFixed(2)}%</div>
+         <div className="text-[10px] uppercase tracking-widest font-bold text-text-muted mt-1">Mean Volatility</div>
+         {intervalSpread !== undefined && (
+            <div className="text-[9px] uppercase tracking-wider font-semibold text-accent mt-1">Spread: {intervalSpread.toFixed(1)}%</div>
+         )}
+       </div>
+    </GlassCard>
+  );
+}
+
 export default function RiskPage() {
   const palette = useChartPalette();
   
@@ -146,8 +187,17 @@ export default function RiskPage() {
 
           {/* Stats Row */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            {data.average_volatility !== undefined && (
+               <RiskLivingGauge 
+                  volatility={data.average_volatility} 
+                  intervalSpread={
+                    preds && preds.length > 0 
+                      ? preds.reduce((acc, p) => acc + (p.confidence_interval ? (p.confidence_interval[1] - p.confidence_interval[0]) : 0), 0) / (preds.filter(p => p.confidence_interval).length || 1) 
+                      : undefined
+                  } 
+               />
+            )}
             {[
-              { label: "Mean Volatility", value: `${data.average_volatility?.toFixed(2) ?? "0"}%`, icon: Activity, color: "text-accent" },
               { label: "Active Threats", value: String(data.risk_alerts?.length ?? 0), icon: AlertTriangle, color: data.risk_alerts?.length ? "text-warning" : "text-success" },
               { label: "Monitored Nodes", value: String(data.total_assets_monitored ?? 50), icon: Shield, color: "text-text" },
               { label: "Isomorphic Clusters", value: String(Object.keys(data.correlation_clusters || {}).length), icon: BarChart3, color: "text-accent" },

@@ -163,7 +163,26 @@ def get_fear_greed_vs_btc(days: int = 365, db: Session = Depends(get_db)):
     return data
 
 
-@router.get("/sector-sentiment")
+@router.get("/latest-synthesis")
+def get_latest_synthesis(db: Session = Depends(get_db)):
+    """Returns the most recent qualitative synthesis from the MoA Swarm."""
+    from app.db.models_sqla import TradeDebate
+    latest_debate = db.query(TradeDebate).order_by(desc(TradeDebate.timestamp)).first()
+    
+    if not latest_debate:
+        return {
+            "macro_analysis": "No macro analysis available yet.",
+            "onchain_analysis": "No on-chain analysis available yet.",
+            "sentiment_analysis": "No sentiment analysis available yet.",
+            "symbol": "N/A"
+        }
+        
+    return {
+        "macro_analysis": latest_debate.macro_analysis,
+        "onchain_analysis": latest_debate.onchain_analysis,
+        "sentiment_analysis": latest_debate.sentiment_analysis,
+        "symbol": latest_debate.symbol
+    }
 @cached(ttl_seconds=300)
 def get_sector_sentiment(db: Session = Depends(get_db)):
     """

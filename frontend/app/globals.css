@@ -112,3 +112,10 @@
 @media (hover: hover) and (pointer: fine) {
   .tilt:hover { transform: rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) translateZ(0); }
 }
+
+
+@keyframes scanline {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
+.animate-scanline { animation: scanline 2.5s linear infinite; }

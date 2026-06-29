@@ -216,7 +216,17 @@ def generate_system_explanation(symbol: str, direction: str, confidence: float,
         )
     paragraphs.append(risk_text)
 
-    return "\n\n".join(paragraphs)
+    # Debate Cases (Mocked for System XAI)
+    bull_case = f"The structural trend for {symbol} is highly favorable. Volume profile supports upward momentum, and cross-asset correlations indicate liquidity flowing into this sector. Key resistance levels are showing weakness, paving the way for a breakout."
+    bear_case = f"Despite recent action, {symbol} faces significant overhead supply. Network activity has cooled, and macro headwinds present a clear ceiling. Any upward movement is likely a bull trap before a deeper retracement."
+    risk_case = f"The primary risk lies in volatility compression. {symbol} is vulnerable to sudden liquidations if correlation clusters break down. Strict position sizing and tight trailing stops are mandatory until regime stability is confirmed."
+
+    return {
+        "explanation": "\n\n".join(paragraphs),
+        "bull_case": bull_case,
+        "bear_case": bear_case,
+        "risk_case": risk_case
+    }
 
 
 @router.get("/{symbol}", response_model=ExplainResponse)
@@ -258,7 +268,11 @@ def explain_prediction(symbol: str, db: Session = Depends(get_db)):
 
     if not groq_api_key:
         # System-based XAI — no API key needed
-        explanation = generate_system_explanation(symbol, direction, confidence, raw_shap, t_shap_data, db=db)
+        sys_resp = generate_system_explanation(symbol, direction, confidence, raw_shap, t_shap_data, db=db)
+        explanation = sys_resp["explanation"]
+        bull_case = sys_resp["bull_case"]
+        bear_case = sys_resp["bear_case"]
+        risk_case = sys_resp["risk_case"]
     else:
         # LLM-powered explanation
         if numeric_shap:
@@ -288,8 +302,18 @@ Explain in exactly 3-4 sentences why the model made this prediction in plain lan
             explanation = completion.choices[0].message.content
         except Exception as e:
             # Fallback to system XAI if API call fails
-            explanation = generate_system_explanation(symbol, direction, confidence, raw_shap, t_shap_data, db=db)
-            explanation += f" (Note: LLM enhancement unavailable — {type(e).__name__})"
+            sys_resp = generate_system_explanation(symbol, direction, confidence, raw_shap, t_shap_data, db=db)
+            explanation = sys_resp["explanation"] + f" (Note: LLM enhancement unavailable — {type(e).__name__})"
+            bull_case = sys_resp["bull_case"]
+            bear_case = sys_resp["bear_case"]
+            risk_case = sys_resp["risk_case"]
+
+        # TODO: Ideally fetch LLM debate council answers too, for now fallback to sys_resp if missing
+        if 'bull_case' not in locals():
+             sys_resp = generate_system_explanation(symbol, direction, confidence, raw_shap, t_shap_data, db=db)
+             bull_case = sys_resp["bull_case"]
+             bear_case = sys_resp["bear_case"]
+             risk_case = sys_resp["risk_case"]
 
     return ExplainResponse(
         symbol=symbol,
@@ -297,5 +321,8 @@ Explain in exactly 3-4 sentences why the model made this prediction in plain lan
         direction=direction,
         confidence=confidence,
         top_features=numeric_shap,
-        news_sources=news_sources
+        news_sources=news_sources,
+        bull_case=bull_case,
+        bear_case=bear_case,
+        risk_case=risk_case
     )

@@ -6,6 +6,8 @@ import { fetcher, apiService, PortfolioResponse, PortfolioTradesResponse, TradeR
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Badge } from "@/components/ui/Badge";
+import { useChartPalette } from "@/lib/useChartPalette";
+import { ComposedChart, Area, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -35,6 +37,8 @@ export default function PortfolioPage() {
   });
 
   const [executing, setExecuting] = useState(false);
+  const [stressTest, setStressTest] = useState(false);
+  const palette = useChartPalette();
   const [expandedTradeId, setExpandedTradeId] = useState<number | null>(null);
   
   // Grading form state
@@ -208,6 +212,58 @@ export default function PortfolioPage() {
           </div>
         </GlassCard>
       </div>
+
+      {/* Main Performance Chart */}
+      <GlassCard tier={2} shape="shape-squircle" className="p-8 relative overflow-hidden">
+        <div className="flex justify-between items-center mb-6">
+           <div>
+             <h2 className="text-xl font-black text-text flex items-center gap-2 tracking-tight"><TrendingUp size={20} className="text-accent"/> Equity Curve</h2>
+             <p className="text-xs text-text-muted mt-1 font-mono uppercase tracking-widest">Portfolio vs BTC Benchmark</p>
+           </div>
+           <div className="flex items-center gap-3 bg-surface/50 p-2 rounded-sm border border-white/5">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-text-muted">Stress Test</span>
+              <button 
+                onClick={() => setStressTest(!stressTest)}
+                className={`w-10 h-5 rounded-full relative transition-colors ${stressTest ? 'bg-danger/80' : 'bg-white/10'}`}
+              >
+                <div className={`absolute top-1 left-1 w-3 h-3 rounded-full bg-white transition-transform ${stressTest ? 'translate-x-5' : ''}`} />
+              </button>
+           </div>
+        </div>
+        <div className="h-[400px] w-full mt-4">
+           <ResponsiveContainer width="100%" height="100%">
+             <ComposedChart data={portfolio.equity_curve.map(pt => ({
+                ...pt, 
+                date: new Date(pt.timestamp).toLocaleDateString(),
+                projected_drawdown: stressTest ? pt.portfolio * (1 - (portfolio.max_drawdown_pct / 100)) : undefined
+             }))} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+               <defs>
+                 <linearGradient id="colorPortfolio" x1="0" y1="0" x2="0" y2="1">
+                   <stop offset="5%" stopColor={palette.accent} stopOpacity={0.3}/>
+                   <stop offset="95%" stopColor={palette.accent} stopOpacity={0}/>
+                 </linearGradient>
+                 <linearGradient id="colorBTC" x1="0" y1="0" x2="0" y2="1">
+                   <stop offset="5%" stopColor={palette.muted} stopOpacity={0.2}/>
+                   <stop offset="95%" stopColor={palette.muted} stopOpacity={0}/>
+                 </linearGradient>
+               </defs>
+               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+               <XAxis dataKey="date" stroke={palette.muted} fontSize={10} fontFamily="monospace" tickLine={false} axisLine={false} minTickGap={30} />
+               <YAxis yAxisId="left" stroke={palette.text} fontSize={10} fontFamily="monospace" tickLine={false} axisLine={false} tickFormatter={(v) => '$' + v.toLocaleString()} domain={['auto', 'auto']} />
+               <Tooltip 
+                 contentStyle={{ backgroundColor: "rgba(10, 10, 15, 0.9)", borderColor: "rgba(255, 255, 255, 0.1)", borderRadius: "12px", color: "#fff", backdropFilter: "blur(10px)" }} 
+                 itemStyle={{ fontFamily: 'monospace', fontWeight: 'bold' }} 
+                 formatter={(value) => '$' + Number(value).toLocaleString(undefined, {maximumFractionDigits:2})}
+               />
+               <Area yAxisId="left" type="monotone" dataKey="portfolio" stroke={palette.accent} strokeWidth={3} fillOpacity={1} fill="url(#colorPortfolio)" name="Portfolio" />
+               <Area yAxisId="left" type="monotone" dataKey="btc_benchmark" stroke={palette.muted} strokeWidth={2} fillOpacity={1} fill="url(#colorBTC)" name="BTC Benchmark" />
+               {stressTest && (
+                 <Line yAxisId="left" type="stepAfter" dataKey="projected_drawdown" stroke={palette.danger} strokeWidth={2} strokeDasharray="5 5" name="- Max Drawdown" dot={false} activeDot={false} />
+               )}
+             </ComposedChart>
+           </ResponsiveContainer>
+        </div>
+      </GlassCard>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Holdings */}
