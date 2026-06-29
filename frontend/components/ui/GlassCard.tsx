@@ -1,13 +1,14 @@
 "use client";
 
-import { useTheme } from "next-themes";
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode } from "react";
 
 interface GlassCardProps {
   children?: ReactNode;
   className?: string;
-  variant?: "dark" | "light" | "auto";
-  asymmetric?: "default" | "lg" | "xl" | "sm" | "none" | "md";
+  variant?: "dark" | "light" | "auto" | "flat" | 1 | 2 | 3;
+  tier?: "flat" | 1 | 2 | 3;
+  asymmetric?: "default" | "lg" | "xl" | "sm" | "none" | "md" | "shape-facet" | "shape-ledger" | "shape-squircle" | "shape-hex" | "shape-seal";
+  shape?: "shape-facet" | "shape-facet-sm" | "shape-ledger" | "shape-squircle" | "shape-hex" | "shape-seal" | "none";
   hoverable?: boolean;
   style?: React.CSSProperties;
 }
@@ -16,42 +17,42 @@ export function GlassCard({
   children,
   className = "",
   variant = "auto",
+  tier,
   asymmetric = "default",
+  shape,
   hoverable = false,
   style
 }: GlassCardProps) {
-  const [mounted, setMounted] = useState(false);
-  const { theme } = useTheme();
+  let finalTier = tier;
+  if (!finalTier) {
+    if (variant === 1 || variant === 2 || variant === 3 || variant === "flat") finalTier = variant;
+    else if (variant === "dark") finalTier = 3;
+    else if (variant === "light") finalTier = 1;
+    else finalTier = 2; // auto
+  }
+  const tierClass = finalTier === "flat" ? "glass-flat" : `glass-${finalTier}`;
 
-  useEffect(() => setMounted(true), []);
+  let finalShape = shape;
+  if (!finalShape) {
+    if (asymmetric.startsWith("shape-") || asymmetric === "none") finalShape = asymmetric as any;
+    else if (asymmetric === "sm") finalShape = "shape-facet-sm";
+    else if (asymmetric === "lg") finalShape = "shape-squircle";
+    else if (asymmetric === "xl") finalShape = "shape-hex";
+    else finalShape = "shape-facet"; // default, md
+  }
+  const shapeClass = finalShape === "none" ? "" : finalShape;
 
-  const isDark = mounted ? theme === "dark" : true; // default dark during ssr
-
-  const baseClass = "glass transition-all duration-500 relative overflow-hidden";
-  const darkClass = "bg-white/5 border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)]";
-  const lightClass = "bg-white/60 border-white/30 shadow-[0_8px_32px_rgba(0,0,0,0.08)]";
-
-  const variantClass =
-    variant === "dark" ? darkClass :
-    variant === "light" ? lightClass :
-    isDark ? darkClass : lightClass;
-
-  const radiusClass = 
-    asymmetric === "lg" ? "rounded-crypto-lg" :
-    asymmetric === "xl" ? "rounded-crypto-xl" :
-    asymmetric === "sm" ? "rounded-crypto-sm" :
-    asymmetric === "none" ? "" :
-    "rounded-crypto";
+  const baseClass = "transition-all duration-[var(--dur-enter)] ease-glide relative overflow-hidden";
 
   const hoverClass = hoverable
     ? "hover:scale-[1.02] hover:-translate-y-1 hover:shadow-[0_0_15px_rgba(var(--accent),0.3)] hover:border-accent/50 cursor-pointer"
     : "";
 
   return (
-    <div className={`${baseClass} ${variantClass} ${radiusClass} ${hoverClass} ${className}`} style={style}>
+    <div className={`${baseClass} ${tierClass} ${shapeClass} ${hoverClass} ${className}`} style={style}>
       {/* Subtle shine effect on hover */}
       {hoverable && (
-        <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-transparent opacity-0 hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-[rgba(var(--text),0.05)] to-transparent opacity-0 hover:opacity-100 transition-opacity duration-[var(--dur-hover)] pointer-events-none" />
       )}
       {children}
     </div>

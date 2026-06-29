@@ -10,10 +10,10 @@ services:
       - "8000:8000"
     environment:
       - ENVIRONMENT=production
-      # - SUPABASE_URL=your_supabase_url
-      # - SUPABASE_KEY=your_supabase_key
     volumes:
-      - ./backend/ml/data/sqlite:/app/ml/data/sqlite # Persist SQLite database
+      - ./cryptograph.db:/app/cryptograph.db
+      - ./cryptograph.db-wal:/app/cryptograph.db-wal
+      - ./cryptograph.db-shm:/app/cryptograph.db-shm
     restart: unless-stopped
 
   frontend:

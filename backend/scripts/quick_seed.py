@@ -40,7 +40,13 @@ def main():
     c = conn.cursor()
 
     exchange = ccxt.binance({"enableRateLimit": True})
-    symbols = ["BTC", "ETH", "SOL", "BNB", "XRP"]
+    symbols = [
+        "BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "AVAX", "LINK", "DOT",
+        "MATIC", "UNI", "BCH", "LTC", "NEAR", "APT", "ICP", "STX", "FIL", "ATOM",
+        "XMR", "AR", "HBAR", "VET", "MKR", "INJ", "GRT", "OP", "THETA", "LDO",
+        "FET", "FTM", "TAO", "TIA", "SEI", "SUI", "PYTH", "JUP", "GALA", "AAVE",
+        "ALGO", "SAND", "EGLD", "QNT", "SNX", "AXS", "CHZ", "MANA", "MINA", "DYDX"
+    ]
     
     since = int((datetime.now(timezone.utc) - timedelta(days=65)).timestamp() * 1000)
 
@@ -57,13 +63,18 @@ def main():
                 c.execute("INSERT INTO ohlcv (asset_id, timestamp, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)",
                           (asset_id, ts, row[1], row[2], row[3], row[4], row[5]))
                 
-            # Insert fake technical features (simplistic, just to avoid 500s)
+            # Insert fake technical features with variance to prevent NaN correlation tensors
+            # Using actual returns from OHLCV
+            prev_close = None
             for row in ohlcv:
                 ts = datetime.fromtimestamp(row[0]/1000, tz=timezone.utc).isoformat()
+                close = row[4]
+                returns_1d = (close - prev_close) / prev_close if prev_close else 0.0
+                prev_close = close
                 c.execute("""INSERT INTO technical_features 
                           (asset_id, timestamp, rsi_14, returns_1d, returns_7d, volatility_7d, macd, macd_signal, atr_14, bb_width) 
-                          VALUES (?, ?, 50.0, 0.0, 0.0, 0.05, 0.0, 0.0, 10.0, 0.1)""",
-                          (asset_id, ts))
+                          VALUES (?, ?, 50.0, ?, 0.0, 0.05, 0.0, 0.0, 10.0, 0.1)""",
+                          (asset_id, ts, returns_1d))
                           
             # Insert fake prediction
             c.execute("INSERT INTO predictions (asset_id, timestamp, predicted_at, direction, confidence, volatility_regime) VALUES (?, ?, ?, ?, ?, ?)",

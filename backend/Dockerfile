@@ -1,20 +1,23 @@
-FROM python:3.10-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements*.txt ./
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt && \
+    if [ -f requirements-optional.txt ]; then pip install --no-cache-dir -r requirements-optional.txt || true; fi
 
 # Copy backend code
 COPY . .
 
-# Ensure PYTHONPATH is set so that 'ml' and 'app' can be resolved
+# Ensure PYTHONPATH is set so that 'app' can be resolved
 ENV PYTHONPATH=/app
 
 EXPOSE 8000

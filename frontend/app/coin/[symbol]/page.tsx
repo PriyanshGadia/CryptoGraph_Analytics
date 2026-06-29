@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, use } from "react";
 import { createChart, ColorType, IChartApi } from "lightweight-charts";
 import { AreaChart, Area, ComposedChart, Line, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceLine, Cell } from "recharts";
 import { ChevronRight, RefreshCw, Maximize, Minimize, Brain, Layers, Activity, ActivitySquare, ShieldAlert, CircleDot, Info, TrendingUp, TrendingDown } from "lucide-react";
@@ -81,8 +81,9 @@ function calculateBB(prices: number[], period: number = 20) {
 }
 
 
-export default function CoinDetailPage({ params }: { params: { symbol: string } }) {
-  const symbol = params.symbol.toUpperCase();
+export default function CoinDetailPage({ params }: { params: Promise<{ symbol: string }> }) {
+  const resolvedParams = use(params);
+  const symbol = resolvedParams.symbol.toUpperCase();
   const [period, setPeriod] = useState("3M");
   const [interval, setIntervalState] = useState("1h");
   
@@ -95,7 +96,9 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
   const [syncing, setSyncing] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [livePrice, setLivePrice] = useState<number | null>(null);
-  const [liveVolume24h, setLiveVolume24h] = useState<number>(0);
+  const [liveVolume24h, setLiveVolume24h] = useState<number | null>(null);
+  const [liveMarketCap, setLiveMarketCap] = useState<number | null>(null);
+  const [livePriceChangePct, setLivePriceChangePct] = useState<number | null>(null);
   const [liveATH, setLiveATH] = useState<number>(0);
   
   // Chart refs
@@ -123,20 +126,13 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
     }
   };
   
-  // Live Edge Calculations (Fundamentals)
+  // ATH from chart
   useEffect(() => {
     if (ohlcv && ohlcv.length > 0) {
-      // Volume 24h (assuming interval is 1h, sum last 24 items)
-      const is1h = interval === "1h";
-      const lookback = is1h ? Math.min(24, ohlcv.length) : Math.min(ohlcv.length, 10);
-      const vol24 = ohlcv.slice(-lookback).reduce((acc: number, curr: any) => acc + curr.volume, 0);
-      setLiveVolume24h(vol24);
-
-      // ATH
       const ath = Math.max(...ohlcv.map((d: any) => d.high));
       setLiveATH(ath);
     }
-  }, [ohlcv, interval]);
+  }, [ohlcv]);
 
   // Live Ticker WebSocket
   useEffect(() => {
@@ -153,7 +149,9 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
           value: data.close,
         });
       }
-      if (volumeSeriesRef.current) {
+      if (volumeSeriesRef.current && data.volume) {
+        // Here data.volume from WS might be total 24h vol, but the chart expects interval volume. 
+        // For simplicity, we just leave it or use close/open color.
         volumeSeriesRef.current.update({
           time: data.time,
           value: data.volume,
@@ -161,6 +159,9 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
         });
       }
       setLivePrice(data.close);
+      if (data.volume) setLiveVolume24h(data.volume);
+      if (data.market_cap_usd) setLiveMarketCap(data.market_cap_usd);
+      if (data.price_change_24h_pct !== undefined) setLivePriceChangePct(data.price_change_24h_pct);
     };
     return () => ws.close();
   }, [symbol]);
@@ -200,7 +201,7 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
       wickUpColor:   "rgb(34, 197, 94)",
       wickDownColor: "rgb(239, 68, 68)",
     }) : chart.addLineSeries({
-      color: "rgb(var(--accent))",
+      color: "rgb(212, 165, 71)",
       lineWidth: 2,
     });
     
@@ -218,7 +219,7 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
     
     // Volume histogram
     const volumeSeries = chart.addHistogramSeries({
-      color: "rgba(var(--accent), 0.2)",
+      color: "rgba(212, 165, 71, 0.2)",
       priceFormat: { type: "volume" },
       priceScaleId: "volume",
     });
@@ -252,9 +253,9 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
       });
       
       if (middleData.length > 0) {
-        const upperLine = chart.addLineSeries({ color: "rgba(var(--accent), 0.8)", lineWidth: 1, lineStyle: 2 });
+        const upperLine = chart.addLineSeries({ color: "rgba(212, 165, 71, 0.8)", lineWidth: 1, lineStyle: 2 });
         upperLine.setData(upperData);
-        const lowerLine = chart.addLineSeries({ color: "rgba(var(--accent), 0.8)", lineWidth: 1, lineStyle: 2 });
+        const lowerLine = chart.addLineSeries({ color: "rgba(212, 165, 71, 0.8)", lineWidth: 1, lineStyle: 2 });
         lowerLine.setData(lowerData);
         const middleLine = chart.addLineSeries({ color: "rgba(255,255,255,0.5)", lineWidth: 1 });
         middleLine.setData(middleData);
@@ -321,7 +322,7 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
   
   if (!ohlcv || !history) return (
     <div className="h-[50vh] flex flex-col items-center justify-center space-y-6">
-      <div className="text-text bg-surface/30 p-6 rounded-crypto border border-white/10 font-mono text-center flex flex-col items-center gap-4 shadow-inner">
+      <div className="text-text bg-surface/30 p-6 rounded-sm border border-white/10 font-mono text-center flex flex-col items-center gap-4 shadow-inner">
           <RefreshCw size={32} className="text-accent animate-spin" />
           <p className="uppercase tracking-widest text-[10px] font-bold text-text-muted">Loading Asset Profile...</p>
       </div>
@@ -329,17 +330,13 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
   );
   
   const latestOhlcv = ohlcv[ohlcv.length - 1];
-  const prevOhlcv = ohlcv.length > 1 ? ohlcv[ohlcv.length - 2] : null;
   const displayPrice = livePrice !== null ? livePrice : latestOhlcv?.close;
-  const changePct = prevOhlcv ? ((displayPrice - prevOhlcv.close) / prevOhlcv.close) * 100 : 0;
+  const changePct = livePriceChangePct !== null ? livePriceChangePct : (ohlcv.length > 1 ? ((displayPrice - ohlcv[ohlcv.length - 2].close) / ohlcv[ohlcv.length - 2].close) * 100 : 0);
   const latestPred = history.predictions[0] || {};
   
   // Realtime Market Cap & Supply Scaling
-  let displayMcap = asset?.market_cap_usd;
+  let displayMcap = liveMarketCap !== null ? liveMarketCap : asset?.market_cap_usd;
   let circSupply = 0;
-  if (asset?.market_cap_usd && latestOhlcv?.close && latestOhlcv.close > 0 && livePrice) {
-    displayMcap = (livePrice / latestOhlcv.close) * asset.market_cap_usd;
-  }
   if (displayMcap && displayPrice) {
       circSupply = displayMcap / displayPrice;
   }
@@ -353,7 +350,7 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
   const liveBB = calculateBB(livePrices, 20);
   
   return (
-    <div className="space-y-6 min-h-screen pb-12 relative overflow-hidden">
+    <div className="space-y-6 min-h-screen pb-12 p-6 glass-2 shape-seal overflow-hidden relative">
       
       {/* Subtle Glow Backgrounds */}
       <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-accent/10 rounded-full blur-[120px] pointer-events-none" />
@@ -368,7 +365,7 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
 
       <div className="max-w-[1600px] mx-auto px-4 relative z-10 space-y-6">
           {/* SECTION 1 - Header */}
-          <GlassCard asymmetric="lg" className="p-6 lg:p-8 flex flex-col gap-4 overflow-visible">
+          <GlassCard tier={2} shape="shape-squircle" className="p-6 lg:p-8 flex flex-col gap-4 overflow-visible">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
               <div className="flex flex-col">
                 <div className="flex items-center gap-4">
@@ -394,11 +391,11 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
               <div className="flex flex-col items-end gap-4 w-full md:w-auto">
                 <Link 
                   href={`/predictions?symbol=${symbol}`}
-                  className="glass bg-accent hover:bg-accent/90 text-white px-6 py-3 rounded-crypto-sm text-[10px] uppercase font-black tracking-widest transition-all shadow-[0_0_20px_rgba(var(--accent),0.4)] flex items-center gap-2 hover:scale-105 border border-white/20"
+                  className="glass bg-accent hover:bg-accent/90 text-white px-6 py-3 rounded-sm text-[10px] uppercase font-black tracking-widest transition-all shadow-[0_0_20px_rgba(var(--accent),0.4)] flex items-center gap-2 hover:scale-105 border border-white/20"
                 >
                   <Brain size={16} /> Analyze in Prediction Studio
                 </Link>
-                <div className="flex items-center gap-4 glass bg-surface/50 border border-white/10 rounded-crypto-sm p-4 w-full md:w-auto justify-between shadow-inner">
+                <div className="flex items-center gap-4 glass bg-surface/50 border border-white/10 rounded-sm p-4 w-full md:w-auto justify-between shadow-inner">
                     <div className="flex items-center gap-3">
                         <span className="text-[9px] text-text-muted uppercase font-black tracking-widest">Latest Signal</span>
                         <DirectionBadge dir={latestPred.direction || "neutral"} />
@@ -419,10 +416,10 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
           </GlassCard>
           
           {/* SECTION 2 - Main Chart */}
-          <GlassCard asymmetric="lg" className={`p-4 overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50 rounded-none m-0 bg-background border-0 backdrop-blur-none' : ''}`}>
+          <GlassCard tier={2} shape="shape-squircle" className={`p-4 overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50 rounded-none m-0 bg-background border-0 backdrop-blur-none' : ''}`}>
             
             {/* Chart Actions Toolbar */}
-            <div className="flex flex-wrap justify-between items-center mb-4 gap-4 bg-surface/30 p-2 rounded-crypto-sm border border-white/5">
+            <div className="flex flex-wrap justify-between items-center mb-4 gap-4 bg-surface/30 p-2 rounded-sm border border-white/5">
               <div className="flex gap-2 items-center">
                 <div className="flex bg-black/40 rounded-sm border border-white/5 p-1 shadow-inner">
                   {["1m", "5m", "15m", "1h", "4h", "1d", "1w"].map(i => (
@@ -497,12 +494,12 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
               </div>
             </div>
             
-            <div className="relative border border-white/5 rounded-crypto bg-black/20 p-2" style={{ height: isFullscreen ? 'calc(100vh - 100px)' : '480px' }}>
+            <div className="relative border border-white/5 rounded-sm bg-black/20 p-2" style={{ height: isFullscreen ? 'calc(100vh - 100px)' : '480px' }}>
               <div ref={chartContainerRef} className="w-full h-full" />
               
               {/* Intraday Floating Tooltip */}
               {tooltipData && (
-                <div className="absolute top-4 left-4 z-10 glass bg-surface/90 backdrop-blur-xl border border-white/10 p-4 rounded-crypto-sm shadow-2xl flex gap-6 text-[10px] font-mono pointer-events-none tracking-widest uppercase font-bold">
+                <div className="absolute top-4 left-4 z-10 glass bg-surface/90 backdrop-blur-xl border border-white/10 p-4 rounded-sm shadow-2xl flex gap-6 text-[10px] font-mono pointer-events-none tracking-widest uppercase font-bold">
                   <div className="text-accent drop-shadow-[0_0_5px_rgba(var(--accent),0.5)]">{new Date(tooltipData.time * 1000).toLocaleString(undefined, {month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit'})}</div>
                   <div className="text-text-muted">O <span className="text-text ml-1">{tooltipData.open?.toFixed(2)}</span></div>
                   <div className="text-text-muted">H <span className="text-text ml-1">{tooltipData.high?.toFixed(2)}</span></div>
@@ -518,13 +515,13 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             
             {/* Real-Time Fundamentals */}
-            <GlassCard asymmetric="md" className="p-8 relative overflow-hidden group">
+            <GlassCard tier={2} shape="shape-squircle" className="p-8 relative overflow-hidden group">
               <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity">
                   <Layers size={100} className="text-text-muted" />
               </div>
               <div className="flex justify-between items-center mb-8 relative z-10">
                 <h3 className="text-xl font-black text-text tracking-tight flex items-center gap-3">
-                    <div className="p-2 glass bg-white/5 rounded-crypto-sm border border-white/10 shadow-inner"><Layers size={18} className="text-text" /></div>
+                    <div className="p-2 glass bg-white/5 rounded-sm border border-white/10 shadow-inner"><Layers size={18} className="text-text" /></div>
                     Fundamental Snapshot
                 </h3>
                 <span className="flex h-2 w-2 relative">
@@ -533,25 +530,25 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-4 relative z-10">
-                <div className="glass bg-black/40 p-5 rounded-crypto-sm border border-white/5 hover:border-white/20 transition-colors shadow-inner">
+                <div className="glass bg-black/40 p-5 rounded-sm border border-white/5 hover:border-white/20 transition-colors shadow-inner">
                     <div className="text-[9px] text-text-muted mb-2 font-mono font-black uppercase tracking-widest flex items-center gap-2"><Info size={12}/> Market Cap</div>
                     <div className={`text-2xl font-mono font-black tracking-tighter transition-colors duration-300 ${livePrice ? 'text-text' : 'text-text-muted'}`}>
                         ${displayMcap ? (displayMcap / 1e9).toFixed(2) + "B" : "N/A"}
                     </div>
                 </div>
-                <div className="glass bg-black/40 p-5 rounded-crypto-sm border border-white/5 hover:border-white/20 transition-colors shadow-inner">
+                <div className="glass bg-black/40 p-5 rounded-sm border border-white/5 hover:border-white/20 transition-colors shadow-inner">
                     <div className="text-[9px] text-text-muted mb-2 font-mono font-black uppercase tracking-widest flex items-center gap-2"><ActivitySquare size={12}/> 24h Volume</div>
-                    <div className={`text-2xl font-mono font-black tracking-tighter transition-colors duration-300 ${liveVolume24h > 0 ? 'text-text' : 'text-text-muted'}`}>
-                        ${liveVolume24h > 0 ? (liveVolume24h / 1e6).toFixed(2) + "M" : "Loading..."}
+                    <div className={`text-2xl font-mono font-black tracking-tighter transition-colors duration-300 ${(liveVolume24h !== null && liveVolume24h > 0) ? 'text-text' : 'text-text-muted'}`}>
+                        ${(liveVolume24h !== null && liveVolume24h > 0) ? (liveVolume24h / 1e6).toFixed(2) + "M" : "Loading..."}
                     </div>
                 </div>
-                <div className="glass bg-black/40 p-5 rounded-crypto-sm border border-white/5 hover:border-white/20 transition-colors shadow-inner">
+                <div className="glass bg-black/40 p-5 rounded-sm border border-white/5 hover:border-white/20 transition-colors shadow-inner">
                     <div className="text-[9px] text-text-muted mb-2 font-mono font-black uppercase tracking-widest flex items-center gap-2"><CircleDot size={12}/> Circ. Supply</div>
                     <div className={`text-2xl font-mono font-black tracking-tighter transition-colors duration-300 ${circSupply > 0 ? 'text-text' : 'text-text-muted'}`}>
                         {circSupply > 0 ? (circSupply / 1e6).toFixed(2) + "M" : "Loading..."}
                     </div>
                 </div>
-                <div className="glass bg-black/40 p-5 rounded-crypto-sm border border-white/5 hover:border-white/20 transition-colors shadow-inner">
+                <div className="glass bg-black/40 p-5 rounded-sm border border-white/5 hover:border-white/20 transition-colors shadow-inner">
                     <div className="text-[9px] text-text-muted mb-2 font-mono font-black uppercase tracking-widest flex items-center gap-2"><TrendingUp size={12}/> All-Time High</div>
                     <div className={`text-2xl font-mono font-black tracking-tighter transition-colors duration-300 ${liveATH > 0 ? 'text-text' : 'text-text-muted'}`}>
                         ${liveATH > 0 ? liveATH.toFixed(2) : "Loading..."}
@@ -561,13 +558,13 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
             </GlassCard>
 
             {/* Real-Time Technical Analysis */}
-            <GlassCard asymmetric="md" className="p-8 relative overflow-hidden group">
+            <GlassCard tier={2} shape="shape-squircle" className="p-8 relative overflow-hidden group">
               <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity">
                   <Activity size={100} className="text-text-muted" />
               </div>
               <div className="flex justify-between items-center mb-8 relative z-10">
                 <h3 className="text-xl font-black text-text tracking-tight flex items-center gap-3">
-                    <div className="p-2 glass bg-success/10 rounded-crypto-sm border border-success/20 shadow-inner"><Activity size={18} className="text-success drop-shadow-[0_0_5px_currentColor]" /></div>
+                    <div className="p-2 glass bg-success/10 rounded-sm border border-success/20 shadow-inner"><Activity size={18} className="text-success drop-shadow-[0_0_5px_currentColor]" /></div>
                     Technical Indicators
                 </h3>
                 <span className="flex h-2 w-2 relative">
@@ -577,21 +574,21 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
               </div>
               
               <div className="space-y-4 relative z-10">
-                  <div className="flex justify-between items-center glass bg-black/40 p-4 rounded-crypto-sm border border-white/5 hover:border-white/20 transition-colors shadow-inner">
+                  <div className="flex justify-between items-center glass bg-black/40 p-4 rounded-sm border border-white/5 hover:border-white/20 transition-colors shadow-inner">
                       <span className="text-[10px] text-text-muted uppercase tracking-widest font-mono font-black">RSI (14)</span>
                       <div className="flex items-center gap-4">
                           <span className="font-mono font-black text-text text-xl">{liveRSI.toFixed(2)}</span>
                           <DirectionBadge dir={liveRSI > 60 ? "down" : liveRSI < 40 ? "up" : "neutral"} />
                       </div>
                   </div>
-                  <div className="flex justify-between items-center glass bg-black/40 p-4 rounded-crypto-sm border border-white/5 hover:border-white/20 transition-colors shadow-inner">
+                  <div className="flex justify-between items-center glass bg-black/40 p-4 rounded-sm border border-white/5 hover:border-white/20 transition-colors shadow-inner">
                       <span className="text-[10px] text-text-muted uppercase tracking-widest font-mono font-black">MACD Div</span>
                       <div className="flex items-center gap-4">
                           <span className="font-mono font-black text-text text-xl">{liveMACD.toFixed(4)}</span>
                           <DirectionBadge dir={liveMACD > 0 ? "up" : "down"} />
                       </div>
                   </div>
-                  <div className="flex justify-between items-center glass bg-black/40 p-4 rounded-crypto-sm border border-white/5 hover:border-white/20 transition-colors shadow-inner">
+                  <div className="flex justify-between items-center glass bg-black/40 p-4 rounded-sm border border-white/5 hover:border-white/20 transition-colors shadow-inner">
                       <span className="text-[10px] text-text-muted uppercase tracking-widest font-mono font-black">Volatility (BB)</span>
                       <div className="flex items-center gap-4">
                           <span className="font-mono font-black text-text text-xl">{liveBB.width.toFixed(4)}</span>
@@ -607,7 +604,7 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
             <div className="flex gap-4">
               <button 
                 onClick={() => setShowRSI(!showRSI)}
-                className={`px-5 py-2.5 rounded-crypto-sm text-[10px] font-black uppercase tracking-widest border transition-all ${
+                className={`px-5 py-2.5 rounded-sm text-[10px] font-black uppercase tracking-widest border transition-all ${
                   showRSI ? "border-accent/50 text-accent glass bg-accent/10 shadow-[0_0_15px_rgba(var(--accent),0.2)]" : "border-white/10 text-text-muted hover:border-white/20 hover:text-text glass bg-surface/30"
                 }`}
               >
@@ -615,7 +612,7 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
               </button>
               <button 
                 onClick={() => setShowBB(!showBB)}
-                className={`px-5 py-2.5 rounded-crypto-sm text-[10px] font-black uppercase tracking-widest border transition-all ${
+                className={`px-5 py-2.5 rounded-sm text-[10px] font-black uppercase tracking-widest border transition-all ${
                   showBB ? "border-accent/50 text-accent glass bg-accent/10 shadow-[0_0_15px_rgba(var(--accent),0.2)]" : "border-white/10 text-text-muted hover:border-white/20 hover:text-text glass bg-surface/30"
                 }`}
               >
@@ -624,7 +621,7 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
             </div>
             
             {showRSI && (
-              <GlassCard asymmetric="sm" className="p-6 overflow-hidden">
+              <GlassCard tier={2} shape="shape-squircle" className="p-6 overflow-hidden">
                 <h3 className="text-[10px] font-mono font-black uppercase tracking-widest text-text-muted mb-4">Relative Strength Index History (14)</h3>
                 <div className="h-48">
                   <ResponsiveContainer width="100%" height="100%">
@@ -637,7 +634,7 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
                       />
                       <ReferenceLine y={70} stroke="rgba(239,68,68,0.5)" strokeDasharray="3 3" label={{ value: "OVERBOUGHT", fill: "rgba(239,68,68,0.8)", position: "insideTopLeft", fontSize: 9, fontFamily: "sans-serif", fontWeight: "bold", letterSpacing: "0.1em" }} />
                       <ReferenceLine y={30} stroke="rgba(34,197,94,0.5)" strokeDasharray="3 3" label={{ value: "OVERSOLD", fill: "rgba(34,197,94,0.8)", position: "insideBottomLeft", fontSize: 9, fontFamily: "sans-serif", fontWeight: "bold", letterSpacing: "0.1em" }} />
-                      <Area type="monotone" dataKey="rsi" stroke="rgb(var(--accent))" fill="rgba(var(--accent), 0.1)" strokeWidth={2} />
+                      <Area type="monotone" dataKey="rsi" stroke="rgb(212, 165, 71)" fill="rgba(212, 165, 71, 0.1)" strokeWidth={2} />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
@@ -649,14 +646,14 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             
             {/* LEFT COLUMN: Prediction History */}
-            <GlassCard asymmetric="md" className="p-0 overflow-hidden flex flex-col">
+            <GlassCard tier={2} shape="shape-squircle" className="p-0 overflow-hidden flex flex-col">
               <div className="p-8 border-b border-white/5 bg-surface/30">
                 <div className="flex justify-between items-center">
                   <div>
                     <h3 className="text-xl font-black text-text tracking-tight">Prediction History</h3>
                     <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-1">AI signal accuracy audit log</p>
                   </div>
-                  <div className="flex items-center gap-3 bg-black/40 px-4 py-2 rounded-crypto-sm border border-white/5">
+                  <div className="flex items-center gap-3 bg-black/40 px-4 py-2 rounded-sm border border-white/5">
                     <span className="text-2xl font-mono font-black text-accent drop-shadow-[0_0_10px_rgba(var(--accent),0.5)]">{history.summary.accuracy_pct.toFixed(0)}%</span>
                     <span className="text-[8px] uppercase tracking-widest font-black text-text-muted">accuracy</span>
                   </div>
@@ -666,7 +663,7 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
               <div className="flex-1 p-8">
                 <div className="space-y-3 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
                   {history.predictions.map((p: any, i: number) => (
-                    <div key={i} className={`flex items-center justify-between p-4 rounded-crypto border transition-colors ${i % 2 === 0 ? "glass bg-black/30 border-white/5 hover:border-white/10" : "bg-transparent border-transparent hover:bg-white/[0.02]"}`}>
+                    <div key={i} className={`flex items-center justify-between p-4 rounded-sm border transition-colors ${i % 2 === 0 ? "glass bg-black/30 border-white/5 hover:border-white/10" : "bg-transparent border-transparent hover:bg-white/[0.02]"}`}>
                       <div className="flex items-center gap-4">
                         <span className="text-[10px] font-mono font-bold text-text-muted w-28">{p.date}</span>
                         <div className="w-28"><DirectionBadge dir={p.direction} /></div>
@@ -689,7 +686,7 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
             </GlassCard>
             
             {/* RIGHT COLUMN: Correlated Coins */}
-            <GlassCard asymmetric="md" className="p-0 overflow-hidden flex flex-col">
+            <GlassCard tier={2} shape="shape-squircle" className="p-0 overflow-hidden flex flex-col">
               <div className="p-8 border-b border-white/5 bg-surface/30">
                 <h3 className="text-xl font-black text-text tracking-tight">Matrix Correlations</h3>
                 <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-1">Asset relationship structural mapping</p>
@@ -698,7 +695,7 @@ export default function CoinDetailPage({ params }: { params: { symbol: string } 
               <div className="flex-1 p-8">
                 <div className="space-y-2">
                   {correlations?.map((c: any, i: number) => (
-                    <Link href={`/coin/${c.symbol}`} key={c.symbol} className="flex items-center justify-between p-4 glass bg-surface/30 hover:bg-white/5 rounded-crypto border border-white/5 hover:border-white/20 transition-all group shadow-inner">
+                    <Link href={`/coin/${c.symbol}`} key={c.symbol} className="flex items-center justify-between p-4 glass bg-surface/30 hover:bg-white/5 rounded-sm border border-white/5 hover:border-white/20 transition-all group shadow-inner">
                       <div className="flex items-center gap-4 w-1/3">
                         <span className="text-[10px] text-text-muted font-mono font-black opacity-50">#{String(i + 1).padStart(2, '0')}</span>
                         <span className="font-mono font-black text-text group-hover:text-accent transition-colors text-lg tracking-tight">{c.symbol}</span>

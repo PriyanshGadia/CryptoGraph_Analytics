@@ -26,15 +26,13 @@ export function ScrollToTop() {
     });
   };
 
-  if (!isVisible) return null;
-
   return (
     <button
       onClick={scrollToTop}
-      className="fixed bottom-8 right-8 p-3 rounded-full bg-[#1a1a1a] text-[#94a3b8] hover:text-white border border-[#2a2a2a] hover:border-indigo-500 shadow-xl transition-all z-40 group"
+      className={`fixed bottom-8 right-8 p-3 shape-facet-sm depth-bevel glass-1 hover:text-text border border-white/10 hover:border-accent shadow-xl transition-all duration-[var(--dur-enter)] ease-glide z-40 group ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8 pointer-events-none'}`}
       aria-label="Scroll to top"
     >
-      <ChevronUp size={24} className="group-hover:-translate-y-1 transition-transform" />
+      <ChevronUp size={24} className="group-hover:-translate-y-1 transition-transform duration-[var(--dur-hover)] ease-glide" />
     </button>
   );
 }

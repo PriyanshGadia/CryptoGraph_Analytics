@@ -26,10 +26,15 @@ async def get_predictions(
     if min_confidence > 0:
         query = query.filter(SQLAPrediction.confidence >= min_confidence)
         
-    res = query.order_by(desc(SQLAPrediction.predicted_at)).limit(limit).all()
+    res = query.order_by(desc(SQLAPrediction.predicted_at)).limit(1000).all()
     
     predictions = []
+    seen_assets = set()
     for pred, asset in res:
+        if asset.symbol in seen_assets:
+            continue
+        seen_assets.add(asset.symbol)
+        
         import json
         sv = None
         if pred.shap_values:
@@ -47,6 +52,10 @@ async def get_predictions(
             model_version=pred.model_version or "v1.0",
             shap_values=sv
         ))
+        
+        if len(predictions) >= limit:
+            break
+            
     return predictions
 
 @router.get("/{symbol}", response_model=PredictionHistory)
@@ -87,11 +96,31 @@ async def get_prediction_history(symbol: str, db: Session = Depends(get_db)):
 async def trigger_inference(background_tasks: BackgroundTasks):
     """
     Triggers fresh inference run asynchronously.
-    Calls ml/pipelines/inference_pipeline.py as subprocess in background.
+    Refreshes technicals, then calls ml/pipelines/inference_pipeline.py as subprocess in background.
     Returns immediately: {"status": "triggered", "message": "Inference pipeline started"}
     """
     def run_inference_subprocess():
-        subprocess.run(["python", "ml/pipelines/inference_pipeline.py"])
+        from app.db.database import SessionLocal
+        from app.api.routes.screener import refresh_live_technicals
         
+        db = SessionLocal()
+        try:
+            print("[Scheduler] Refreshing live technicals...")
+            refresh_live_technicals(db=db)
+            print("[Scheduler] Running inference pipeline...")
+            import sys
+            import os
+            python_exec = sys.executable
+            # Ensure it runs from project root by moving up from backend
+            root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../.."))
+            env = os.environ.copy()
+            env["PYTHONPATH"] = root_dir
+            subprocess.run([python_exec, "ml/pipelines/inference_pipeline.py"], cwd=root_dir, env=env)
+            print("[Scheduler] Inference completed.")
+        except Exception as e:
+            print(f"[Scheduler] Error: {e}")
+        finally:
+            db.close()
+            
     background_tasks.add_task(run_inference_subprocess)
-    return {"status": "triggered", "message": "Inference pipeline started in background"}
+    return {"status": "triggered", "message": "Full pipeline triggered in background"}

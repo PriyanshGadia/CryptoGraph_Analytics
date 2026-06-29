@@ -3,9 +3,10 @@
 import { useState, useEffect } from "react";
 import { apiService } from "@/lib/api";
 import axios from "axios";
-import { Settings, Key, Save, CheckCircle, AlertCircle, RefreshCcw, Zap, Database, Radio, Globe } from "lucide-react";
+import { Settings, Key, Save, CheckCircle, AlertCircle, RefreshCcw, Zap, Database, Radio, Globe, Activity } from "lucide-react";
 import { useCurrency, CURRENCY_SYMBOLS, Currency } from "@/components/CurrencyContext";
 import { GlassCard } from "@/components/ui/GlassCard";
+import { usePerformanceMode } from "@/lib/usePerformanceMode";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -19,6 +20,7 @@ export default function SettingsPage() {
   const [refreshResult, setRefreshResult] = useState<string | null>(null);
   
   const { currency, setCurrency } = useCurrency();
+  const { mode: perfMode, toggleMode: setPerfMode } = usePerformanceMode();
 
   useEffect(() => {
     axios.get(`${BASE}/api/settings`)
@@ -138,14 +140,14 @@ export default function SettingsPage() {
   ];
 
   return (
-    <div className="max-w-4xl mx-auto space-y-10 pt-8">
+    <div className="max-w-4xl mx-auto space-y-10 pt-8 p-6 glass-2 shape-seal overflow-hidden relative">
       
       {/* HEADER */}
       <div className="relative">
         <div className="absolute top-[-50px] left-[-50px] w-64 h-64 bg-accent/5 rounded-full blur-[80px] pointer-events-none" />
         <div className="relative z-10">
           <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-text via-text/80 to-text-muted flex items-center gap-4 tracking-tight">
-            <div className="p-3 glass bg-accent/10 rounded-crypto shadow-inner shadow-accent/20">
+            <div className="p-3 glass bg-accent/10 rounded-sm shadow-inner shadow-accent/20">
                 <Settings className="text-accent" size={32} />
             </div>
             System Settings
@@ -157,7 +159,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Currency Preferences Section */}
-      <GlassCard asymmetric="sm" className="p-8 relative z-10 group overflow-hidden">
+      <GlassCard tier={2} shape="shape-squircle" className="p-8 relative z-10 group overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-accent/5 rounded-full blur-[50px] group-hover:bg-accent/10 transition-colors pointer-events-none" />
         <h2 className="text-xl font-black text-text flex items-center gap-3 mb-6 tracking-tight relative z-10">
           <Globe className="text-accent" size={24} /> Fiat Reference
@@ -172,7 +174,7 @@ export default function SettingsPage() {
           <select
             value={currency}
             onChange={(e) => setCurrency(e.target.value as Currency)}
-            className="bg-surface/50 border border-white/10 text-text text-sm rounded-crypto focus:ring-accent focus:border-accent block p-3.5 w-full md:w-64 font-mono font-bold transition-colors hover:bg-surface/80 outline-none"
+            className="bg-surface/50 border border-white/10 text-text text-sm rounded-sm focus:ring-accent focus:border-accent block p-3.5 w-full md:w-64 font-mono font-bold transition-colors hover:bg-surface/80 outline-none"
           >
             {Object.keys(CURRENCY_SYMBOLS).map((c) => (
               <option key={c} value={c}>
@@ -183,8 +185,44 @@ export default function SettingsPage() {
         </div>
       </GlassCard>
 
+      {/* Performance Mode Section */}
+      <GlassCard tier={2} shape="shape-squircle" className="p-8 relative z-10 overflow-hidden">
+        <div className="absolute top-0 right-0 w-1 bg-gradient-to-b from-success to-transparent h-full" />
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+          <div>
+            <h2 className="text-xl font-black text-text flex items-center gap-3 mb-2 tracking-tight">
+              <Activity className="text-success" size={24} /> UI Rendering Mode
+            </h2>
+            <p className="text-text-muted text-sm font-light">Toggle Lite mode to disable glass blur effects and improve battery life on mobile devices.</p>
+          </div>
+          
+          <div className="flex bg-surface/50 rounded-sm border border-white/10 p-1 w-full md:w-auto">
+            <button
+              onClick={() => setPerfMode("full")}
+              className={`flex-1 md:flex-none px-6 py-2.5 text-xs font-bold uppercase tracking-widest transition-all rounded-sm ${
+                perfMode === "full" 
+                  ? "bg-success/20 text-success border border-success/30 shadow-inner" 
+                  : "text-text-muted hover:text-text border border-transparent"
+              }`}
+            >
+              Full
+            </button>
+            <button
+              onClick={() => setPerfMode("lite")}
+              className={`flex-1 md:flex-none px-6 py-2.5 text-xs font-bold uppercase tracking-widest transition-all rounded-sm ${
+                perfMode === "lite" 
+                  ? "bg-warning/20 text-warning border border-warning/30 shadow-inner" 
+                  : "text-text-muted hover:text-text border border-transparent"
+              }`}
+            >
+              Lite
+            </button>
+          </div>
+        </div>
+      </GlassCard>
+
       {/* Data Refresh Section */}
-      <GlassCard asymmetric="md" className="p-8 relative z-10 overflow-hidden">
+      <GlassCard tier={2} shape="shape-squircle" className="p-8 relative z-10 overflow-hidden">
         <div className="absolute top-0 left-0 w-1 bg-gradient-to-b from-warning to-transparent h-full" />
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div>
@@ -198,7 +236,7 @@ export default function SettingsPage() {
           <button
             onClick={handleRefreshAll}
             disabled={refreshing}
-            className="flex items-center gap-3 bg-warning/10 hover:bg-warning/20 text-warning font-black py-3 px-8 rounded-crypto border border-warning/30 transition-all disabled:opacity-50 uppercase tracking-widest text-xs shadow-[0_0_15px_rgba(234,179,8,0.1)] hover:shadow-[0_0_25px_rgba(234,179,8,0.2)]"
+            className="flex items-center gap-3 bg-warning/10 hover:bg-warning/20 text-warning font-black py-3 px-8 rounded-sm border border-warning/30 transition-all disabled:opacity-50 uppercase tracking-widest text-xs shadow-[0_0_15px_rgba(234,179,8,0.1)] hover:shadow-[0_0_25px_rgba(234,179,8,0.2)]"
           >
             {refreshing ? (
               <div className="w-5 h-5 border-2 border-warning/30 border-t-warning rounded-full animate-spin" />
@@ -209,14 +247,14 @@ export default function SettingsPage() {
           </button>
         </div>
         {refreshResult && (
-          <div className="mt-6 p-4 glass bg-black/20 border border-white/10 rounded-crypto text-sm text-text-muted font-mono border-l-2 border-l-warning">
+          <div className="mt-6 p-4 glass bg-black/20 border border-white/10 rounded-sm text-sm text-text-muted font-mono border-l-2 border-l-warning">
             {refreshResult}
           </div>
         )}
       </GlassCard>
 
       {/* API Keys Section */}
-      <GlassCard asymmetric="lg" className="p-0 relative z-10 overflow-hidden">
+      <GlassCard tier={2} shape="shape-squircle" className="p-0 relative z-10 overflow-hidden">
         <div className="p-8 border-b border-white/5 bg-surface/30">
             <h2 className="text-xl font-black text-text flex items-center gap-3 tracking-tight">
             <Key className="text-accent" size={24} /> Integration Keys
@@ -248,7 +286,7 @@ export default function SettingsPage() {
                 <input
                     id={field.id}
                     type={field.sensitive ? "password" : "text"}
-                    className="w-full bg-surface/50 border border-white/10 text-text text-sm rounded-crypto focus:ring-accent focus:border-accent block pl-12 p-3.5 transition-all font-mono hover:bg-surface/80 outline-none focus:shadow-[0_0_15px_rgba(var(--accent),0.1)]"
+                    className="w-full bg-surface/50 border border-white/10 text-text text-sm rounded-sm focus:ring-accent focus:border-accent block pl-12 p-3.5 transition-all font-mono hover:bg-surface/80 outline-none focus:shadow-[0_0_15px_rgba(var(--accent),0.1)]"
                     placeholder={configured[field.id] ? "••••••••  (leave blank to keep current)" : "Enter key hash"}
                     value={formValues[field.id] || ""}
                     onChange={(e) => handleChange(field.id, e.target.value)}
@@ -272,7 +310,7 @@ export default function SettingsPage() {
             <button
                 onClick={handleSave}
                 disabled={saving || dirtyFields.size === 0}
-                className="flex items-center gap-3 bg-accent hover:bg-accent/90 text-white font-black py-3.5 px-8 rounded-crypto transition-all disabled:opacity-50 uppercase tracking-widest text-xs shadow-[0_0_20px_rgba(var(--accent),0.3)] hover:shadow-[0_0_30px_rgba(var(--accent),0.5)] w-full md:w-auto justify-center"
+                className="flex items-center gap-3 bg-accent hover:bg-accent/90 text-white font-black py-3.5 px-8 rounded-sm transition-all disabled:opacity-50 uppercase tracking-widest text-xs shadow-[0_0_20px_rgba(var(--accent),0.3)] hover:shadow-[0_0_30px_rgba(var(--accent),0.5)] w-full md:w-auto justify-center"
             >
                 {saving ? (
                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -287,3 +325,4 @@ export default function SettingsPage() {
     </div>
   );
 }
+

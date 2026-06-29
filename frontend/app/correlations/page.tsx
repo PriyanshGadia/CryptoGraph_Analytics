@@ -94,7 +94,7 @@ export default function CorrelationsPage() {
   
   if (!matrixData || !sectorData) return (
     <div className="flex flex-col items-center justify-center h-[50vh] space-y-6">
-      <div className="text-danger bg-danger/10 p-6 rounded-crypto border border-danger/20 font-mono text-center flex flex-col items-center gap-4 shadow-[0_0_30px_rgba(239,68,68,0.1)]">
+      <div className="text-danger bg-danger/10 p-6 rounded-sm border border-danger/20 font-mono text-center flex flex-col items-center gap-4 shadow-[0_0_30px_rgba(239,68,68,0.1)]">
           <Activity size={48} className="text-danger drop-shadow-[0_0_10px_rgba(239,68,68,0.5)]" />
           <p>Correlation tensor generation failed. Retrying quantum alignment...</p>
       </div>
@@ -124,7 +124,7 @@ export default function CorrelationsPage() {
   const sectorsList = Array.from(new Set(Object.values(assetMap))).filter(Boolean) as string[];
 
   return (
-    <div className="space-y-8 pt-8 max-w-[1600px] mx-auto relative">
+    <div className="space-y-8 pt-8 p-6 glass-2 shape-seal overflow-hidden max-w-[1600px] mx-auto relative">
       <div className="absolute top-[10%] right-[-100px] w-96 h-96 bg-accent/5 rounded-full blur-[120px] pointer-events-none" />
       <div className="absolute bottom-[20%] left-[-100px] w-80 h-80 bg-success/5 rounded-full blur-[100px] pointer-events-none" />
 
@@ -132,7 +132,7 @@ export default function CorrelationsPage() {
       <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-4 border-b border-white/10 pb-6">
         <div>
           <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-text via-text/80 to-text-muted flex items-center gap-4 tracking-tight">
-            <div className="p-3 glass bg-accent/10 rounded-crypto shadow-inner shadow-accent/20">
+            <div className="p-3 glass bg-accent/10 rounded-sm shadow-inner shadow-accent/20">
                 <Network className="text-accent" size={32} />
             </div>
             Neural Correlations
@@ -147,7 +147,7 @@ export default function CorrelationsPage() {
             <select 
               value={selectedSector}
               onChange={(e) => setSelectedSector(e.target.value)}
-              className="appearance-none glass bg-surface/50 text-xs text-text font-bold px-4 py-3 pr-10 rounded-crypto-sm border border-white/10 focus:outline-none focus:border-accent/50 focus:shadow-[0_0_15px_rgba(var(--accent),0.2)] transition-all cursor-pointer uppercase tracking-widest"
+              className="appearance-none glass bg-surface/50 text-xs text-text font-bold px-4 py-3 pr-10 rounded-sm border border-white/10 focus:outline-none focus:border-accent/50 focus:shadow-[0_0_15px_rgba(var(--accent),0.2)] transition-all cursor-pointer uppercase tracking-widest"
             >
               <option value="all">Global Topology</option>
               {sectorsList.map(s => <option key={s} value={s}>{s}</option>)}
@@ -155,7 +155,7 @@ export default function CorrelationsPage() {
             <Target className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" size={14} />
           </div>
           
-          <div className="flex glass bg-surface/50 rounded-crypto-sm border border-white/10 p-1 shadow-inner">
+          <div className="flex glass bg-surface/50 rounded-sm border border-white/10 p-1 shadow-inner">
             {[7, 30, 90, 365].map(d => (
               <button
                 key={d}
@@ -176,8 +176,8 @@ export default function CorrelationsPage() {
       <div className="relative z-10 space-y-8">
         {/* SECTION 1 - Header Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <GlassCard asymmetric="sm" className="p-6 flex items-center gap-4 group hover:bg-white/[0.02] transition-colors h-32">
-            <div className="p-3 rounded-crypto-sm glass bg-white/5 group-hover:bg-white/10 transition-colors shadow-inner shadow-white/5 border border-white/10">
+          <GlassCard tier={2} shape="shape-squircle" className="p-6 flex items-center gap-4 group hover:bg-white/[0.02] transition-colors h-32">
+            <div className="p-3 rounded-sm glass bg-white/5 group-hover:bg-white/10 transition-colors shadow-inner shadow-white/5 border border-white/10">
                 <GitGraph size={24} className="text-text" />
             </div>
             <div>
@@ -185,8 +185,8 @@ export default function CorrelationsPage() {
               <div className="text-[10px] uppercase tracking-widest font-bold text-text-muted mt-1">Nodes Analyzed</div>
             </div>
           </GlassCard>
-          <GlassCard asymmetric="sm" className="p-6 flex items-center gap-4 group hover:bg-accent/[0.02] transition-colors h-32 hover:border-accent/30 hover:shadow-[0_0_20px_rgba(var(--accent),0.1)]">
-            <div className="p-3 rounded-crypto-sm glass bg-accent/10 transition-colors shadow-inner shadow-accent/20 border border-accent/20">
+          <GlassCard tier={2} shape="shape-squircle" className="p-6 flex items-center gap-4 group hover:bg-accent/[0.02] transition-colors h-32 hover:border-accent/30 hover:shadow-[0_0_20px_rgba(var(--accent),0.1)]">
+            <div className="p-3 rounded-sm glass bg-accent/10 transition-colors shadow-inner shadow-accent/20 border border-accent/20">
                 <Network size={24} className="text-accent drop-shadow-[0_0_5px_currentColor]" />
             </div>
             <div>
@@ -194,8 +194,8 @@ export default function CorrelationsPage() {
               <div className="text-[10px] uppercase tracking-widest font-bold text-text-muted mt-1">Mean Network Vector</div>
             </div>
           </GlassCard>
-          <GlassCard asymmetric="sm" className="p-6 flex items-center gap-4 group hover:bg-success/[0.02] transition-colors h-32 hover:border-success/30 hover:shadow-[0_0_20px_rgba(34,197,94,0.1)]">
-            <div className="p-3 rounded-crypto-sm glass bg-success/10 transition-colors shadow-inner shadow-success/20 border border-success/20">
+          <GlassCard tier={2} shape="shape-squircle" className="p-6 flex items-center gap-4 group hover:bg-success/[0.02] transition-colors h-32 hover:border-success/30 hover:shadow-[0_0_20px_rgba(34,197,94,0.1)]">
+            <div className="p-3 rounded-sm glass bg-success/10 transition-colors shadow-inner shadow-success/20 border border-success/20">
                 <Zap size={24} className="text-success drop-shadow-[0_0_5px_currentColor]" />
             </div>
             <div>
@@ -210,14 +210,14 @@ export default function CorrelationsPage() {
         </div>
         
         {/* SECTION 2 - Correlation Heatmap */}
-        <GlassCard asymmetric="lg" className="p-0 overflow-hidden relative">
+        <GlassCard tier={2} shape="shape-squircle" className="p-0 overflow-hidden relative">
           <div className="p-8 border-b border-white/5 bg-surface/30 flex justify-between items-center flex-wrap gap-4">
             <div>
               <h3 className="text-xl font-black text-text tracking-tight">N-Dimensional Adjacency Matrix</h3>
               <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-1">Visualizing tensor co-movement probabilities</p>
             </div>
             
-            <div className="flex items-center gap-4 bg-black/40 px-4 py-2 rounded-crypto-sm border border-white/5">
+            <div className="flex items-center gap-4 bg-black/40 px-4 py-2 rounded-sm border border-white/5">
               <Maximize size={14} className="text-text-muted" />
               <input 
                 type="range" 
@@ -232,7 +232,7 @@ export default function CorrelationsPage() {
           
           <div className="p-8 bg-black/20 relative">
             {hoveredCell && (
-              <div className="absolute top-12 right-12 glass bg-surface/90 border border-accent/50 rounded-crypto p-4 shadow-[0_0_30px_rgba(var(--accent),0.2)] z-50 flex flex-col items-center backdrop-blur-xl transition-all pointer-events-none">
+              <div className="absolute top-12 right-12 glass bg-surface/90 border border-accent/50 rounded-sm p-4 shadow-[0_0_30px_rgba(var(--accent),0.2)] z-50 flex flex-col items-center backdrop-blur-xl transition-all pointer-events-none">
                 <div className="flex items-center gap-3 mb-2 bg-black/50 px-3 py-1.5 rounded-sm border border-white/5">
                   <span className="font-mono font-black text-text text-lg">{hoveredCell.symA}</span>
                   <Network className="text-accent opacity-50" size={14} />
@@ -247,7 +247,7 @@ export default function CorrelationsPage() {
               </div>
             )}
             
-            <div className="overflow-auto custom-scrollbar border border-white/5 bg-black/40 p-6 rounded-crypto shadow-inner relative max-h-[800px]">
+            <div className="overflow-auto custom-scrollbar border border-white/5 bg-black/40 p-6 rounded-sm shadow-inner relative max-h-[800px]">
               <div 
                 style={{ 
                   display: 'grid', 
@@ -307,7 +307,7 @@ export default function CorrelationsPage() {
               </div>
             </div>
             
-            <div className="mt-6 flex flex-wrap items-center justify-center gap-8 text-[10px] uppercase font-bold tracking-widest text-text-muted bg-surface/50 glass py-3 px-6 rounded-crypto-sm border border-white/5 inline-flex mx-auto">
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-8 text-[10px] uppercase font-bold tracking-widest text-text-muted bg-surface/50 glass py-3 px-6 rounded-sm border border-white/5 inline-flex mx-auto">
               <div className="flex items-center gap-3"><div className="w-4 h-4 bg-danger rounded-sm shadow-[0_0_10px_rgba(239,68,68,0.5)]"></div> Inverse (-1.0)</div>
               <div className="flex items-center gap-3"><div className="w-4 h-4 bg-black/40 border border-white/20 rounded-sm"></div> Orthogonal (0.0)</div>
               <div className="flex items-center gap-3"><div className="w-4 h-4 bg-success rounded-sm shadow-[0_0_10px_rgba(34,197,94,0.5)]"></div> Isomorphic (+1.0)</div>
@@ -319,7 +319,7 @@ export default function CorrelationsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           
           {/* LEFT: Top Correlated Pairs */}
-          <GlassCard asymmetric="md" className="p-0 overflow-hidden">
+          <GlassCard tier={2} shape="shape-squircle" className="p-0 overflow-hidden">
             <div className="p-8 border-b border-white/5 bg-surface/30">
               <h3 className="text-xl font-black text-text tracking-tight flex items-center gap-3">
                   <div className="w-8 h-8 rounded-full glass bg-success/10 border border-success/20 flex items-center justify-center">
@@ -377,7 +377,7 @@ export default function CorrelationsPage() {
           </GlassCard>
           
           {/* RIGHT: Sector Correlation Summary */}
-          <GlassCard asymmetric="md" className="p-0 flex flex-col overflow-hidden">
+          <GlassCard tier={2} shape="shape-squircle" className="p-0 flex flex-col overflow-hidden">
             <div className="p-8 border-b border-white/5 bg-surface/30">
               <h3 className="text-xl font-black text-text tracking-tight flex items-center gap-3">
                   <div className="w-8 h-8 rounded-full glass bg-accent/10 border border-accent/20 flex items-center justify-center">
@@ -388,8 +388,8 @@ export default function CorrelationsPage() {
               <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-2">Intra-class topological correlation</p>
             </div>
             
-            <div className="flex-1 min-h-[350px] p-8 pb-0">
-              <ResponsiveContainer width="100%" height="100%">
+            <div className="h-[350px] w-full p-8 pb-0">
+              <ResponsiveContainer width="100%" height={350}>
                 <BarChart data={sectorBars} layout="vertical" margin={{ left: 20 }}>
                   <XAxis type="number" domain={[0, 1]} stroke="rgba(255,255,255,0.2)" fontSize={10} fontFamily="monospace" tickLine={false} axisLine={false} />
                   <YAxis dataKey="name" type="category" stroke="rgba(255,255,255,0.5)" fontSize={10} fontFamily="monospace" tickLine={false} axisLine={false} tickFormatter={(val) => typeof val === 'string' ? val.toUpperCase() : val} />
@@ -416,7 +416,7 @@ export default function CorrelationsPage() {
             </div>
             
             <div className="p-8">
-                <div className="p-5 glass bg-accent/5 border border-accent/20 rounded-crypto shadow-inner relative overflow-hidden">
+                <div className="p-5 glass bg-accent/5 border border-accent/20 rounded-sm shadow-inner relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-accent/10 rounded-full blur-[40px] pointer-events-none" />
                     <div className="flex items-start gap-3 relative z-10">
                         <Zap size={16} className="text-accent mt-0.5 flex-shrink-0" />
@@ -435,3 +435,4 @@ export default function CorrelationsPage() {
     </div>
   );
 }
+

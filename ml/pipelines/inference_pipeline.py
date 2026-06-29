@@ -188,38 +188,15 @@ def run_inference() -> dict:
         vol_regime = "medium"
         
         if latest_features is not None:
-            rsi = latest_features.get("rsi_14", 50.0)
-            macd = latest_features.get("macd", 0.0)
-            macd_sig = latest_features.get("macd_signal", 0.0)
             vol = latest_features.get("volatility_7d", 0.0)
-            
-            score = 0
-            if rsi < 35: score += 2
-            elif rsi < 45: score += 1
-            elif rsi > 65: score -= 2
-            elif rsi > 55: score -= 1
-            
-            if macd > macd_sig: score += 1
-            else: score -= 1
-            
-            if score >= 2:
-                direction = "strong_up"
-                confidence = 80.0 + (score * 5.0)
-            elif score == 1:
-                direction = "up"
-                confidence = 60.0 + (score * 5.0)
-            elif score <= -2:
-                direction = "strong_down"
-                confidence = 80.0 + (abs(score) * 5.0)
-            elif score == -1:
-                direction = "down"
-                confidence = 60.0 + (abs(score) * 5.0)
-                
-            confidence = min(99.0, max(50.0, confidence))
-            
             if vol < 0.025: vol_regime = "low"
             elif vol > 0.065: vol_regime = "extreme"
             elif vol > 0.040: vol_regime = "high"
+            
+        # Extract direction and confidence from the model's forward pass
+        dir_idx = int(dir_probs[idx].argmax().item())
+        confidence = float(dir_probs[idx][dir_idx].item()) * 100.0
+        direction = DIRECTION_CLASSES[dir_idx]
             
         real_xai_features = {}
         if latest_features is not None:

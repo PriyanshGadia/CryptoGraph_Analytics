@@ -9,6 +9,7 @@ import { TrendingUp, TrendingDown, MessageSquareShare, Activity, HeartPulse } fr
 import { ChartSkeleton } from "@/components/PageSkeleton";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { ScrollToTop } from "@/components/ScrollToTop";
+import { CHART_HEX } from "@/lib/design-tokens";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -122,7 +123,7 @@ export default function SentimentPage() {
   const avg7 = last7.reduce((sum: number, curr: any) => sum + curr.fear_greed, 0) / (last7.length || 1);
 
   return (
-    <div className="space-y-8 pt-8 max-w-[1600px] mx-auto relative">
+    <div className="space-y-8 pt-8 p-6 glass-2 shape-seal overflow-hidden max-w-[1600px] mx-auto relative">
       <div className="absolute top-[10%] right-[-10%] w-[500px] h-[500px] bg-accent/5 rounded-full blur-[150px] pointer-events-none" />
       <div className="absolute bottom-[20%] left-[-10%] w-[400px] h-[400px] bg-success/5 rounded-full blur-[120px] pointer-events-none" />
 
@@ -130,7 +131,7 @@ export default function SentimentPage() {
       <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-4 border-b border-white/10 pb-6">
         <div>
           <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-text via-text/80 to-text-muted flex items-center gap-4 tracking-tight">
-            <div className="p-3 glass bg-accent/10 rounded-crypto shadow-inner shadow-accent/20">
+            <div className="p-3 glass bg-accent/10 rounded-sm shadow-inner shadow-accent/20">
                 <MessageSquareShare className="text-accent" size={32} />
             </div>
             Social Substrates
@@ -146,7 +147,7 @@ export default function SentimentPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
           {/* Gauge Card */}
-          <GlassCard asymmetric="md" className="p-8 flex flex-col items-center justify-center relative overflow-hidden group">
+          <GlassCard tier={2} shape="shape-squircle" className="p-8 flex flex-col items-center justify-center relative overflow-hidden group">
             <div className="absolute top-0 right-0 p-4">
                 <HeartPulse size={20} className={`opacity-50 group-hover:opacity-100 transition-opacity ${today > 60 ? 'text-success animate-pulse' : today < 40 ? 'text-danger' : 'text-text-muted'}`} />
             </div>
@@ -166,7 +167,7 @@ export default function SentimentPage() {
           </GlassCard>
           
           {/* Fear & Greed History Area */}
-          <GlassCard asymmetric="lg" className="p-8 lg:col-span-2">
+          <GlassCard tier={2} shape="shape-squircle" className="p-8 lg:col-span-2">
             <div className="mb-6 flex justify-between items-end">
                 <div>
                     <h3 className="text-xl font-black text-text tracking-tight flex items-center gap-3">
@@ -204,7 +205,7 @@ export default function SentimentPage() {
                   />
                   <ReferenceLine y={75} stroke="rgba(34,197,94,0.5)" strokeDasharray="3 3" label={{ position: 'insideTopLeft', value: 'EXTREME GREED', fill: 'rgba(34,197,94,0.8)', fontSize: 9, fontFamily: 'sans-serif', fontWeight: 'bold', letterSpacing: '0.1em' }} />
                   <ReferenceLine y={25} stroke="rgba(239,68,68,0.5)" strokeDasharray="3 3" label={{ position: 'insideBottomLeft', value: 'EXTREME FEAR', fill: 'rgba(239,68,68,0.8)', fontSize: 9, fontFamily: 'sans-serif', fontWeight: 'bold', letterSpacing: '0.1em' }} />
-                  <Area type="monotone" dataKey="fear_greed" stroke="rgb(var(--accent))" strokeWidth={2} fillOpacity={1} fill="url(#colorFG)" />
+                  <Area type="monotone" dataKey="fear_greed" stroke={CHART_HEX.dark.warning} strokeWidth={2} fillOpacity={1} fill="url(#colorFG)" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -212,7 +213,7 @@ export default function SentimentPage() {
         </div>
         
         {/* SECTION 3 - Dual Axis: Fear & Greed vs BTC Price */}
-        <GlassCard asymmetric="lg" className="p-0 overflow-hidden">
+        <GlassCard tier={2} shape="shape-squircle" className="p-0 overflow-hidden">
           <div className="p-8 border-b border-white/5 bg-surface/30">
             <h3 className="text-xl font-black text-text tracking-tight">Psychology vs. Price Action</h3>
             <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-1">Cross-referencing network sentiment against BTC valuations</p>
@@ -224,7 +225,7 @@ export default function SentimentPage() {
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                 <XAxis dataKey="date" stroke="rgba(255,255,255,0.3)" tick={{fill: 'rgba(255,255,255,0.5)', fontSize: 10, fontFamily: 'monospace'}} minTickGap={30} tickLine={false} axisLine={false} />
                 <YAxis yAxisId="left" domain={['auto', 'auto']} stroke="rgba(255,255,255,0.3)" tick={{fill: 'rgba(255,255,255,0.8)', fontSize: 10, fontFamily: 'monospace'}} tickFormatter={(v) => `$${v.toLocaleString()}`} tickLine={false} axisLine={false} />
-                <YAxis yAxisId="right" orientation="right" domain={[0, 100]} stroke="rgba(255,255,255,0.3)" tick={{fill: 'rgb(var(--accent))', fontSize: 10, fontFamily: 'monospace', fontWeight: 'bold'}} tickLine={false} axisLine={false} />
+                <YAxis yAxisId="right" orientation="right" domain={[0, 100]} stroke="rgba(255,255,255,0.3)" tick={{fill: CHART_HEX.dark.warning, fontSize: 10, fontFamily: 'monospace', fontWeight: 'bold'}} tickLine={false} axisLine={false} />
                 <Tooltip 
                   contentStyle={{ backgroundColor: "rgba(10, 10, 15, 0.9)", borderColor: "rgba(255, 255, 255, 0.1)", borderRadius: "12px", color: "#fff", backdropFilter: "blur(10px)" }} 
                   itemStyle={{ fontFamily: 'monospace', fontWeight: 'bold' }}
@@ -242,7 +243,7 @@ export default function SentimentPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           
           {/* LEFT: Sentiment by Sector */}
-          <GlassCard asymmetric="md" className="p-8">
+          <GlassCard tier={2} shape="shape-squircle" className="p-8">
             <div className="mb-8">
               <h3 className="text-xl font-black text-text tracking-tight">Sector Disposition</h3>
               <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-1">Aggregated sentiment variance across topology</p>
@@ -263,7 +264,7 @@ export default function SentimentPage() {
                   <Bar dataKey="avg_sentiment" radius={[0, 4, 4, 0]} barSize={20}>
                     {
                       sectorSent.map((entry: any, index: number) => (
-                        <Cell key={`cell-${index}`} fill={entry.avg_sentiment >= 0 ? 'rgb(34, 197, 94)' : 'rgb(239, 68, 68)'} className={entry.avg_sentiment >= 0 ? 'drop-shadow-[0_0_5px_rgba(34,197,94,0.5)]' : 'drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]'} />
+                        <Cell key={`cell-${index}`} fill={entry.avg_sentiment >= 0 ? CHART_HEX.dark.success : CHART_HEX.dark.danger} className={entry.avg_sentiment >= 0 ? 'drop-shadow-[0_0_5px_rgba(34,197,94,0.5)]' : 'drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]'} />
                       ))
                     }
                   </Bar>
@@ -273,7 +274,7 @@ export default function SentimentPage() {
           </GlassCard>
           
           {/* RIGHT: Trending Assets */}
-          <GlassCard asymmetric="md" className="p-0 overflow-hidden flex flex-col">
+          <GlassCard tier={2} shape="shape-squircle" className="p-0 overflow-hidden flex flex-col">
             <div className="p-8 border-b border-white/5 bg-surface/30">
               <h3 className="text-xl font-black text-text tracking-tight">Social Velocity Movers</h3>
               <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-1">Highest derivative changes in NLP scores (7d)</p>
@@ -290,7 +291,7 @@ export default function SentimentPage() {
                 </div>
                 <div className="space-y-3">
                   {trending.gainers.map((g: any, i: number) => (
-                    <div key={i} className="flex justify-between items-center glass bg-success/5 p-4 rounded-crypto border border-success/10 hover:border-success/30 hover:bg-success/10 transition-colors group">
+                    <div key={i} className="flex justify-between items-center glass bg-success/5 p-4 rounded-sm border border-success/10 hover:border-success/30 hover:bg-success/10 transition-colors group">
                       <div className="flex flex-col gap-1.5">
                         <Link href={`/graph?asset=${g.symbol}`} className="font-mono font-black text-text group-hover:text-success transition-colors text-lg tracking-tight">{g.symbol}</Link>
                         <span className="text-[8px] uppercase tracking-widest font-bold text-white px-2 py-0.5 rounded-sm inline-block w-max shadow-inner" style={{ backgroundColor: getSectorColor(g.sector) }}>{g.sector}</span>
@@ -314,7 +315,7 @@ export default function SentimentPage() {
                 </div>
                 <div className="space-y-3">
                   {trending.losers.map((l: any, i: number) => (
-                    <div key={i} className="flex justify-between items-center glass bg-danger/5 p-4 rounded-crypto border border-danger/10 hover:border-danger/30 hover:bg-danger/10 transition-colors group">
+                    <div key={i} className="flex justify-between items-center glass bg-danger/5 p-4 rounded-sm border border-danger/10 hover:border-danger/30 hover:bg-danger/10 transition-colors group">
                       <div className="flex flex-col gap-1.5">
                         <Link href={`/graph?asset=${l.symbol}`} className="font-mono font-black text-text group-hover:text-danger transition-colors text-lg tracking-tight">{l.symbol}</Link>
                         <span className="text-[8px] uppercase tracking-widest font-bold text-white px-2 py-0.5 rounded-sm inline-block w-max shadow-inner" style={{ backgroundColor: getSectorColor(l.sector) }}>{l.sector}</span>
@@ -337,3 +338,4 @@ export default function SentimentPage() {
     </div>
   );
 }
+

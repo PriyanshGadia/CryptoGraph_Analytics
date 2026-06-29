@@ -1,20 +1,20 @@
 import asyncio
 import json
+import time
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from typing import List
 from pathlib import Path
 
-from app.core.streams.binance_ws import get_latest_features, LIVE_OHLCV_CACHE
+from app.core.streams.binance_ws import get_latest_features, LIVE_OHLCV_CACHE, get_global_market_state
 
 router = APIRouter(prefix="/stream", tags=["stream"])
 
 FORCE_PREDICTION_BROADCAST = False
 
-# Discover SYMBOLS from inference_pipeline config (graceful fallback)
+# Discover SYMBOLS
 try:
     from ml.pipelines.inference_pipeline import SYMBOLS
 except ImportError:
-    # Fallback: derive from live cache or use top 50
     SYMBOLS = [
         "BTC","ETH","BNB","SOL","XRP","ADA","AVAX","DOT","MATIC","LINK",
         "DOGE","SHIB","UNI","LTC","ATOM","NEAR","FIL","APT","ARB","OP",
@@ -22,7 +22,6 @@ except ImportError:
         "AXS","GALA","ENJ","LRC","IMX","ALGO","VET","EOS","XLM","XTZ",
         "HBAR","EGLD","THETA","ICP","GRT","STX","FLOW","KAVA","ZEC","DASH"
     ]
-
 
 @router.post("/broadcast")
 async def trigger_broadcast():
@@ -35,48 +34,25 @@ async def stream_ticker(websocket: WebSocket, symbol: str):
     await websocket.accept()
     sym = symbol.upper()
     try:
-        from app.db.database import SessionLocal
-        from app.db.models_sqla import Asset
-        import time
-        
-        db = SessionLocal()
-        asset = db.query(Asset).filter(Asset.symbol == sym).first()
-        db.close()
-        
-        cache_list = LIVE_OHLCV_CACHE.get(sym)
-        static_price = cache_list[-1]["close"] if cache_list and len(cache_list) > 0 else 0.0
-        
-        # Send initial static price immediately to activate UI 'Live' indicators
-        await websocket.send_json({
-            "time": int(time.time()),
-            "open": static_price,
-            "high": static_price,
-            "low": static_price,
-            "close": static_price,
-            "volume": 0
-        })
-        
-        last_ts = None
-        last_close = None
-        last_volume = None
+        last_price = None
         while True:
-            cache_list = LIVE_OHLCV_CACHE.get(sym)
-            if cache_list and len(cache_list) > 0:
-                latest = cache_list[-1]
-                ts = int(latest["timestamp"].timestamp())
-                if last_ts != ts or last_close != latest["close"] or last_volume != latest["volume"]:
-                    last_ts = ts
-                    last_close = latest["close"]
-                    last_volume = latest["volume"]
+            state = get_global_market_state().get(sym)
+            if state:
+                curr_price = state.get("current_price")
+                if last_price != curr_price:
+                    last_price = curr_price
+                    # We broadcast the full SSOT for consistency
                     await websocket.send_json({
-                        "time": ts,
-                        "open": latest["open"],
-                        "high": latest["high"],
-                        "low": latest["low"],
-                        "close": latest["close"],
-                        "volume": latest["volume"]
+                        "time": int(time.time()),
+                        "close": curr_price,
+                        "open": curr_price, # Send same for simplicity, frontend mostly uses close for live updates
+                        "high": curr_price,
+                        "low": curr_price,
+                        "volume": state.get("volume_24h", 0),
+                        "market_cap_usd": state.get("market_cap_usd", 0),
+                        "price_change_24h_pct": state.get("price_change_24h_pct", 0)
                     })
-            await asyncio.sleep(0.1) # Send at most 10 times per second
+            await asyncio.sleep(1.0)
     except WebSocketDisconnect:
         pass
 
@@ -84,32 +60,23 @@ async def stream_ticker(websocket: WebSocket, symbol: str):
 async def stream_market(websocket: WebSocket):
     await websocket.accept()
     try:
-        last_price_dict = {}
         while True:
+            state = get_global_market_state()
             payload = {}
-            has_updates = False
-            for sym, cache_list in LIVE_OHLCV_CACHE.items():
-                if cache_list and len(cache_list) > 0:
-                    latest = cache_list[-1]
-                    price = latest["close"]
-                    if last_price_dict.get(sym) != price:
-                        last_price_dict[sym] = price
-                        has_updates = True
-                        payload[sym] = {
-                            "time": int(latest["timestamp"].timestamp()),
-                            "open": latest["open"],
-                            "high": latest["high"],
-                            "low": latest["low"],
-                            "close": latest["close"],
-                            "volume": latest["volume"]
-                        }
-            if has_updates:
+            for sym, data in state.items():
+                payload[sym] = {
+                    "time": int(time.time()),
+                    "close": data.get("current_price", 0),
+                    "volume": data.get("volume_24h", 0),
+                    "market_cap_usd": data.get("market_cap_usd", 0),
+                    "price_change_24h_pct": data.get("price_change_24h_pct", 0)
+                }
+            if payload:
                 await websocket.send_json({"type": "MARKET_UPDATE", "data": payload})
             await asyncio.sleep(1.0) # Send market updates once per second
     except WebSocketDisconnect:
         pass
 
-# Store connected clients
 connected_clients: List[WebSocket] = []
 
 @router.websocket("/predictions")
@@ -118,23 +85,17 @@ async def stream_predictions(websocket: WebSocket):
     connected_clients.append(websocket)
     try:
         while True:
-            # We can ping the client or just wait for them to disconnect
             await websocket.receive_text()
     except WebSocketDisconnect:
         connected_clients.remove(websocket)
 
 async def prediction_broadcast_loop():
-    """Background task to compute and broadcast live predictions using heuristic analysis."""
-    # Try to load model version from disk
+    """Background task to broadcast predictions."""
     model_version = "heuristic-v1"
-    model_path = Path(__file__).resolve().parent.parent.parent.parent / "artifacts" / "best_model.pt"
-    if model_path.exists():
-        model_version = model_path.stem
     
     global FORCE_PREDICTION_BROADCAST
     
     while True:
-        # Sleep for 60 seconds, but check for manual override every second
         for _ in range(60):
             if FORCE_PREDICTION_BROADCAST:
                 FORCE_PREDICTION_BROADCAST = False
@@ -144,78 +105,30 @@ async def prediction_broadcast_loop():
         if not connected_clients:
             continue
             
-        features = get_latest_features()
-        if not features:
+        state = get_global_market_state()
+        if not state:
             continue
             
         try:
             predictions = []
-            for idx, symbol in enumerate(SYMBOLS):
-                feat_df = features.get(symbol)
-                
-                # Convert DataFrame row to dict to avoid truth-value ambiguity
-                if feat_df is not None and not feat_df.empty:
-                    feat = feat_df.iloc[-1].to_dict()
-                else:
-                    feat = {}
-                
-                direction = "neutral"
-                confidence = 50.0
-                vol_regime = "medium"
-                
-                if feat:
-                    rsi = feat.get("rsi_14", 50.0)
-                    macd = feat.get("macd", 0.0)
-                    macd_sig = feat.get("macd_signal", 0.0)
-                    vol = feat.get("volatility_7d", 0.0)
-                    
-                    score = 0
-                    if rsi < 35: score += 2
-                    elif rsi < 45: score += 1
-                    elif rsi > 65: score -= 2
-                    elif rsi > 55: score -= 1
-                    
-                    if macd > macd_sig: score += 1
-                    else: score -= 1
-                    
-                    if score >= 2:
-                        direction = "strong_up"
-                        confidence = 80.0 + (score * 5.0)
-                    elif score == 1:
-                        direction = "up"
-                        confidence = 60.0 + (score * 5.0)
-                    elif score <= -2:
-                        direction = "strong_down"
-                        confidence = 80.0 + (abs(score) * 5.0)
-                    elif score == -1:
-                        direction = "down"
-                        confidence = 60.0 + (abs(score) * 5.0)
-                        
-                    confidence = min(99.0, max(50.0, confidence))
-                    
-                    if vol < 0.025: vol_regime = "low"
-                    elif vol > 0.065: vol_regime = "extreme"
-                    elif vol > 0.040: vol_regime = "high"
-                
+            for symbol, data in state.items():
                 predictions.append({
                     "symbol": symbol,
-                    "direction": direction,
-                    "confidence": round(confidence, 2),
-                    "volatility_regime": vol_regime,
+                    "direction": data.get("predicted_direction", "neutral"),
+                    "confidence": data.get("confidence", 50.0),
+                    "volatility_regime": data.get("volatility_regime", "low"),
                     "model_version": model_version,
                 })
                 
-            # Broadcast to all connected clients
             payload = json.dumps({"type": "LIVE_PREDICTIONS", "data": predictions})
             for client in connected_clients:
                 try:
                     await client.send_text(payload)
                 except:
-                    # Client likely disconnected
                     pass
                     
         except Exception as e:
-            print(f"[Stream] Error computing live predictions: {e}")
+            print(f"[Stream] Error broadcasting live predictions: {e}")
 
 screener_clients: List[WebSocket] = []
 
@@ -230,21 +143,21 @@ async def stream_screener(websocket: WebSocket):
         screener_clients.remove(websocket)
 
 async def screener_broadcast_loop():
-    """Background task to broadcast live prices every second."""
+    """Background task to broadcast SSOT state to screener."""
     while True:
         await asyncio.sleep(1)
         if not screener_clients:
             continue
             
+        state = get_global_market_state()
         payload_data = {}
-        for symbol, cache_list in LIVE_OHLCV_CACHE.items():
-            if cache_list:
-                latest = cache_list[-1]
-                payload_data[symbol] = {
-                    "price": latest["close"],
-                    "volume": latest["volume"],
-                    "time": int(latest["timestamp"].timestamp())
-                }
+        for symbol, data in state.items():
+            payload_data[symbol] = {
+                "price": data.get("current_price", 0),
+                "volume": data.get("volume_24h", 0),
+                "market_cap_usd": data.get("market_cap_usd", 0),
+                "time": int(time.time())
+            }
                 
         if payload_data:
             payload = json.dumps({"type": "LIVE_PRICES", "data": payload_data})

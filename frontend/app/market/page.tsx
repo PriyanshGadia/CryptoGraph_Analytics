@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import useSWR from "swr";
 import Link from "next/link";
 import { fetcher, Asset, RiskData } from "@/lib/api";
@@ -33,6 +33,8 @@ export default function MarketPage() {
       }
   }, [initialAssets]);
 
+  const updatesRef = useRef<Record<string, any>>({});
+
   useEffect(() => {
       if (!initialAssets || initialAssets.length === 0) return;
 
@@ -41,29 +43,38 @@ export default function MarketPage() {
           try {
               const msg = JSON.parse(event.data);
               if (msg.type === "MARKET_UPDATE") {
-                  const updates = msg.data;
-
-                  setAssets(prev => prev.map(asset => {
-                      if (updates[asset.symbol]) {
-                          const liveData = updates[asset.symbol];
-                          const prevClose = (asset as any).base_price || (asset.current_price / (1 + (asset.price_change_24h_pct || 0) / 100));
-                          const newPctChange = prevClose > 0 ? ((liveData.close - prevClose) / prevClose) * 100 : 0;
-                          
-                          return {
-                              ...asset,
-                              current_price: liveData.close,
-                              price_change_24h_pct: newPctChange,
-                          };
-                      }
-                      return asset;
-                  }));
+                  Object.assign(updatesRef.current, msg.data);
               }
           } catch (e) {
               console.error("WS Parse Error", e);
           }
       };
 
-      return () => ws.close();
+      const interval = setInterval(() => {
+          if (Object.keys(updatesRef.current).length === 0) return;
+          
+          setAssets(prev => prev.map(asset => {
+              const liveData = updatesRef.current[asset.symbol];
+              if (liveData) {
+                  const prevClose = (asset as any).base_price || (asset.current_price / (1 + (asset.price_change_24h_pct || 0) / 100));
+                  const newPctChange = prevClose > 0 ? ((liveData.close - prevClose) / prevClose) * 100 : 0;
+                  
+                  return {
+                      ...asset,
+                      current_price: liveData.close,
+                      price_change_24h_pct: newPctChange,
+                  };
+              }
+              return asset;
+          }));
+          
+          updatesRef.current = {};
+      }, 1000);
+
+      return () => {
+          ws.close();
+          clearInterval(interval);
+      };
   }, [initialAssets]);
 
   const avgConfidence = assets && assets.length > 0
@@ -82,12 +93,12 @@ export default function MarketPage() {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center h-full space-y-4">
-        <div className="text-danger bg-danger/10 p-4 rounded-crypto border border-danger/20 backdrop-blur-md">
+        <div className="text-danger bg-danger/10 p-4 rounded-sm border border-danger/20 backdrop-blur-md">
           Failed to load market data. The prediction engine may be offline.
         </div>
         <button
           onClick={() => mutate()}
-          className="flex items-center gap-2 px-6 py-3 glass hover:bg-white/10 transition-colors rounded-crypto text-text border border-white/10"
+          className="flex items-center gap-2 px-6 py-3 glass hover:bg-white/10 transition-colors rounded-sm text-text border border-white/10"
         >
           <RefreshCcw size={16} />
           Reconnect
@@ -101,7 +112,7 @@ export default function MarketPage() {
   });
 
   return (
-    <div className="relative min-h-[calc(100vh-8rem)] flex flex-col items-center justify-start pt-10 max-w-6xl mx-auto w-full">
+    <div className="relative min-h-[calc(100vh-8rem)] flex flex-col items-center justify-start pt-10 p-6 max-w-6xl mx-auto w-full glass-2 shape-seal overflow-hidden">
       
       {/* Absolute Ambient Background Lights */}
       <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-accent/10 rounded-full blur-[120px] pointer-events-none" />
@@ -121,16 +132,16 @@ export default function MarketPage() {
         {/* Stats Bar */}
         {assets && assets.length > 0 && (
             <div className="flex flex-wrap items-center gap-3">
-                <span className="flex items-center gap-2 px-4 py-2 glass border-white/10 rounded-crypto-sm text-xs font-mono text-text shadow-lg">
+                <span className="flex items-center gap-2 px-4 py-2 glass border-white/10 rounded-sm text-xs font-mono text-text shadow-lg">
                     <Network size={14} className="text-accent" />
                     {assets.length} Nodes
                 </span>
-                <span className="flex items-center gap-2 px-4 py-2 glass border-white/10 rounded-crypto-sm text-xs font-mono text-text shadow-lg">
+                <span className="flex items-center gap-2 px-4 py-2 glass border-white/10 rounded-sm text-xs font-mono text-text shadow-lg">
                     <Activity size={14} className="text-accent" />
                     Conf: {avgConfidence}%
                 </span>
                 {riskData && (
-                    <span className={`flex items-center gap-2 px-4 py-2 border rounded-crypto-sm text-xs font-mono font-bold glass ${regimeColor}`}>
+                    <span className={`flex items-center gap-2 px-4 py-2 border rounded-sm text-xs font-mono font-bold glass ${regimeColor}`}>
                         <RegimeIcon size={14} />
                         {riskData.market_regime.toUpperCase()}
                     </span>
@@ -144,19 +155,19 @@ export default function MarketPage() {
         {isLoading || !assets || assets.length === 0 ? (
           <div className="flex flex-col gap-4 w-full">
             {Array.from({ length: 8 }).map((_, i) => (
-              <GlassCard key={i} className="w-full h-24 rounded-crypto animate-pulse bg-white/5" />
+              <GlassCard tier="flat" shape="shape-ledger" key={i} className="w-full h-24 animate-pulse bg-[rgba(var(--text),0.06)]" />
             ))}
           </div>
         ) : (
           <div className="flex flex-col gap-4">
             {sortedAssets.map((asset, index) => (
-              <div key={asset.id} className="relative group">
+              <div key={asset.symbol} className="relative group">
                 {/* Connecting lines for previous items */}
                 {index > 0 && (
                     <div className="absolute -top-4 left-12 w-[1px] h-4 bg-white/10 group-hover:bg-accent/40 group-hover:shadow-[0_0_8px_rgba(var(--accent),0.8)] transition-all duration-300" />
                 )}
                 
-                <GlassCard variant="auto" asymmetric="default" hoverable className="p-4 flex items-center justify-between animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: `${index * 50}ms` }}>
+                <GlassCard tier="flat" shape="shape-ledger" hoverable className="p-4 flex items-center justify-between animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: `${index * 50}ms` }}>
                     <div className="flex items-center gap-8">
                         <Link href={`/coin/${asset.symbol}`} className="block transition-transform">
                             <PredictionNode asset={asset} />
@@ -174,6 +185,10 @@ export default function MarketPage() {
                         <div className="hidden lg:flex flex-col items-end">
                             <span className="text-[10px] text-text-muted uppercase tracking-widest font-mono">24h Vol</span>
                             <span className="text-sm font-mono font-bold text-text">${((asset.volume_24h || 0) / 1000000).toFixed(2)}M</span>
+                        </div>
+                        <div className="hidden lg:flex flex-col items-end">
+                            <span className="text-[10px] text-text-muted uppercase tracking-widest font-mono">24h Change</span>
+                            <span className={`text-sm font-mono font-bold ${(asset.price_change_24h_pct || 0) > 0 ? 'text-success' : (asset.price_change_24h_pct || 0) < 0 ? 'text-danger' : 'text-text'}`}>{(asset.price_change_24h_pct || 0) > 0 ? '+' : ''}{(asset.price_change_24h_pct || 0).toFixed(3)}%</span>
                         </div>
                         <div className="hidden lg:flex flex-col items-end">
                             <span className="text-[10px] text-text-muted uppercase tracking-widest font-mono">RSI 14D</span>
@@ -195,3 +210,4 @@ export default function MarketPage() {
     </div>
   );
 }
+

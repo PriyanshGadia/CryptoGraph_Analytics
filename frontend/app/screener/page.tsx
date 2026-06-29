@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import useSWR from "swr";
 import { fetcher } from "@/lib/api";
 import Link from "next/link";
@@ -11,14 +11,12 @@ import {
 import { TableSkeleton } from "@/components/PageSkeleton";
 import { useCurrency, CURRENCY_SYMBOLS } from "@/components/CurrencyContext";
 import { GlassCard } from "@/components/ui/GlassCard";
+import { DIRECTION_TOKENS, Direction } from "@/lib/design-tokens";
 
 const DirectionBadge = ({ direction }: { direction: string }) => {
-  const dir = direction?.toLowerCase() || "neutral";
-  if (dir === "strong_up") return <span className="bg-success text-black text-[10px] uppercase px-3 py-1 rounded-crypto-sm font-black tracking-widest shadow-[0_0_10px_rgba(34,197,94,0.3)]">STRONG BUY</span>;
-  if (dir === "up") return <span className="bg-success/10 text-success border border-success/30 text-[10px] uppercase px-3 py-1 rounded-crypto-sm font-bold tracking-widest shadow-[0_0_10px_rgba(34,197,94,0.1)]">BUY</span>;
-  if (dir === "down") return <span className="bg-danger/10 text-danger border border-danger/30 text-[10px] uppercase px-3 py-1 rounded-crypto-sm font-bold tracking-widest shadow-[0_0_10px_rgba(239,68,68,0.1)]">SELL</span>;
-  if (dir === "strong_down") return <span className="bg-danger text-black text-[10px] uppercase px-3 py-1 rounded-crypto-sm font-black tracking-widest shadow-[0_0_10px_rgba(239,68,68,0.3)]">STRONG SELL</span>;
-  return <span className="bg-white/5 text-text-muted border border-white/10 text-[10px] uppercase px-3 py-1 rounded-crypto-sm font-bold tracking-widest">NEUTRAL</span>;
+  const safeDirection = (direction in DIRECTION_TOKENS ? direction : "neutral") as Direction;
+  const t = DIRECTION_TOKENS[safeDirection];
+  return <span className={`text-[10px] uppercase px-3 py-1 shape-facet-sm font-bold tracking-widest border ${t.bgClass} ${t.textClass} ${t.borderClass}`} style={{ boxShadow: t.glow !== 'none' ? t.glow : undefined }}>{t.label}</span>;
 };
 
 const VolatilityChip = ({ level }: { level: string }) => {
@@ -43,10 +41,10 @@ function useDebounceLocal<T>(value: T, delay: number): T {
 const PresetCard = ({ icon: Icon, title, desc, onClick }: any) => (
   <button 
     onClick={onClick}
-    className="glass-panel hover:bg-white/5 p-5 rounded-crypto border border-white/5 hover:border-white/20 text-left transition-all flex items-start gap-4 w-full group relative overflow-hidden"
+    className="glass-flat shape-ledger hover:bg-white/5 p-5 border border-white/5 hover:border-white/20 text-left transition-all duration-[var(--dur-hover)] ease-glide flex items-start gap-4 w-full group relative overflow-hidden"
   >
     <div className="absolute top-0 left-0 w-full h-1 bg-white/5 group-hover:bg-accent/50 transition-colors" />
-    <div className="glass bg-accent/10 text-accent p-3 rounded-crypto-sm shadow-inner group-hover:scale-110 transition-transform">
+    <div className="glass bg-accent/10 text-accent p-3 rounded-sm shadow-inner group-hover:scale-110 transition-transform">
       <Icon size={24} />
     </div>
     <div>
@@ -72,19 +70,32 @@ export default function ScreenerPage() {
   
   const { currency, formatPrice, exchangeRate } = useCurrency();
   
+  const updatesRef = useRef<Record<string, {price: number, volume: number}>>({});
+  
   useEffect(() => {
     const ws = new WebSocket(`${BASE.replace("http", "ws")}/api/stream/screener`);
     ws.onmessage = (event) => {
       try {
         const payload = JSON.parse(event.data);
         if (payload.type === "LIVE_PRICES" && payload.data) {
-          setLiveData(payload.data);
+          Object.assign(updatesRef.current, payload.data);
         }
       } catch (e) {
         console.error(e);
       }
     };
-    return () => ws.close();
+    
+    const interval = setInterval(() => {
+      if (Object.keys(updatesRef.current).length > 0) {
+        setLiveData(prev => ({...prev, ...updatesRef.current}));
+        updatesRef.current = {};
+      }
+    }, 1000);
+    
+    return () => {
+      ws.close();
+      clearInterval(interval);
+    };
   }, []);
   
   const dMinConf = useDebounceLocal(minConf, 300);
@@ -157,7 +168,7 @@ export default function ScreenerPage() {
     if (!results || results.length === 0) return;
     const headers = ["Symbol", "Name", "Sector", "Direction", "Confidence", "RSI", "7D Return", "Volatility", "Market Cap"];
     const rows = results.map((r: any) => [
-      r.symbol, r.name, r.sector, r.direction, r.confidence, r.rsi_14, r.returns_7d, r.volatility_regime, r.market_cap_usd
+      r.symbol, r.name, r.sector, r.predicted_direction, r.confidence, r.rsi_14, r.returns_7d, r.volatility_regime, r.market_cap_usd
     ]);
     const escapeCsvField = (field: any) => {
       if (field == null) return "";
@@ -183,7 +194,7 @@ export default function ScreenerPage() {
   };
 
   return (
-    <div className="space-y-8 pt-8 max-w-[1600px] mx-auto">
+    <div className="space-y-8 p-8 max-w-[1600px] mx-auto glass-2 shape-seal overflow-hidden relative">
       
       {/* HEADER */}
       <div className="relative">
@@ -205,7 +216,7 @@ export default function ScreenerPage() {
       </div>
       
       {/* SECTION 2 - Filters */}
-      <GlassCard asymmetric="lg" className="p-0 overflow-hidden relative z-10">
+      <GlassCard tier="flat" shape="shape-ledger" className="p-0 overflow-hidden relative z-10">
         <div 
           className="p-6 bg-surface/30 flex justify-between items-center cursor-pointer hover:bg-surface/50 transition-colors border-b border-white/5"
           onClick={() => setFiltersOpen(!filtersOpen)}
@@ -226,7 +237,7 @@ export default function ScreenerPage() {
             <div className="space-y-6">
               <div>
                 <label className="block text-[10px] font-bold text-text-muted uppercase tracking-widest mb-2">Direction</label>
-                <select className="w-full bg-surface/50 text-text p-3 rounded-crypto-sm border border-white/10 focus:border-accent focus:outline-none transition-colors font-mono text-sm" value={direction} onChange={e => setDirection(e.target.value)}>
+                <select className="w-full bg-surface/50 text-text p-3 rounded-sm border border-white/10 focus:border-accent focus:outline-none transition-colors font-mono text-sm" value={direction} onChange={e => setDirection(e.target.value)}>
                   <option value="all">All Directions</option>
                   <option value="strong_up">Strong Buy</option>
                   <option value="up">Buy</option>
@@ -237,7 +248,7 @@ export default function ScreenerPage() {
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-text-muted uppercase tracking-widest mb-2">Sector</label>
-                <select className="w-full bg-surface/50 text-text p-3 rounded-crypto-sm border border-white/10 focus:border-accent focus:outline-none transition-colors font-mono text-sm" value={sector} onChange={e => setSector(e.target.value)}>
+                <select className="w-full bg-surface/50 text-text p-3 rounded-sm border border-white/10 focus:border-accent focus:outline-none transition-colors font-mono text-sm" value={sector} onChange={e => setSector(e.target.value)}>
                   <option value="all">All Sectors</option>
                   <option value="layer1">Layer 1</option>
                   <option value="defi">DeFi</option>
@@ -251,7 +262,7 @@ export default function ScreenerPage() {
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-text-muted uppercase tracking-widest mb-2">Volatility</label>
-                <select className="w-full bg-surface/50 text-text p-3 rounded-crypto-sm border border-white/10 focus:border-accent focus:outline-none transition-colors font-mono text-sm" value={volatility} onChange={e => setVolatility(e.target.value)}>
+                <select className="w-full bg-surface/50 text-text p-3 rounded-sm border border-white/10 focus:border-accent focus:outline-none transition-colors font-mono text-sm" value={volatility} onChange={e => setVolatility(e.target.value)}>
                   <option value="all">All Regime</option>
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
@@ -279,7 +290,7 @@ export default function ScreenerPage() {
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-text-muted uppercase tracking-widest mb-2">Sort By</label>
-                <select className="w-full bg-surface/50 text-text p-3 rounded-crypto-sm border border-white/10 focus:border-accent focus:outline-none transition-colors font-mono text-sm" value={sortBy} onChange={e => setSortBy(e.target.value)}>
+                <select className="w-full bg-surface/50 text-text p-3 rounded-sm border border-white/10 focus:border-accent focus:outline-none transition-colors font-mono text-sm" value={sortBy} onChange={e => setSortBy(e.target.value)}>
                   <option value="symbol">Symbol</option>
                   <option value="sector">Sector</option>
                   <option value="current_price">Price</option>
@@ -313,14 +324,14 @@ export default function ScreenerPage() {
               
               <div>
                 <label className="block text-[10px] font-bold text-text-muted uppercase tracking-widest mb-2">Sort Direction</label>
-                <div className="flex bg-surface/50 rounded-crypto-sm border border-white/10 overflow-hidden p-1 gap-1">
+                <div className="flex bg-surface/50 rounded-sm border border-white/10 overflow-hidden p-1 gap-1">
                   <button onClick={() => setSortDir("asc")} className={`flex-1 py-2 text-[10px] uppercase tracking-widest font-bold transition-all rounded-sm ${sortDir === "asc" ? "bg-accent/20 text-accent border border-accent/30 shadow-inner" : "text-text-muted hover:text-text hover:bg-white/5"}`}>↑ Ascending</button>
                   <button onClick={() => setSortDir("desc")} className={`flex-1 py-2 text-[10px] uppercase tracking-widest font-bold transition-all rounded-sm ${sortDir === "desc" ? "bg-accent/20 text-accent border border-accent/30 shadow-inner" : "text-text-muted hover:text-text hover:bg-white/5"}`}>↓ Descending</button>
                 </div>
               </div>
               
               <div className="mt-auto pt-4">
-                <button onClick={handleReset} className="w-full py-3 glass bg-white/5 hover:bg-white/10 text-text font-bold rounded-crypto-sm transition-all text-xs uppercase tracking-widest border border-white/10 hover:border-white/20">
+                <button onClick={handleReset} className="w-full py-3 glass bg-white/5 hover:bg-white/10 text-text font-bold rounded-sm transition-all text-xs uppercase tracking-widest border border-white/10 hover:border-white/20">
                   Reset Constraints
                 </button>
               </div>
@@ -331,7 +342,7 @@ export default function ScreenerPage() {
       </GlassCard>
       
       {/* SECTION 3 - Results Table */}
-      <GlassCard asymmetric="lg" className="p-0 overflow-hidden relative z-10">
+      <GlassCard tier="flat" shape="shape-ledger" className="p-0 overflow-hidden relative z-10">
         <div className="p-6 border-b border-white/5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-surface/30">
           <h2 className="text-text font-black text-lg tracking-tight flex items-center gap-3">
             <span className="bg-accent/10 text-accent border border-accent/20 px-3 py-1 rounded-sm text-sm font-mono font-bold shadow-inner">
@@ -343,11 +354,11 @@ export default function ScreenerPage() {
             <button 
               onClick={refreshLiveTechnicals} 
               disabled={isRefreshing}
-              className="flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold text-success hover:text-success/80 transition-all glass bg-success/10 px-4 py-2 rounded-crypto-sm border border-success/30 disabled:opacity-50 shadow-[0_0_15px_rgba(34,197,94,0.1)]"
+              className="flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold text-success hover:text-success/80 transition-all glass bg-success/10 px-4 py-2 rounded-sm border border-success/30 disabled:opacity-50 shadow-[0_0_15px_rgba(34,197,94,0.1)]"
             >
               <RefreshCw size={14} className={isRefreshing ? "animate-spin" : ""} /> {isRefreshing ? "Synchronizing..." : "Live Sync"}
             </button>
-            <button onClick={exportCSV} className="flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold text-accent hover:text-accent/80 transition-all glass bg-accent/10 px-4 py-2 rounded-crypto-sm border border-accent/30 shadow-[0_0_15px_rgba(var(--accent),0.1)]">
+            <button onClick={exportCSV} className="flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold text-accent hover:text-accent/80 transition-all glass bg-accent/10 px-4 py-2 rounded-sm border border-accent/30 shadow-[0_0_15px_rgba(var(--accent),0.1)]">
               <Download size={14} /> Export CSV
             </button>
           </div>
@@ -365,7 +376,7 @@ export default function ScreenerPage() {
                   <th className="px-6 py-4 cursor-pointer hover:text-text transition-colors" onClick={() => {setSortBy('symbol'); setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}}>Asset</th>
                   <th className="px-6 py-4 cursor-pointer hover:text-text transition-colors" onClick={() => {setSortBy('sector'); setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}}>Sector</th>
                   <th className="px-6 py-4 cursor-pointer hover:text-text transition-colors text-right" onClick={() => {setSortBy('current_price'); setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}}>Live Price</th>
-                  <th className="px-6 py-4 cursor-pointer hover:text-text transition-colors" onClick={() => {setSortBy('direction'); setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}}>AI Direction</th>
+                  <th className="px-6 py-4 cursor-pointer hover:text-text transition-colors" onClick={() => {setSortBy('predicted_direction'); setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}}>AI Direction</th>
                   <th className="px-6 py-4 cursor-pointer hover:text-text transition-colors" onClick={() => {setSortBy('confidence'); setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}}>Confidence</th>
                   <th className="px-6 py-4 cursor-pointer hover:text-text transition-colors" onClick={() => {setSortBy('rsi_14'); setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}}>RSI (14d)</th>
                   <th className="px-6 py-4 cursor-pointer hover:text-text transition-colors" onClick={() => {setSortBy('returns_7d'); setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}}>7D Return</th>
@@ -416,7 +427,7 @@ export default function ScreenerPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <DirectionBadge direction={row.direction} />
+                      <DirectionBadge direction={row.predicted_direction} />
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-col gap-1.5 w-32">
@@ -449,10 +460,10 @@ export default function ScreenerPage() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Link href={`/coin/${row.symbol}`} className="text-[10px] uppercase tracking-widest glass bg-white/5 hover:bg-white/10 text-text px-3 py-2 rounded-crypto-sm transition-all font-bold border border-white/10 hover:border-white/20">
+                        <Link href={`/coin/${row.symbol}`} className="text-[10px] uppercase tracking-widest glass bg-white/5 hover:bg-white/10 text-text px-3 py-2 rounded-sm transition-all font-bold border border-white/10 hover:border-white/20">
                           Inspect
                         </Link>
-                        <Link href={`/predictions?symbol=${row.symbol}`} className="text-[10px] uppercase tracking-widest glass bg-accent/10 hover:bg-accent/20 text-accent px-3 py-2 rounded-crypto-sm transition-all font-bold border border-accent/20 hover:border-accent/40 shadow-inner hover:shadow-[0_0_15px_rgba(var(--accent),0.2)]">
+                        <Link href={`/predictions?symbol=${row.symbol}`} className="text-[10px] uppercase tracking-widest glass bg-accent/10 hover:bg-accent/20 text-accent px-3 py-2 rounded-sm transition-all font-bold border border-accent/20 hover:border-accent/40 shadow-inner hover:shadow-[0_0_15px_rgba(var(--accent),0.2)]">
                           Pipeline
                         </Link>
                       </div>
@@ -469,7 +480,7 @@ export default function ScreenerPage() {
             </div>
             <h3 className="text-2xl font-black text-text mb-2 tracking-tight">No assets match criteria</h3>
             <p className="text-text-muted mb-8 font-light tracking-wide max-w-md">Try relaxing the confidence or direction constraints to find more opportunities.</p>
-            <button onClick={handleReset} className="glass bg-accent hover:bg-accent/90 text-white px-8 py-3.5 rounded-crypto font-black transition-all shadow-[0_0_20px_rgba(var(--accent),0.3)] hover:shadow-[0_0_30px_rgba(var(--accent),0.5)] uppercase tracking-widest text-xs">
+            <button onClick={handleReset} className="glass bg-accent hover:bg-accent/90 text-white px-8 py-3.5 rounded-sm font-black transition-all shadow-[0_0_20px_rgba(var(--accent),0.3)] hover:shadow-[0_0_30px_rgba(var(--accent),0.5)] uppercase tracking-widest text-xs">
               Clear Constraints
             </button>
           </div>
@@ -479,3 +490,4 @@ export default function ScreenerPage() {
     </div>
   );
 }
+

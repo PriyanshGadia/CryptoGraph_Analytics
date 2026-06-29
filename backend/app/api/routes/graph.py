@@ -40,7 +40,7 @@ def _compute_correlation_graph(db: Session, top_n_edges: int = 100):
     if pivot.shape[1] < 2:
         return [], []
 
-    corr_matrix = pivot.corr(method="pearson")
+    corr_matrix = pivot.corr(method="pearson").fillna(0.0)
 
     # Load asset metadata
     assets = db.query(Asset).all()
@@ -55,18 +55,15 @@ def _compute_correlation_graph(db: Session, top_n_edges: int = 100):
 
     # Build nodes
     nodes_dict = {}
-    for aid in corr_matrix.columns:
-        asset = asset_map.get(aid)
-        if not asset:
-            continue
+    for aid, asset in asset_map.items():
         pred = pred_map.get(aid)
         nodes_dict[asset.symbol] = GraphNode(
             id=str(aid),
             symbol=asset.symbol,
             sector=asset.sector or "other",
             market_cap_usd=asset.market_cap_usd,
-            predicted_direction=pred.direction if pred else None,
-            confidence=pred.confidence if pred else None,
+            predicted_direction=pred.direction if pred else "neutral",
+            confidence=pred.confidence if pred else 0.0,
         )
 
     # Build edges from upper triangle of correlation matrix

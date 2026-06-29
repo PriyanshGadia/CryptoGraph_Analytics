@@ -13,12 +13,46 @@ import { Target, Activity, TrendingUp, Cpu } from "lucide-react";
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 function DirectionBadge({ dir }: { dir: string }) {
-  if (dir === "strong_up") return <span className="px-3 py-1 rounded-crypto-sm bg-success/20 text-success border border-success/30 text-[10px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(34,197,94,0.1)]">Strong Buy</span>;
-  if (dir === "up") return <span className="px-3 py-1 rounded-crypto-sm bg-success/10 text-success border border-success/20 text-[10px] font-bold uppercase tracking-widest">Buy</span>;
-  if (dir === "strong_down") return <span className="px-3 py-1 rounded-crypto-sm bg-danger/20 text-danger border border-danger/30 text-[10px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(239,68,68,0.1)]">Strong Sell</span>;
-  if (dir === "down") return <span className="px-3 py-1 rounded-crypto-sm bg-danger/10 text-danger border border-danger/20 text-[10px] font-bold uppercase tracking-widest">Sell</span>;
-  return <span className="px-3 py-1 rounded-crypto-sm bg-surface/80 text-text-muted border border-white/10 text-[10px] font-bold uppercase tracking-widest">Neutral</span>;
+  if (dir === "strong_up") return <span className="px-3 py-1 rounded-sm bg-success/20 text-success border border-success/30 text-[10px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(34,197,94,0.1)]">Strong Buy</span>;
+  if (dir === "up") return <span className="px-3 py-1 rounded-sm bg-success/10 text-success border border-success/20 text-[10px] font-bold uppercase tracking-widest">Buy</span>;
+  if (dir === "strong_down") return <span className="px-3 py-1 rounded-sm bg-danger/20 text-danger border border-danger/30 text-[10px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(239,68,68,0.1)]">Strong Sell</span>;
+  if (dir === "down") return <span className="px-3 py-1 rounded-sm bg-danger/10 text-danger border border-danger/20 text-[10px] font-bold uppercase tracking-widest">Sell</span>;
+  return <span className="px-3 py-1 rounded-sm bg-surface/80 text-text-muted border border-white/10 text-[10px] font-bold uppercase tracking-widest">Neutral</span>;
 }
+
+function CountUp({ end, decimals = 0, suffix = "" }: { end: number, decimals?: number, suffix?: string }) {
+  const [count, setCount] = useState(0);
+  
+  // Custom hook usage instead of importing
+  // Need to use React's useEffect to handle the animation lifecycle
+  import("react").then((React) => {
+    React.useEffect(() => {
+      let startTime: number;
+      let animationFrame: number;
+      const duration = 1000;
+      
+      const step = (timestamp: number) => {
+        if (!startTime) startTime = timestamp;
+        const progress = Math.min((timestamp - startTime) / duration, 1);
+        const easeProgress = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
+        setCount(easeProgress * end);
+        if (progress < 1) {
+          animationFrame = window.requestAnimationFrame(step);
+        }
+      };
+      
+      animationFrame = window.requestAnimationFrame(step);
+      
+      return () => {
+        if (animationFrame) window.cancelAnimationFrame(animationFrame);
+      };
+    }, [end]);
+  });
+  
+  return <>{count.toFixed(decimals)}{suffix}</>;
+}
+
+import { useEffect } from "react";
 
 export default function PerformancePage() {
   const [days, setDays] = useState(30);
@@ -45,7 +79,7 @@ export default function PerformancePage() {
       </div>
     </div>
   );
-  if (!data) return <div className="p-12 text-center text-danger font-mono border border-danger/20 bg-danger/5 rounded-crypto">Tensor stream corrupted. Error loading metrics.</div>;
+  if (!data) return <div className="p-12 text-center text-danger font-mono border border-danger/20 bg-danger/5 rounded-sm">Tensor stream corrupted. Error loading metrics.</div>;
   
   const overallAcc = data.overall_accuracy * 100;
   const accColor = overallAcc > 55 ? "text-success" : overallAcc > 45 ? "text-warning" : "text-danger";
@@ -72,14 +106,14 @@ export default function PerformancePage() {
   });
 
   return (
-    <div className="space-y-8 pt-8 max-w-[1600px] mx-auto">
+    <div className="space-y-8 pt-8 p-6 glass-2 shape-seal overflow-hidden max-w-[1600px] mx-auto">
       
       {/* HEADER */}
       <div className="relative flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-4">
         <div className="absolute top-[-50px] left-[-50px] w-64 h-64 bg-accent/5 rounded-full blur-[80px] pointer-events-none" />
         <div className="relative z-10">
           <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-text via-text/80 to-text-muted flex items-center gap-4 tracking-tight">
-            <div className="p-3 glass bg-accent/10 rounded-crypto shadow-inner shadow-accent/20">
+            <div className="p-3 glass bg-accent/10 rounded-sm shadow-inner shadow-accent/20">
                 <Target className="text-accent" size={32} />
             </div>
             Model Diagnostics
@@ -89,7 +123,7 @@ export default function PerformancePage() {
           </p>
         </div>
         
-        <div className="flex bg-surface/50 rounded-crypto-sm border border-white/10 p-1 backdrop-blur-md relative z-10">
+        <div className="flex bg-surface/50 rounded-sm border border-white/10 p-1 backdrop-blur-md relative z-10">
           {[7, 30, 90].map(d => (
             <button
               key={d}
@@ -106,53 +140,53 @@ export default function PerformancePage() {
       
       {/* SECTION 1 - Hero Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 relative z-10">
-        <GlassCard asymmetric="sm" className="p-6 group relative overflow-hidden flex flex-col justify-between h-36 border border-white/10 hover:border-white/20 hover:bg-white/[0.02]">
+        <GlassCard tier={2} shape="shape-squircle" className="p-6 group relative overflow-hidden flex flex-col justify-between h-36 border border-white/10 hover:border-white/20 hover:bg-white/[0.02]">
           <div className="absolute top-0 right-0 w-24 h-24 bg-success/5 rounded-full blur-[40px] group-hover:bg-success/10 transition-colors pointer-events-none" />
           <div className="text-[10px] text-text-muted uppercase tracking-widest font-bold flex items-center gap-2">
               <Activity size={12} className="text-success" />
               Global Accuracy
           </div>
           <div className={`text-5xl font-black font-sans tracking-tight ${accColor} ${accShadow}`}>
-            {overallAcc.toFixed(1)}<span className="text-2xl text-text-muted">%</span>
+            <CountUp end={overallAcc} decimals={1} /><span className="text-2xl text-text-muted">%</span>
           </div>
         </GlassCard>
         
-        <GlassCard asymmetric="sm" className="p-6 group relative overflow-hidden flex flex-col justify-between h-36 border border-white/10 hover:border-white/20 hover:bg-white/[0.02]">
+        <GlassCard tier={2} shape="shape-squircle" className="p-6 group relative overflow-hidden flex flex-col justify-between h-36 border border-white/10 hover:border-white/20 hover:bg-white/[0.02]">
           <div className="absolute top-0 right-0 w-24 h-24 bg-accent/5 rounded-full blur-[40px] group-hover:bg-accent/10 transition-colors pointer-events-none" />
           <div className="text-[10px] text-text-muted uppercase tracking-widest font-bold flex items-center gap-2">
               <Cpu size={12} className="text-accent" />
               Tensors Scored
           </div>
           <div className="text-5xl font-black font-sans tracking-tight text-text">
-            {data.total_scored}
+            <CountUp end={data.total_scored} />
           </div>
         </GlassCard>
         
-        <GlassCard asymmetric="sm" className="p-6 group relative overflow-hidden flex flex-col justify-between h-36 border border-white/10 hover:border-white/20 hover:bg-white/[0.02]">
+        <GlassCard tier={2} shape="shape-squircle" className="p-6 group relative overflow-hidden flex flex-col justify-between h-36 border border-white/10 hover:border-white/20 hover:bg-white/[0.02]">
           <div className="absolute top-0 right-0 w-24 h-24 bg-success/5 rounded-full blur-[40px] group-hover:bg-success/10 transition-colors pointer-events-none" />
           <div className="text-[10px] text-text-muted uppercase tracking-widest font-bold flex items-center gap-2">
               <TrendingUp size={12} className={stratRet > 0 ? "text-success" : "text-danger"} />
               Strategy Alpha
           </div>
           <div className={`text-5xl font-black font-sans tracking-tight ${retColor} ${retShadow}`}>
-            {stratRet > 0 ? "+" : ""}{stratRet.toFixed(1)}<span className="text-2xl text-text-muted">%</span>
+            {stratRet > 0 ? "+" : ""}<CountUp end={Math.abs(stratRet)} decimals={1} /><span className="text-2xl text-text-muted">%</span>
           </div>
         </GlassCard>
         
-        <GlassCard asymmetric="sm" className="p-6 group relative overflow-hidden flex flex-col justify-between h-36 border border-white/10 hover:border-white/20 hover:bg-white/[0.02]">
+        <GlassCard tier={2} shape="shape-squircle" className="p-6 group relative overflow-hidden flex flex-col justify-between h-36 border border-white/10 hover:border-white/20 hover:bg-white/[0.02]">
           <div className="absolute top-0 right-0 w-24 h-24 bg-warning/5 rounded-full blur-[40px] group-hover:bg-warning/10 transition-colors pointer-events-none" />
           <div className="text-[10px] text-text-muted uppercase tracking-widest font-bold flex items-center gap-2">
               <Target size={12} className="text-warning" />
               Sharpe Ratio
           </div>
           <div className={`text-5xl font-black font-sans tracking-tight ${sharpeColor}`}>
-            {sharpe.toFixed(2)}
+            <CountUp end={sharpe} decimals={2} />
           </div>
         </GlassCard>
       </div>
       
       {/* SECTION 2 - Rolling Accuracy */}
-      <GlassCard asymmetric="md" className="p-8 relative z-10">
+      <GlassCard tier={2} shape="shape-squircle" className="p-8 relative z-10">
         <h3 className="text-xl font-black text-text tracking-tight mb-1 flex items-center gap-3">
           Rolling Validation Curve
         </h3>
@@ -171,12 +205,12 @@ export default function PerformancePage() {
               <ReferenceLine y={50} stroke="rgba(234,179,8,0.5)" strokeDasharray="3 3" />
               <defs>
                 <linearGradient id="accGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="rgba(var(--accent), 0.3)" stopOpacity={1}/>
-                  <stop offset="95%" stopColor="rgba(var(--accent), 0)" stopOpacity={0}/>
+                  <stop offset="5%" stopColor="rgba(212, 165, 71, 0.3)" stopOpacity={1}/>
+                  <stop offset="95%" stopColor="rgba(212, 165, 71, 0)" stopOpacity={0}/>
                 </linearGradient>
               </defs>
               <Area type="monotone" dataKey="accuracy_7d" fill="url(#accGrad)" stroke="none" />
-              <Line type="monotone" dataKey="accuracy_7d" stroke="rgb(var(--accent))" strokeWidth={3} dot={false} name="7D Average" />
+              <Line type="monotone" dataKey="accuracy_7d" stroke="rgb(212, 165, 71)" strokeWidth={3} dot={false} name="7D Average" />
               <Line type="monotone" dataKey="accuracy_30d" stroke="#eab308" strokeWidth={2} strokeDasharray="4 4" dot={false} name="30D Average" />
             </ComposedChart>
           </ResponsiveContainer>
@@ -187,7 +221,7 @@ export default function PerformancePage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 relative z-10">
         
         {/* Confusion Matrix */}
-        <GlassCard asymmetric="sm" className="p-8">
+        <GlassCard tier={2} shape="shape-squircle" className="p-8">
           <h3 className="text-xl font-black text-text tracking-tight mb-1 flex items-center gap-3">
             Confusion Matrix
           </h3>
@@ -219,7 +253,7 @@ export default function PerformancePage() {
                   return (
                     <div 
                       key={`cell-${i}-${j}`} 
-                      className="aspect-square flex items-center justify-center rounded-crypto-sm text-white text-xs font-black font-mono cursor-crosshair transition-all hover:scale-105 border border-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.1)]"
+                      className="aspect-square flex items-center justify-center rounded-sm text-white text-xs font-black font-mono cursor-crosshair transition-all hover:scale-105 border border-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.1)]"
                       style={{ backgroundColor: bgColor }}
                       title={`Predicted ${data.confusion_labels[i]}, actually ${data.confusion_labels[j]}: ${val} instances`}
                     >
@@ -233,7 +267,7 @@ export default function PerformancePage() {
         </GlassCard>
         
         {/* Confidence Calibration */}
-        <GlassCard asymmetric="sm" className="p-8">
+        <GlassCard tier={2} shape="shape-squircle" className="p-8">
           <h3 className="text-xl font-black text-text tracking-tight mb-1 flex items-center gap-3">
             Confidence Calibration
           </h3>
@@ -248,7 +282,7 @@ export default function PerformancePage() {
                     contentStyle={{ backgroundColor: "rgba(10, 10, 15, 0.9)", borderColor: "rgba(255, 255, 255, 0.1)", color: "#fff", borderRadius: "12px", backdropFilter: "blur(10px)" }} 
                     itemStyle={{ fontFamily: 'monospace', fontSize: '12px' }}
                 />
-                <Bar dataKey="actual_accuracy" fill="rgb(var(--accent))" radius={[4, 4, 0, 0]} name="Empirical Accuracy" />
+                <Bar dataKey="actual_accuracy" fill="rgb(212, 165, 71)" radius={[4, 4, 0, 0]} name="Empirical Accuracy" />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
@@ -259,7 +293,7 @@ export default function PerformancePage() {
       </div>
       
       {/* SECTION 4 - Per Direction */}
-      <GlassCard asymmetric="md" className="p-8 relative z-10">
+      <GlassCard tier={2} shape="shape-squircle" className="p-8 relative z-10">
         <h3 className="text-xl font-black text-text tracking-tight mb-8">Precision by Intent Vector</h3>
         <div className="space-y-6">
           {[
@@ -285,7 +319,7 @@ export default function PerformancePage() {
       </GlassCard>
       
       {/* SECTION 5 - Per Asset */}
-      <GlassCard asymmetric="lg" className="p-0 relative z-10 overflow-hidden">
+      <GlassCard tier={2} shape="shape-squircle" className="p-0 relative z-10 overflow-hidden">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 p-8 border-b border-white/5 bg-surface/30">
           <div>
             <h3 className="text-xl font-black text-text tracking-tight">Asset Isolation Metrics</h3>
@@ -297,7 +331,7 @@ export default function PerformancePage() {
                 placeholder="Query symbol..." 
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="bg-surface/50 border border-white/10 rounded-crypto-sm pl-4 pr-10 py-3 text-sm text-text placeholder-text-muted focus:outline-none focus:border-accent transition-colors w-full md:w-64 font-mono font-bold hover:bg-surface/80 shadow-inner"
+                className="bg-surface/50 border border-white/10 rounded-sm pl-4 pr-10 py-3 text-sm text-text placeholder-text-muted focus:outline-none focus:border-accent transition-colors w-full md:w-64 font-mono font-bold hover:bg-surface/80 shadow-inner"
               />
               <div className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted">
                   ⌘F
@@ -354,7 +388,7 @@ export default function PerformancePage() {
           <div className="p-6 border-t border-white/5 bg-surface/10">
               <button 
                 onClick={() => setShowAll(true)}
-                className="w-full py-4 glass bg-white/5 border border-white/10 hover:border-white/20 rounded-crypto text-xs font-black uppercase tracking-widest text-text transition-all shadow-inner hover:bg-white/10"
+                className="w-full py-4 glass bg-white/5 border border-white/10 hover:border-white/20 rounded-sm text-xs font-black uppercase tracking-widest text-text transition-all shadow-inner hover:bg-white/10"
               >
                 Reveal Entire Graph
               </button>
@@ -366,3 +400,4 @@ export default function PerformancePage() {
     </div>
   );
 }
+

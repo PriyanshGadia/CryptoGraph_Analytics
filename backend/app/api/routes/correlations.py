@@ -47,7 +47,7 @@ def get_correlation_matrix(
     if pivot.shape[1] < 2:
         return {"symbols": [], "matrix": [], "top_pairs": [], "period_days": days}
 
-    corr_matrix = pivot.corr(method="pearson")
+    corr_matrix = pivot.corr(method="pearson").fillna(0.0)
 
     # Ordered symbols
     ordered_asset_ids = corr_matrix.columns.tolist()
@@ -116,7 +116,7 @@ def get_sector_correlations(
     if pivot.shape[1] < 2:
         return {"sectors": [], "matrix": [], "intra_sector": {}}
 
-    corr_matrix = pivot.corr(method="pearson")
+    corr_matrix = pivot.corr(method="pearson").fillna(0.0)
 
     sectors = sorted(set(asset_sector_map.values()))
     intra_sector = {}

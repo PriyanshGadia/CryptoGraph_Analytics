@@ -38,7 +38,7 @@ INTERVALS = {
 SCRIPTS = {
     "ohlcv":         "data/ingestion/binance_collector.py",
     "features":      "data/feature_engineering/technical_indicators.py",
-    "predictions":   "pipelines/mock_inference.py",
+    "predictions":   "pipelines/inference_pipeline.py",
     "enrich_assets": "data/ingestion/enrich_assets.py",
 }
 

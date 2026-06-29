@@ -131,10 +131,10 @@ export default function PortfolioPage() {
       <div className="space-y-8 pt-8">
         <h1 className="text-4xl font-black text-text font-sans">Autonomous Portfolio</h1>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <Skeleton className="h-32 w-full rounded-crypto" />
-          <Skeleton className="h-32 w-full rounded-crypto" />
-          <Skeleton className="h-32 w-full rounded-crypto" />
-          <Skeleton className="h-32 w-full rounded-crypto" />
+          <Skeleton className="h-32 w-full rounded-sm" />
+          <Skeleton className="h-32 w-full rounded-sm" />
+          <Skeleton className="h-32 w-full rounded-sm" />
+          <Skeleton className="h-32 w-full rounded-sm" />
         </div>
       </div>
     );
@@ -143,7 +143,7 @@ export default function PortfolioPage() {
   const trades = tradesData?.trades || [];
 
   return (
-    <div className="space-y-8 pt-8 max-w-7xl mx-auto">
+    <div className="space-y-8 pt-8 p-6 glass-2 shape-seal overflow-hidden max-w-7xl mx-auto">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 relative">
         <div className="absolute top-[-50px] left-[-50px] w-64 h-64 bg-accent/5 rounded-full blur-[80px] pointer-events-none" />
         <div className="relative z-10">
@@ -153,7 +153,7 @@ export default function PortfolioPage() {
         <button
           onClick={handleManualExecute}
           disabled={executing}
-          className="relative z-10 flex items-center justify-center gap-3 glass bg-accent/20 hover:bg-accent/30 text-accent px-8 py-4 rounded-crypto font-bold transition-all disabled:opacity-50 border border-accent/30 shadow-[0_0_20px_rgba(var(--accent),0.1)] hover:shadow-[0_0_30px_rgba(var(--accent),0.2)] tracking-widest uppercase text-xs"
+          className="relative z-10 flex items-center justify-center gap-3 glass bg-accent/20 hover:bg-accent/30 text-accent px-8 py-4 rounded-sm font-bold transition-all disabled:opacity-50 border border-accent/30 shadow-[0_0_20px_rgba(var(--accent),0.1)] hover:shadow-[0_0_30px_rgba(var(--accent),0.2)] tracking-widest uppercase text-xs"
         >
           {executing ? (
             <div className="w-5 h-5 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
@@ -166,7 +166,7 @@ export default function PortfolioPage() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <GlassCard asymmetric="sm" className="p-6 relative overflow-hidden group">
+        <GlassCard tier={2} shape="shape-squircle" className="p-6 relative overflow-hidden group">
           <div className="absolute inset-0 bg-gradient-to-br from-accent/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
           <div className="text-[10px] font-bold font-mono tracking-widest text-text-muted uppercase mb-4 flex items-center gap-2">
             <Wallet size={16} className="text-accent" /> Total Value
@@ -179,7 +179,7 @@ export default function PortfolioPage() {
           </div>
         </GlassCard>
 
-        <GlassCard asymmetric="sm" className="p-6 relative overflow-hidden group">
+        <GlassCard tier={2} shape="shape-squircle" className="p-6 relative overflow-hidden group">
           <div className="absolute inset-0 bg-gradient-to-br from-success/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
           <div className="text-[10px] font-bold font-mono tracking-widest text-text-muted uppercase mb-4 flex items-center gap-2">
             <Activity size={16} className="text-success" /> Return on Investment
@@ -196,7 +196,7 @@ export default function PortfolioPage() {
           </div>
         </GlassCard>
 
-        <GlassCard asymmetric="sm" className="p-6 relative overflow-hidden group">
+        <GlassCard tier={2} shape="shape-squircle" className="p-6 relative overflow-hidden group">
           <div className="absolute inset-0 bg-gradient-to-br from-warning/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
           <div className="text-[10px] font-bold font-mono tracking-widest text-text-muted uppercase mb-4 flex items-center gap-2">
             <Target size={16} className="text-warning" /> Win Rate
@@ -209,7 +209,7 @@ export default function PortfolioPage() {
           </div>
         </GlassCard>
 
-        <GlassCard asymmetric="sm" className="p-6 relative overflow-hidden group">
+        <GlassCard tier={2} shape="shape-squircle" className="p-6 relative overflow-hidden group">
           <div className="absolute inset-0 bg-gradient-to-br from-danger/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
           <div className="text-[10px] font-bold font-mono tracking-widest text-text-muted uppercase mb-4 flex items-center gap-2">
             <TrendingDown size={16} className="text-danger" /> Max Drawdown
@@ -225,7 +225,7 @@ export default function PortfolioPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Holdings */}
-        <GlassCard asymmetric="lg" className="p-0 overflow-hidden lg:col-span-1 flex flex-col h-[600px]">
+        <GlassCard tier={2} shape="shape-squircle" className="p-0 overflow-hidden lg:col-span-1 flex flex-col h-[600px]">
           <div className="p-6 border-b border-white/5 bg-surface/30">
             <h2 className="flex items-center gap-3 text-lg font-black text-text tracking-tight">
               <PieChart size={20} className="text-accent" />
@@ -244,7 +244,7 @@ export default function PortfolioPage() {
                 {Object.entries(portfolio.holdings).map(([symbol, data]: [string, any]) => {
                   const avgPrice = data.total_invested / data.qty;
                   return (
-                    <div key={symbol} className="flex items-center justify-between p-4 bg-surface/40 hover:bg-white/5 rounded-crypto-sm border border-white/5 transition-colors group">
+                    <div key={symbol} className="flex items-center justify-between p-4 bg-surface/40 hover:bg-white/5 rounded-sm border border-white/5 transition-colors group">
                       <div>
                         <div className="font-black text-lg text-text tracking-tight group-hover:text-accent transition-colors">{symbol}</div>
                         <div className="text-[10px] text-text-muted font-mono mt-1">{data.qty.toFixed(4)} tokens</div>
@@ -262,7 +262,7 @@ export default function PortfolioPage() {
         </GlassCard>
 
         {/* Recent Trades */}
-        <GlassCard asymmetric="lg" className="p-0 overflow-hidden lg:col-span-2 flex flex-col h-[600px]">
+        <GlassCard tier={2} shape="shape-squircle" className="p-0 overflow-hidden lg:col-span-2 flex flex-col h-[600px]">
           <div className="p-6 border-b border-white/5 bg-surface/30">
             <h2 className="flex items-center gap-3 text-lg font-black text-text tracking-tight">
               <ArrowRightLeft size={20} className="text-accent" />
@@ -335,7 +335,7 @@ export default function PortfolioPage() {
                           <tr className="bg-surface/20 border-b border-white/10">
                             <td colSpan={6} className="p-0">
                                 <div className="p-6 animate-in fade-in slide-in-from-top-2">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 glass-panel bg-black/20 p-6 rounded-crypto border border-white/5 shadow-inner">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 glass-panel bg-black/20 p-6 rounded-sm border border-white/5 shadow-inner">
                                         
                                         {/* Debate Transcript */}
                                         <div className="space-y-4">
@@ -345,19 +345,19 @@ export default function PortfolioPage() {
                                         </h4>
                                         {trade.debate ? (
                                             <div className="space-y-4 text-sm font-light tracking-wide">
-                                            <div className="bg-surface/50 p-4 rounded-crypto-sm border border-white/5">
+                                            <div className="bg-surface/50 p-4 rounded-sm border border-white/5">
                                                 <span className="font-mono text-[10px] text-text-muted block mb-2 uppercase tracking-widest border-b border-white/5 pb-2">Macro Economist</span>
                                                 <p className="text-text/90 leading-relaxed text-xs">{trade.debate.macro_analysis}</p>
                                             </div>
-                                            <div className="bg-surface/50 p-4 rounded-crypto-sm border border-white/5">
+                                            <div className="bg-surface/50 p-4 rounded-sm border border-white/5">
                                                 <span className="font-mono text-[10px] text-text-muted block mb-2 uppercase tracking-widest border-b border-white/5 pb-2">On-Chain Detective</span>
                                                 <p className="text-text/90 leading-relaxed text-xs">{trade.debate.onchain_analysis}</p>
                                             </div>
-                                            <div className="bg-surface/50 p-4 rounded-crypto-sm border border-white/5">
+                                            <div className="bg-surface/50 p-4 rounded-sm border border-white/5">
                                                 <span className="font-mono text-[10px] text-text-muted block mb-2 uppercase tracking-widest border-b border-white/5 pb-2">Sentiment Analyst</span>
                                                 <p className="text-text/90 leading-relaxed text-xs">{trade.debate.sentiment_analysis}</p>
                                             </div>
-                                            <div className="bg-accent/10 p-4 rounded-crypto-sm border border-accent/20">
+                                            <div className="bg-accent/10 p-4 rounded-sm border border-accent/20">
                                                 <span className="font-mono text-[10px] text-accent font-bold block mb-2 uppercase tracking-widest border-b border-accent/20 pb-2 flex items-center gap-2"><Star size={10} fill="currentColor"/> CIO Verdict</span>
                                                 <p className="text-text leading-relaxed whitespace-pre-wrap text-sm">{trade.debate.cio_reasoning}</p>
                                             </div>
@@ -381,7 +381,7 @@ export default function PortfolioPage() {
                                                 <div className="space-y-6">
                                                     <div>
                                                     <label className="block text-[10px] font-bold font-mono text-text-muted mb-3 uppercase tracking-widest">Assign Grade</label>
-                                                    <div className="flex items-center gap-3 bg-surface/50 p-3 rounded-crypto-sm border border-white/5 w-fit">
+                                                    <div className="flex items-center gap-3 bg-surface/50 p-3 rounded-sm border border-white/5 w-fit">
                                                         {[1, 2, 3, 4, 5].map((star) => (
                                                         <button
                                                             key={star}
@@ -403,7 +403,7 @@ export default function PortfolioPage() {
                                                         value={notes}
                                                         onChange={(e) => setNotes(e.target.value)}
                                                         placeholder="Provide explicit feedback to guide future decisions..."
-                                                        className="w-full h-28 bg-surface/50 border border-white/10 rounded-crypto-sm p-4 text-sm text-text focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/50 resize-none font-sans font-light tracking-wide transition-all"
+                                                        className="w-full h-28 bg-surface/50 border border-white/10 rounded-sm p-4 text-sm text-text focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/50 resize-none font-sans font-light tracking-wide transition-all"
                                                     />
                                                     </div>
                                                 </div>
@@ -412,7 +412,7 @@ export default function PortfolioPage() {
                                             <button
                                                 onClick={() => submitGrade(trade.id)}
                                                 disabled={grade === 0 || submittingGrade}
-                                                className="w-full mt-6 flex items-center justify-center gap-2 glass bg-yellow-400/10 hover:bg-yellow-400/20 text-yellow-400 border border-yellow-400/30 px-6 py-3.5 rounded-crypto-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-widest text-xs shadow-[0_0_15px_rgba(250,204,21,0.05)]"
+                                                className="w-full mt-6 flex items-center justify-center gap-2 glass bg-yellow-400/10 hover:bg-yellow-400/20 text-yellow-400 border border-yellow-400/30 px-6 py-3.5 rounded-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-widest text-xs shadow-[0_0_15px_rgba(250,204,21,0.05)]"
                                             >
                                                 {submittingGrade ? (
                                                 <div className="w-4 h-4 border-2 border-yellow-400/30 border-t-yellow-400 rounded-full animate-spin" />
@@ -425,7 +425,7 @@ export default function PortfolioPage() {
 
                                         {/* Web3 Signer Panel (if pending) */}
                                         {trade.status === "PENDING_WEB3_SIGNATURE" && (
-                                        <div className="md:col-span-2 mt-2 p-6 glass-panel bg-warning/5 border border-warning/20 rounded-crypto flex flex-col md:flex-row items-center justify-between gap-6 shadow-[0_0_30px_rgba(245,158,11,0.05)] relative overflow-hidden">
+                                        <div className="md:col-span-2 mt-2 p-6 glass-panel bg-warning/5 border border-warning/20 rounded-sm flex flex-col md:flex-row items-center justify-between gap-6 shadow-[0_0_30px_rgba(245,158,11,0.05)] relative overflow-hidden">
                                             <div className="absolute top-0 right-0 w-32 h-32 bg-warning/10 blur-[40px]" />
                                             <div className="relative z-10">
                                                 <h4 className="text-sm font-bold text-warning flex items-center gap-2 tracking-widest uppercase font-mono mb-2">
@@ -443,7 +443,7 @@ export default function PortfolioPage() {
                                             <button
                                                 onClick={() => handleWeb3Sign(trade)}
                                                 disabled={signingTradeId === trade.id}
-                                                className="relative z-10 flex-shrink-0 flex items-center justify-center gap-3 bg-warning hover:bg-warning/90 text-black font-black py-3 px-8 rounded-crypto-sm transition-all disabled:opacity-50 min-w-[240px] uppercase tracking-widest text-xs shadow-[0_0_20px_rgba(245,158,11,0.3)]"
+                                                className="relative z-10 flex-shrink-0 flex items-center justify-center gap-3 bg-warning hover:bg-warning/90 text-black font-black py-3 px-8 rounded-sm transition-all disabled:opacity-50 min-w-[240px] uppercase tracking-widest text-xs shadow-[0_0_20px_rgba(245,158,11,0.3)]"
                                             >
                                                 {signingTradeId === trade.id ? (
                                                 <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
@@ -472,3 +472,4 @@ export default function PortfolioPage() {
     </div>
   );
 }
+

@@ -65,12 +65,12 @@ export function Sidebar() {
   ];
 
   return (
-    <aside className={`absolute md:relative glass-panel flex flex-col transition-all duration-75 z-50 rounded-tl-[40px] rounded-br-[40px] rounded-tr-[10px] rounded-bl-[10px] my-2 shrink-0 ${collapsed ? "w-20 -translate-x-[120%] md:translate-x-0" : "w-64 translate-x-0"} h-[calc(100vh-1rem)] md:h-auto`}>
+    <aside className={`absolute md:relative glass-2 shape-squircle flex flex-col transition-all duration-[var(--dur-enter)] ease-glide z-50 my-2 shrink-0 ${collapsed ? "w-20 -translate-x-[120%] md:translate-x-0" : "w-64 translate-x-0"} h-[calc(100vh-1rem)] md:h-auto`}>
       
       {/* Collapse Toggle */}
       <button 
         onClick={() => setCollapsed(!collapsed)}
-        className="absolute -right-3 top-10 bg-accent hover:scale-110 text-white p-1 rounded-crypto-sm shadow-[0_0_15px_rgba(var(--accent),0.5)] z-50 transition-all duration-75"
+        className="absolute -right-3 top-10 bg-accent hover:scale-110 text-white p-1 shape-facet-sm depth-bevel shadow-[0_0_15px_rgba(var(--accent),0.5)] z-50 transition-all duration-[var(--dur-hover)] ease-glide"
       >
         {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
       </button>
@@ -87,7 +87,7 @@ export function Sidebar() {
                 </div>
             </div>
         ) : (
-            <div className="w-10 h-10 rounded-crypto-sm bg-gradient-to-tr from-accent to-orange-500 flex items-center justify-center text-white font-bold mb-6 shadow-lg shadow-accent/20">
+            <div className="w-10 h-10 rounded-sm bg-gradient-to-tr from-accent to-orange-500 flex items-center justify-center text-white font-bold mb-6 shadow-lg shadow-accent/20">
                 ST
             </div>
         )}
@@ -96,7 +96,7 @@ export function Sidebar() {
         <button 
             onClick={handleSync}
             disabled={syncing}
-            className={`flex items-center justify-center gap-2 w-full py-2 px-3 bg-accent/10 hover:bg-accent/20 border border-accent/20 rounded-crypto-sm text-xs font-mono text-accent transition-all shadow-[0_0_10px_rgba(var(--accent),0.05)] ${syncing ? 'opacity-50 cursor-not-allowed' : ''}`}
+            className={`flex items-center justify-center gap-2 w-full py-2 px-3 bg-accent/10 hover:bg-accent/20 border border-accent/20 rounded-sm text-xs font-mono text-accent transition-all shadow-[0_0_10px_rgba(var(--accent),0.05)] ${syncing ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
             <RefreshCw size={14} className={syncing ? 'animate-spin text-orange-400' : ''} />
             {!collapsed && <span className="uppercase tracking-widest">{syncing ? 'Running...' : 'Run Scheduler'}</span>}
@@ -112,15 +112,16 @@ export function Sidebar() {
             <div className="space-y-1">
               {group.items.map((item: any, iIdx) => {
                 const isActive = item.href ? pathname === item.href : false;
-                const commonClasses = `flex items-center gap-4 px-3 py-2.5 transition-all duration-75 group ${
+                const commonClasses = `flex items-center gap-4 px-3 py-2.5 transition-all duration-[var(--dur-enter)] ease-glide group relative ${
                   isActive 
-                    ? "bg-accent/10 text-text border border-accent/30 shadow-[0_0_15px_rgba(var(--accent),0.1)] rounded-crypto" 
-                    : "text-text-muted hover:text-text hover:bg-white/5 hover:translate-x-1 rounded-crypto-sm cursor-pointer"
+                    ? "text-text" 
+                    : "text-text-muted hover:text-text hover:bg-white/5 hover:translate-x-1 shape-facet-sm cursor-pointer"
                 } ${collapsed ? "justify-center" : "w-full text-left"}`;
                 
                 const content = (
                   <>
-                    <div className={`transition-all duration-75 ${isActive ? 'text-accent drop-shadow-[0_0_8px_rgba(var(--accent),0.5)] scale-110' : 'group-hover:text-accent group-hover:scale-110'}`}>
+                    <div className={`absolute left-0 top-1 bottom-1 w-[2px] bg-accent-2 shadow-[0_0_10px_rgba(var(--accent-2),0.5)] origin-center transition-transform duration-[var(--dur-enter)] ease-glide ${isActive ? 'scale-y-100' : 'scale-y-0'}`} />
+                    <div className={`transition-all duration-[var(--dur-enter)] ease-glide ${isActive ? 'text-accent drop-shadow-[0_0_8px_rgba(var(--accent),0.5)] scale-110' : 'group-hover:text-accent group-hover:scale-110'}`}>
                         {item.icon}
                     </div>
                     {!collapsed && <span className="text-sm tracking-wide font-medium">{item.name}</span>}
@@ -156,3 +157,4 @@ export function Sidebar() {
     </aside>
   );
 }
+

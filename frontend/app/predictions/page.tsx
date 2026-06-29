@@ -28,7 +28,7 @@ function DirectionBadge({ direction }: { direction: string }) {
   }
   const c = config[direction] || config["neutral"]
   return (
-    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-crypto-sm text-[10px] sm:text-xs font-bold uppercase tracking-widest border shadow-lg ${c.bg} ${c.text} ${c.border}`}>
+    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-sm text-[10px] sm:text-xs font-bold uppercase tracking-widest border shadow-lg ${c.bg} ${c.text} ${c.border}`}>
       {c.icon}{c.label}
     </span>
   )
@@ -58,7 +58,7 @@ function MathModal({ isOpen, onClose, title, formulaSteps }: { isOpen: boolean, 
             if (line.startsWith('$$') && line.endsWith('$$')) {
                 const equation = line.replace(/\$\$/g, '');
                 return (
-                    <div key={i} className="my-6 p-4 bg-accent/5 border border-accent/20 rounded-crypto flex items-center justify-center overflow-x-auto text-accent">
+                    <div key={i} className="my-6 p-4 bg-accent/5 border border-accent/20 rounded-sm flex items-center justify-center overflow-x-auto text-accent">
                         <BlockMath math={equation} />
                     </div>
                 )
@@ -102,8 +102,9 @@ function MathModal({ isOpen, onClose, title, formulaSteps }: { isOpen: boolean, 
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in zoom-in-95">
+            <style>{`.katex { color: rgb(var(--text)) !important; } .katex-display { color: rgb(var(--accent)) !important; }`}</style>
             <div className="absolute inset-0 bg-background/80 backdrop-blur-md" onClick={onClose} />
-            <div className="glass-panel border border-white/10 w-full max-w-2xl rounded-crypto shadow-2xl relative z-10 flex flex-col max-h-[85vh] overflow-hidden">
+            <div className="glass-3 shape-squircle border border-white/10 w-full max-w-2xl shadow-2xl relative z-10 flex flex-col max-h-[85vh] overflow-hidden">
                 <div className="flex items-center justify-between p-6 border-b border-white/5 bg-surface/30">
                     <h2 className="text-lg font-black text-text tracking-tight uppercase font-sans">{title}</h2>
                     <button onClick={onClose} className="text-text-muted hover:text-text transition-colors bg-white/5 hover:bg-white/10 p-2 rounded-full">
@@ -225,7 +226,7 @@ function PredictionStudio() {
   const currentDisplayPrice = livePrice !== null ? livePrice : forecastData?.last_price;
 
   return (
-    <div className="h-full relative z-0">
+    <div className="h-full relative z-0 glass-2 shape-seal overflow-hidden p-6">
       
       <MathModal 
         isOpen={modalOpen} 
@@ -238,7 +239,7 @@ function PredictionStudio() {
         {!selectedSymbol ? (
           <div className="space-y-8">
             {/* Header */}
-            <div className="glass-panel p-8 lg:p-10 rounded-crypto shadow-2xl relative overflow-hidden group">
+            <div className="glass-3 shape-squircle p-8 lg:p-10 shadow-2xl relative overflow-hidden group">
               <div className="absolute top-[-50px] right-[-50px] w-64 h-64 bg-accent/10 rounded-full blur-[80px] pointer-events-none group-hover:bg-accent/20 transition-all duration-700" />
               <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                 <div>
@@ -249,10 +250,10 @@ function PredictionStudio() {
                   <p className="text-text-muted font-light tracking-wide mt-2">Select any asset below to launch full multi-factor analysis pipeline.</p>
                 </div>
                 <div className="flex gap-3 text-xs text-text-muted font-mono font-bold uppercase tracking-widest">
-                  <span className="bg-success/10 text-success border border-success/20 px-4 py-2 rounded-crypto-sm shadow-[0_0_15px_rgba(34,197,94,0.1)]">
+                  <span className="bg-success/10 text-success border border-success/20 px-4 py-2 rounded-sm shadow-[0_0_15px_rgba(34,197,94,0.1)]">
                     ↑ {predictions?.filter((p: any) => ['up','strong_up'].includes(p.direction)).length || 0} Bullish
                   </span>
-                  <span className="bg-danger/10 text-danger border border-danger/20 px-4 py-2 rounded-crypto-sm shadow-[0_0_15px_rgba(239,68,68,0.1)]">
+                  <span className="bg-danger/10 text-danger border border-danger/20 px-4 py-2 rounded-sm shadow-[0_0_15px_rgba(239,68,68,0.1)]">
                     ↓ {predictions?.filter((p: any) => ['down','strong_down'].includes(p.direction)).length || 0} Bearish
                   </span>
                 </div>
@@ -270,7 +271,7 @@ function PredictionStudio() {
                     <button
                       key={idx}
                       onClick={() => setSelectedSymbol(p.asset_symbol)}
-                      className={`group text-left glass-panel border border-white/5 hover:border-white/20 p-6 rounded-crypto transition-all duration-300 hover:bg-white/[0.04] hover:shadow-[0_0_30px_rgba(${isUp ? '34,197,94' : isDown ? '239,68,68' : '255,255,255'},0.1)] relative overflow-hidden`}
+                      className={`group text-left glass-flat shape-ledger border border-white/5 hover:border-white/20 p-6 transition-all duration-[var(--dur-hover)] ease-glide hover:bg-white/[0.04] hover:shadow-[0_0_30px_rgba(${isUp ? '34,197,94' : isDown ? '239,68,68' : '255,255,255'},0.1)] relative overflow-hidden`}
                     >
                       <div className="absolute top-0 left-0 w-full h-1 bg-white/5 group-hover:h-1.5 transition-all" style={{ backgroundColor: `rgba(${isUp ? '34,197,94' : isDown ? '239,68,68' : '255,255,255'}, 0.2)` }} />
                       
@@ -320,7 +321,7 @@ function PredictionStudio() {
                 <Brain size={64} className="opacity-20 text-accent animate-pulse" />
                 <h3 className="text-2xl font-light tracking-wide text-center text-text/80">No predictions available yet.</h3>
                 <p className="text-sm font-mono tracking-widest uppercase text-center max-w-md">Run the inference pipeline to generate predictions.</p>
-                <button onClick={() => router.push('/screener')} className="mt-6 glass bg-white/5 hover:bg-white/10 px-8 py-3 rounded-crypto-sm font-bold text-xs uppercase tracking-widest transition-all">Open Screener</button>
+                <button onClick={() => router.push('/screener')} className="mt-6 glass bg-white/5 hover:bg-white/10 px-8 py-3 rounded-sm font-bold text-xs uppercase tracking-widest transition-all">Open Screener</button>
               </div>
             )}
           </div>
@@ -337,7 +338,7 @@ function PredictionStudio() {
             </div>
           </div>
         ) : forecastError || (forecastData && forecastData.error) ? (
-          <div className="p-6 bg-danger/10 border border-danger/20 rounded-crypto text-danger font-mono text-sm backdrop-blur-md shadow-[0_0_30px_rgba(239,68,68,0.15)] flex items-center gap-4 animate-in fade-in slide-in-from-top-4">
+          <div className="p-6 bg-danger/10 border border-danger/20 rounded-sm text-danger font-mono text-sm backdrop-blur-md shadow-[0_0_30px_rgba(239,68,68,0.15)] flex items-center gap-4 animate-in fade-in slide-in-from-top-4">
             <AlertTriangle className="text-danger flex-shrink-0" size={24} />
             {forecastError || forecastData.error}
           </div>
@@ -345,7 +346,7 @@ function PredictionStudio() {
           <div className="space-y-8 pb-10 animate-in fade-in slide-in-from-bottom-8 duration-700">
             
             {/* ── HEADER ROW ── */}
-            <div className="flex flex-col md:flex-row justify-between items-end gap-6 glass-panel border border-white/5 p-8 lg:p-10 rounded-crypto shadow-2xl relative overflow-hidden group">
+            <div className="flex flex-col md:flex-row justify-between items-end gap-6 glass-2 shape-squircle border border-white/5 p-8 lg:p-10 shadow-2xl relative overflow-hidden group">
               <div className="absolute top-[-50px] right-[-50px] w-64 h-64 bg-accent/10 rounded-full blur-[80px] pointer-events-none group-hover:bg-accent/20 transition-all duration-700" />
               
               <div className="relative z-10 space-y-3">
@@ -365,7 +366,7 @@ function PredictionStudio() {
               </div>
 
               <div className="relative z-10 flex flex-col items-end gap-4 min-w-[280px]">
-                <div className="w-full glass bg-surface/50 border border-white/10 p-6 rounded-crypto-sm shadow-xl">
+                <div className="w-full glass bg-surface/50 border border-white/10 p-6 rounded-sm shadow-xl">
                     <div className="flex justify-between items-center mb-5">
                         <span className="text-text-muted text-[10px] font-bold uppercase tracking-widest font-mono">Ultimate Consensus</span>
                         <DirectionBadge direction={forecastData.final_consensus} />
@@ -382,7 +383,7 @@ function PredictionStudio() {
               
               {/* ── CONSENSUS MATRIX (9 METRICS) ── */}
               <div className="xl:col-span-1 space-y-6">
-                  <div className="glass-panel border border-white/5 rounded-crypto p-0 shadow-2xl h-full flex flex-col overflow-hidden group">
+                  <div className="glass-2 shape-squircle border border-white/5 p-0 shadow-2xl h-full flex flex-col overflow-hidden group">
                     <div className="p-6 border-b border-white/5 bg-surface/30">
                         <div className="flex items-center justify-between">
                             <h3 className="text-text text-sm uppercase tracking-widest font-black flex items-center gap-2 font-mono">
@@ -402,7 +403,7 @@ function PredictionStudio() {
                                     setModalOpen(true);
                                 }
                             }}
-                            className="group/item flex flex-col p-4 border border-transparent hover:border-white/10 hover:bg-white/5 transition-all rounded-crypto-sm cursor-pointer relative"
+                            className="group/item flex flex-col p-4 border border-transparent hover:border-white/10 hover:bg-white/5 transition-all rounded-sm cursor-pointer relative"
                           >
                             <div className="flex justify-between items-center w-full">
                                 <div className="flex items-center gap-3">
@@ -428,7 +429,7 @@ function PredictionStudio() {
 
               {/* ── FAN CHART MAIN VISUAL ── */}
               <div className="xl:col-span-2 space-y-6">
-                  <div className="glass-panel border border-white/5 rounded-crypto p-0 shadow-2xl flex flex-col h-[500px] lg:h-[600px] overflow-hidden group">
+                  <div className="glass-2 shape-squircle border border-white/5 p-0 shadow-2xl flex flex-col h-[500px] lg:h-[600px] overflow-hidden group">
                     <div className="p-6 border-b border-white/5 bg-surface/30">
                         <div className="flex justify-between items-center">
                             <div>
@@ -444,8 +445,8 @@ function PredictionStudio() {
                         <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
                         <defs>
                             <linearGradient id="colorArea" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="rgba(var(--accent), 0.3)"/>
-                            <stop offset="95%" stopColor="rgba(var(--accent), 0)"/>
+                            <stop offset="5%" stopColor="rgba(212, 165, 71, 0.3)"/>
+                            <stop offset="95%" stopColor="rgba(212, 165, 71, 0)"/>
                             </linearGradient>
                         </defs>
                         <CartesianGrid strokeDasharray="3 3" stroke="#ffffff" strokeOpacity={0.03} vertical={false} />
@@ -459,20 +460,20 @@ function PredictionStudio() {
                         />
                         
                         <Area type="monotone" dataKey="upper" stroke="none" fill="url(#colorArea)" name="Upper Bound" />
-                        <Area type="monotone" dataKey="lower" stroke="none" fill="var(--surface)" fillOpacity={1} name="Lower Bound" />
+                        <Area type="monotone" dataKey="lower" stroke="none" fill="rgb(20, 20, 30)" fillOpacity={1} name="Lower Bound" />
                         
-                        <Line type="monotone" dataKey="actual" stroke="var(--text)" strokeWidth={2} dot={false} name="Actual Price" connectNulls />
-                        <Line type="monotone" dataKey="ensemble" stroke="var(--accent)" strokeWidth={2} strokeDasharray="4 4" dot={false} name="30D Prediction" connectNulls />
+                        <Line type="monotone" dataKey="actual" stroke="rgb(240, 237, 232)" strokeWidth={2} dot={false} name="Actual Price" connectNulls />
+                        <Line type="monotone" dataKey="ensemble" stroke="rgb(212, 165, 71)" strokeWidth={2} strokeDasharray="4 4" dot={false} name="30D Prediction" connectNulls />
                         
-                        {currentDisplayPrice && <ReferenceLine y={currentDisplayPrice} stroke="var(--text-muted)" strokeDasharray="3 3" opacity={0.6} />}
-                        {forecastData.last_date && <ReferenceLine x={forecastData.last_date} stroke="var(--accent)" strokeOpacity={0.6} label={{value: "NOW", fill: "var(--accent)", fontSize: 10, position: 'insideTopLeft', fontFamily: 'var(--font-mono)', fontWeight: "bold"}} />}
+                        {currentDisplayPrice && <ReferenceLine y={currentDisplayPrice} stroke="rgb(148, 163, 184)" strokeDasharray="3 3" opacity={0.6} />}
+                        {forecastData.last_date && <ReferenceLine x={forecastData.last_date} stroke="rgb(212, 165, 71)" strokeOpacity={0.6} label={{value: "NOW", fill: "rgb(212, 165, 71)", fontSize: 10, position: 'insideTopLeft', fontFamily: 'var(--font-mono)', fontWeight: "bold"}} />}
                         </ComposedChart>
                     </ResponsiveContainer>
                     </div>
                   </div>
 
                   {/* ── MULTI-HORIZON TARGETS ── */}
-                  <div className="glass-panel border border-white/5 rounded-crypto p-6 shadow-2xl">
+                  <div className="glass-2 shape-squircle border border-white/5 p-6 shadow-2xl">
                     <h3 className="text-text text-sm uppercase tracking-widest font-black mb-6 flex items-center gap-2 font-mono">
                         <Clock size={16} className="text-accent"/> Price Targets
                     </h3>
@@ -481,7 +482,7 @@ function PredictionStudio() {
                             if (!data) return null;
                             const isPos = data.change_pct >= 0;
                             return (
-                                <div key={horizon} className="bg-surface/50 border border-white/5 p-5 rounded-crypto-sm flex flex-col text-center relative overflow-hidden group hover:border-white/20 transition-all hover:bg-white/5 shadow-inner">
+                                <div key={horizon} className="bg-surface/50 border border-white/5 p-5 rounded-sm flex flex-col text-center relative overflow-hidden group hover:border-white/20 transition-all hover:bg-white/5 shadow-inner">
                                     <div className={`absolute top-0 left-0 w-full h-1 ${isPos ? 'bg-success/50 shadow-[0_0_10px_rgba(34,197,94,0.5)]' : 'bg-danger/50 shadow-[0_0_10px_rgba(239,68,68,0.5)]'}`} />
                                     <span className="text-text-muted text-[9px] font-mono font-bold uppercase tracking-widest mb-3">{horizon} Forecast</span>
                                     <span className="text-text font-black text-lg mb-1 tracking-tight">${formatPrice(data.price)}</span>
@@ -500,12 +501,12 @@ function PredictionStudio() {
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mt-6">
               
               {/* T-SHAP Widget */}
-              <div className="glass-panel border border-white/5 rounded-crypto p-8 shadow-2xl overflow-hidden relative group">
+              <div className="glass-2 shape-squircle border border-white/5 p-8 shadow-2xl overflow-hidden relative group">
                 <div className="absolute inset-0 bg-gradient-to-br from-accent/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
                 <div className="relative z-10">
                     <div className="flex items-center justify-between mb-8">
                     <h3 className="text-text font-black text-xl tracking-tight flex items-center gap-3">
-                        <div className="p-2.5 glass bg-accent/10 rounded-crypto-sm shadow-inner"><BarChart2 className="text-accent" size={20} /></div>
+                        <div className="p-2.5 glass bg-accent/10 rounded-sm shadow-inner"><BarChart2 className="text-accent" size={20} /></div>
                         Topological SHAP
                     </h3>
                     <div className="text-[9px] font-bold text-text-muted uppercase tracking-widest border border-white/10 px-3 py-1.5 rounded-sm bg-surface/50 font-mono shadow-inner">Feature Impact</div>
@@ -528,7 +529,7 @@ function PredictionStudio() {
                         </ResponsiveContainer>
                     </div>
                     ) : (
-                    <div className="h-[280px] flex items-center justify-center text-text-muted border border-dashed border-white/10 rounded-crypto-sm text-xs font-mono font-bold uppercase tracking-widest bg-surface/30">
+                    <div className="h-[280px] flex items-center justify-center text-text-muted border border-dashed border-white/10 rounded-sm text-xs font-mono font-bold uppercase tracking-widest bg-surface/30">
                         Awaiting Exploratory Matrix...
                     </div>
                     )}
@@ -536,12 +537,12 @@ function PredictionStudio() {
               </div>
 
               {/* zkML Verification Widget */}
-              <div className="glass-panel border border-white/5 rounded-crypto p-1 shadow-2xl relative overflow-hidden group">
+              <div className="glass-2 shape-squircle border border-white/5 p-1 shadow-2xl relative overflow-hidden group">
                 <div className="absolute inset-0 bg-success/10 blur-[40px] pointer-events-none group-hover:bg-success/20 transition-all duration-1000" />
                 <div className="bg-surface/80 h-full w-full rounded-[31px] p-8 flex flex-col relative z-10 backdrop-blur-2xl border border-white/5">
                     <div className="flex items-center justify-between mb-6">
                         <div className="flex items-center gap-3">
-                            <div className="p-2.5 glass bg-success/10 rounded-crypto-sm shadow-inner"><Terminal size={20} className="text-success" /></div>
+                            <div className="p-2.5 glass bg-success/10 rounded-sm shadow-inner"><Terminal size={20} className="text-success" /></div>
                             <h3 className="text-text font-black text-xl tracking-tight">zkML Verification</h3>
                         </div>
                         <Lock size={20} className="text-success/50 drop-shadow-[0_0_8px_rgba(34,197,94,0.5)]" />
@@ -552,7 +553,7 @@ function PredictionStudio() {
                     </p>
                     
                     {zkProof ? (
-                        <div className="mt-auto bg-black/60 p-5 rounded-crypto-sm border border-success/30 font-mono text-[10px] sm:text-xs break-all relative overflow-hidden shadow-[0_0_20px_rgba(34,197,94,0.1)]">
+                        <div className="mt-auto bg-black/60 p-5 rounded-sm border border-success/30 font-mono text-[10px] sm:text-xs break-all relative overflow-hidden shadow-[0_0_20px_rgba(34,197,94,0.1)]">
                         <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10" />
                         <div className="text-success/70 mb-3 uppercase tracking-widest text-[9px] font-bold">{'// SNARK Hash'}</div>
                         <div className="text-text/90 leading-relaxed font-bold tracking-tight">{zkProof}</div>
@@ -561,7 +562,7 @@ function PredictionStudio() {
                         </div>
                         </div>
                     ) : (
-                        <div className="mt-auto bg-black/40 p-6 rounded-crypto-sm border border-white/5 font-mono text-xs font-bold text-text-muted text-center uppercase tracking-widest flex items-center justify-center gap-3">
+                        <div className="mt-auto bg-black/40 p-6 rounded-sm border border-white/5 font-mono text-xs font-bold text-text-muted text-center uppercase tracking-widest flex items-center justify-center gap-3">
                         <div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-full animate-spin" />
                         Generating Proof...
                         </div>
@@ -584,3 +585,4 @@ export default function PredictionsPage() {
     </Suspense>
   )
 }
+

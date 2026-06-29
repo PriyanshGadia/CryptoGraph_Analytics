@@ -10,7 +10,7 @@ import * as d3 from "d3-force";
 
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
   ssr: false,
-  loading: () => <Skeleton className="w-full h-[600px] rounded-crypto-lg" />,
+  loading: () => <Skeleton className="w-full h-[600px] shape-squircle" />,
 });
 
 const SECTOR_COLORS: Record<string, string> = {
@@ -84,6 +84,46 @@ export default function GraphPage() {
     return () => window.removeEventListener("resize", update);
   }, [isLoading]);
 
+  useEffect(() => {
+    let observer: IntersectionObserver;
+    if (containerRef.current) {
+      observer = new IntersectionObserver(
+        ([entry]) => {
+          if (!document.hidden) {
+            if (entry.isIntersecting) {
+              graphRef.current?.resumeAnimation();
+            } else {
+              graphRef.current?.pauseAnimation();
+            }
+          }
+        },
+        { threshold: 0.1 }
+      );
+      observer.observe(containerRef.current);
+    }
+    
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        graphRef.current?.pauseAnimation();
+      } else {
+        // Only resume if visible in viewport
+        if (containerRef.current) {
+          const rect = containerRef.current.getBoundingClientRect();
+          const isVisible = (
+            rect.top < (window.innerHeight || document.documentElement.clientHeight) &&
+            rect.bottom > 0
+          );
+          if (isVisible) graphRef.current?.resumeAnimation();
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (observer) observer.disconnect();
+    };
+  }, []);
+
   // Zoom to fit after graph settles
   useEffect(() => {
     if (graphRef.current && data) {
@@ -149,10 +189,10 @@ export default function GraphPage() {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center h-full space-y-4">
-        <div className="text-danger bg-danger/10 p-4 rounded-crypto border border-danger/20">
+        <div className="text-danger bg-danger/10 p-4 rounded-sm border border-danger/20">
           Failed to load graph data
         </div>
-        <button onClick={() => mutate()} className="flex items-center gap-2 px-6 py-3 glass hover:bg-white/10 transition-colors rounded-crypto text-text border border-white/10">
+        <button onClick={() => mutate()} className="flex items-center gap-2 px-6 py-3 glass hover:bg-white/10 transition-colors rounded-sm text-text border border-white/10">
           <RefreshCcw size={16} /> Retry
         </button>
       </div>
@@ -160,13 +200,13 @@ export default function GraphPage() {
   }
 
   return (
-    <div className="h-[calc(100vh-8rem)] flex flex-col relative w-full pt-8">
+    <div className="h-[calc(100vh-8rem)] flex flex-col relative w-full pt-8 p-6 glass-2 shape-seal overflow-hidden">
       <div className="mb-6 relative z-10 px-4 max-w-6xl mx-auto w-full">
         <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-text via-text/80 to-text-muted tracking-tight font-sans">Topological Graph</h1>
         <p className="text-text-muted font-light tracking-wide mt-2">Spatial-Temporal Graph — {graphData.nodes.length} assets, {graphData.links.length} connections</p>
       </div>
 
-      <div ref={containerRef} className="flex-1 w-full relative">
+      <div ref={containerRef} className="flex-1 w-full relative glass-flat shape-squircle overflow-hidden">
         {isLoading || !data ? (
           <Skeleton className="w-full h-full" />
         ) : (
@@ -200,24 +240,24 @@ export default function GraphPage() {
         )}
 
         {/* Controls panel */}
-        <div className="absolute top-4 right-4 glass-panel p-5 rounded-crypto border border-white/5 space-y-4 z-10 w-64 shadow-2xl backdrop-blur-2xl">
+        <div className="absolute top-4 right-4 glass-3 shape-facet-sm p-5 border border-white/5 space-y-4 z-10 w-64 shadow-2xl backdrop-blur-2xl">
           <div className="text-[10px] font-mono font-bold text-accent uppercase tracking-widest flex items-center gap-2">
             <Activity size={14} /> Network Controls
           </div>
-          <button onClick={() => graphRef.current?.zoomToFit(400, 40)} className="w-full flex justify-center items-center gap-2 px-4 py-2.5 glass bg-accent/10 hover:bg-accent/20 text-accent rounded-crypto-sm text-xs font-bold transition-all border border-accent/20 shadow-[0_0_15px_rgba(var(--accent),0.1)]">
+          <button onClick={() => graphRef.current?.zoomToFit(400, 40)} className="w-full flex justify-center items-center gap-2 px-4 py-2.5 glass bg-accent/10 hover:bg-accent/20 text-accent rounded-sm text-xs font-bold transition-all border border-accent/20 shadow-[0_0_15px_rgba(var(--accent),0.1)]">
             <ZoomIn size={14} /> Center Graph
           </button>
-          <button onClick={() => mutate()} className="w-full flex justify-center items-center gap-2 px-4 py-2.5 glass bg-surface/50 hover:bg-white/10 text-text rounded-crypto-sm text-xs transition-colors border border-white/5">
+          <button onClick={() => mutate()} className="w-full flex justify-center items-center gap-2 px-4 py-2.5 glass bg-surface/50 hover:bg-white/10 text-text rounded-sm text-xs transition-colors border border-white/5">
             <RefreshCcw size={14} /> Refresh Data
           </button>
           <div className="flex gap-2 text-[10px] uppercase tracking-widest font-mono pt-2 border-t border-white/10">
-            <span className="flex-1 text-center py-1.5 bg-success/10 text-success rounded-crypto-sm border border-success/20">{graphData.nodes.length} Nodes</span>
-            <span className="flex-1 text-center py-1.5 bg-warning/10 text-warning rounded-crypto-sm border border-warning/20">{graphData.links.length} Edges</span>
+            <span className="flex-1 text-center py-1.5 bg-success/10 text-success rounded-sm border border-success/20">{graphData.nodes.length} Nodes</span>
+            <span className="flex-1 text-center py-1.5 bg-warning/10 text-warning rounded-sm border border-warning/20">{graphData.links.length} Edges</span>
           </div>
         </div>
 
         {/* Legend */}
-        <div className="absolute bottom-4 left-4 glass-panel p-5 rounded-crypto border border-white/5 shadow-2xl backdrop-blur-2xl z-10">
+        <div className="absolute bottom-4 left-4 glass-3 shape-facet-sm p-5 border border-white/5 shadow-2xl backdrop-blur-2xl z-10">
           <div className="text-[10px] font-mono font-bold text-accent mb-3 uppercase tracking-widest">Sectors</div>
           <div className="grid grid-cols-2 gap-x-6 gap-y-2">
               {Object.entries(SECTOR_LABELS).map(([key, label]) => (
@@ -239,7 +279,7 @@ export default function GraphPage() {
 
         {/* Selected node panel */}
         {selectedNode && (
-          <div className="absolute top-4 left-4 w-72 glass-panel p-6 rounded-crypto border border-white/10 z-20 space-y-4 shadow-2xl backdrop-blur-2xl animate-in fade-in slide-in-from-left-4">
+          <div className="absolute top-4 left-4 w-72 glass-3 shape-facet-sm p-6 border border-white/10 z-20 space-y-4 shadow-2xl backdrop-blur-2xl animate-in fade-in slide-in-from-left-4">
             <div className="flex justify-between items-start">
               <div className="font-sans text-3xl font-black text-text tracking-tight">{selectedNode.symbol}</div>
               <button onClick={() => setSelectedNode(null)} className="text-text-muted hover:text-text text-sm transition-colors w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/10">✕</button>
@@ -277,3 +317,4 @@ export default function GraphPage() {
     </div>
   );
 }
+
