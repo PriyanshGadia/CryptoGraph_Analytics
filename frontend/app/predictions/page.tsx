@@ -1,5 +1,6 @@
 "use client"
 import { useState, useEffect, Suspense } from "react"
+import { useChartPalette } from "@/lib/useChartPalette";
 import useSWR from "swr"
 import { useSearchParams, useRouter } from "next/navigation"
 import {
@@ -122,6 +123,8 @@ function MathModal({ isOpen, onClose, title, formulaSteps }: { isOpen: boolean, 
 
 // ── Main Page ──────────────────────────────────────────
 function PredictionStudio() {
+  const palette = useChartPalette();
+  
   const searchParams = useSearchParams()
   const router = useRouter()
   
@@ -579,6 +582,8 @@ function PredictionStudio() {
 }
 
 export default function PredictionsPage() {
+  const palette = useChartPalette();
+  
   return (
     <Suspense fallback={<div className="h-[calc(100vh-8rem)] flex items-center justify-center text-accent font-mono text-xs font-bold tracking-widest uppercase animate-pulse">Initializing ST-GCN Canvas...</div>}>
       <PredictionStudio />

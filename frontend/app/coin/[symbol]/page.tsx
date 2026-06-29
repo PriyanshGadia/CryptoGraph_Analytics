@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, use } from "react";
+import { useChartPalette } from "@/lib/useChartPalette";
 import { createChart, ColorType, IChartApi } from "lightweight-charts";
 import { AreaChart, Area, ComposedChart, Line, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceLine, Cell } from "recharts";
 import { ChevronRight, RefreshCw, Maximize, Minimize, Brain, Layers, Activity, ActivitySquare, ShieldAlert, CircleDot, Info, TrendingUp, TrendingDown } from "lucide-react";
@@ -82,6 +83,8 @@ function calculateBB(prices: number[], period: number = 20) {
 
 
 export default function CoinDetailPage({ params }: { params: Promise<{ symbol: string }> }) {
+  const palette = useChartPalette();
+  
   const resolvedParams = use(params);
   const symbol = resolvedParams.symbol.toUpperCase();
   const [period, setPeriod] = useState("3M");
@@ -632,8 +635,8 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
                         contentStyle={{ backgroundColor: "rgba(10,10,15,0.9)", borderColor: "rgba(255,255,255,0.1)", borderRadius: "8px", fontFamily: "monospace", fontSize: "10px", fontWeight: "bold" }} 
                         labelFormatter={(label) => new Date(label * 1000).toLocaleString()}
                       />
-                      <ReferenceLine y={70} stroke="rgba(239,68,68,0.5)" strokeDasharray="3 3" label={{ value: "OVERBOUGHT", fill: "rgba(239,68,68,0.8)", position: "insideTopLeft", fontSize: 9, fontFamily: "sans-serif", fontWeight: "bold", letterSpacing: "0.1em" }} />
-                      <ReferenceLine y={30} stroke="rgba(34,197,94,0.5)" strokeDasharray="3 3" label={{ value: "OVERSOLD", fill: "rgba(34,197,94,0.8)", position: "insideBottomLeft", fontSize: 9, fontFamily: "sans-serif", fontWeight: "bold", letterSpacing: "0.1em" }} />
+                      <ReferenceLine y={70} stroke={palette.danger} strokeDasharray="3 3" label={{ value: "OVERBOUGHT", fill: "rgba(239,68,68,0.8)", position: "insideTopLeft", fontSize: 9, fontFamily: "sans-serif", fontWeight: "bold", letterSpacing: "0.1em" }} />
+                      <ReferenceLine y={30} stroke={palette.success} strokeDasharray="3 3" label={{ value: "OVERSOLD", fill: "rgba(34,197,94,0.8)", position: "insideBottomLeft", fontSize: 9, fontFamily: "sans-serif", fontWeight: "bold", letterSpacing: "0.1em" }} />
                       <Area type="monotone" dataKey="rsi" stroke="rgb(212, 165, 71)" fill="rgba(212, 165, 71, 0.1)" strokeWidth={2} />
                     </AreaChart>
                   </ResponsiveContainer>

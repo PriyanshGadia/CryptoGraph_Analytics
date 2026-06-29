@@ -65,12 +65,12 @@ export function Sidebar() {
   ];
 
   return (
-    <aside className={`absolute md:relative glass-2 shape-squircle flex flex-col transition-all duration-[var(--dur-enter)] ease-glide z-50 my-2 shrink-0 ${collapsed ? "w-20 -translate-x-[120%] md:translate-x-0" : "w-64 translate-x-0"} h-[calc(100vh-1rem)] md:h-auto`}>
+    <aside className={`absolute md:relative glass-2 rounded-tl-[40px] rounded-tr-[12px] rounded-br-[40px] rounded-bl-[12px] flex flex-col transition-all duration-[var(--dur-enter)] ease-glide z-50 my-2 shrink-0 ${collapsed ? "w-20 -translate-x-[120%] md:translate-x-0" : "w-64 translate-x-0"} h-[calc(100vh-1rem)] md:h-auto`}>
       
       {/* Collapse Toggle */}
       <button 
         onClick={() => setCollapsed(!collapsed)}
-        className="absolute -right-3 top-10 bg-accent hover:scale-110 text-white p-1 shape-facet-sm depth-bevel shadow-[0_0_15px_rgba(var(--accent),0.5)] z-50 transition-all duration-[var(--dur-hover)] ease-glide"
+        className="absolute -right-3 top-10 bg-accent hover:scale-110 text-white p-3 shape-facet-sm depth-bevel shadow-[0_0_15px_rgba(var(--accent),0.5)] z-50 transition-all duration-[var(--dur-hover)] ease-glide"
       >
         {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
       </button>
@@ -96,9 +96,9 @@ export function Sidebar() {
         <button 
             onClick={handleSync}
             disabled={syncing}
-            className={`flex items-center justify-center gap-2 w-full py-2 px-3 bg-accent/10 hover:bg-accent/20 border border-accent/20 rounded-sm text-xs font-mono text-accent transition-all shadow-[0_0_10px_rgba(var(--accent),0.05)] ${syncing ? 'opacity-50 cursor-not-allowed' : ''}`}
+            className={`flex items-center justify-center gap-2 w-full py-6 px-6 bg-accent text-white hover:brightness-110 depth-bevel shape-facet text-xs font-mono transition-all hover:tilt shadow-[0_0_20px_rgba(var(--accent),0.4)] ${syncing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
         >
-            <RefreshCw size={14} className={syncing ? 'animate-spin text-orange-400' : ''} />
+            <RefreshCw size={14} className={syncing ? 'animate-spin text-orange-200' : ''} />
             {!collapsed && <span className="uppercase tracking-widest">{syncing ? 'Running...' : 'Run Scheduler'}</span>}
         </button>
       </div>
@@ -112,10 +112,10 @@ export function Sidebar() {
             <div className="space-y-1">
               {group.items.map((item: any, iIdx) => {
                 const isActive = item.href ? pathname === item.href : false;
-                const commonClasses = `flex items-center gap-4 px-3 py-2.5 transition-all duration-[var(--dur-enter)] ease-glide group relative ${
+                const commonClasses = `flex items-center gap-4 px-3 py-2.5 transition-all duration-[var(--dur-enter)] ease-glide group relative shape-facet-sm ${
                   isActive 
-                    ? "text-text" 
-                    : "text-text-muted hover:text-text hover:bg-white/5 hover:translate-x-1 shape-facet-sm cursor-pointer"
+                    ? "text-accent bg-accent/10 border border-accent/20 shadow-[0_0_15px_rgba(var(--accent),0.1)]" 
+                    : "text-text-muted hover:text-text hover:bg-white/5 hover:translate-x-1 cursor-pointer border border-transparent"
                 } ${collapsed ? "justify-center" : "w-full text-left"}`;
                 
                 const content = (

@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { RefreshCcw, ZoomIn, Activity } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useMemo, useRef, useState, useEffect, useCallback } from "react";
+import { useChartPalette } from "@/lib/useChartPalette";
 import * as d3 from "d3-force";
 
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
@@ -60,6 +61,8 @@ function hexToRgb(hex: string): string {
 }
 
 export default function GraphPage() {
+  const palette = useChartPalette();
+  
   const { data, error, isLoading, mutate } = useSWR<GraphResponse>("/api/graph/latest", fetcher, {
     revalidateOnFocus: false, dedupingInterval: 30000,
   });

@@ -1,4 +1,5 @@
 "use client";
+import { useChartPalette } from "@/lib/useChartPalette";
 
 import useSWR from "swr";
 import { fetcher, RiskData, RiskAlert } from "@/lib/api";
@@ -37,6 +38,8 @@ const SEVERITY_CONFIG: Record<string, { bg: string; border: string; icon: any; t
 };
 
 export default function RiskPage() {
+  const palette = useChartPalette();
+  
   const { data, error, isLoading, mutate } = useSWR<RiskData>("/api/risk", fetcher, {
     revalidateOnFocus: false, dedupingInterval: 30000, refreshInterval: 120000,
   });
@@ -177,9 +180,9 @@ export default function RiskPage() {
                 <div className="h-[300px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={topMoversData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                      <XAxis dataKey="name" stroke="rgba(255,255,255,0.3)" fontSize={10} fontFamily="monospace" tickLine={false} axisLine={false} tickMargin={10} />
-                      <YAxis stroke="rgba(255,255,255,0.3)" fontSize={10} fontFamily="monospace" tickLine={false} axisLine={false} tickFormatter={(v: number) => `${v.toFixed(0)}%`} />
+                      <CartesianGrid strokeDasharray="3 3" stroke="transparent" vertical={false} />
+                      <XAxis dataKey="name" stroke={palette.muted} fontSize={10} fontFamily="monospace" tickLine={false} axisLine={false} tickMargin={10} />
+                      <YAxis stroke={palette.muted} fontSize={10} fontFamily="monospace" tickLine={false} axisLine={false} tickFormatter={(v: number) => `${v.toFixed(0)}%`} />
                       <Tooltip 
                         contentStyle={{ backgroundColor: "rgba(10, 10, 15, 0.9)", borderColor: "rgba(255, 255, 255, 0.1)", color: "#f1f5f9", borderRadius: "12px", backdropFilter: "blur(10px)" }} 
                         itemStyle={{ fontFamily: 'monospace', fontWeight: 'bold' }}
@@ -412,9 +415,9 @@ export default function RiskPage() {
                   <div className="h-[320px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <ComposedChart data={macro.history} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                        <XAxis dataKey="date" stroke="rgba(255,255,255,0.3)" fontSize={10} fontFamily="monospace" tickLine={false} axisLine={false} minTickGap={30} />
-                        <YAxis stroke="rgba(255,255,255,0.3)" fontSize={10} fontFamily="monospace" tickLine={false} axisLine={false} />
+                        <CartesianGrid strokeDasharray="3 3" stroke="transparent" vertical={false} />
+                        <XAxis dataKey="date" stroke={palette.muted} fontSize={10} fontFamily="monospace" tickLine={false} axisLine={false} minTickGap={30} />
+                        <YAxis stroke={palette.muted} fontSize={10} fontFamily="monospace" tickLine={false} axisLine={false} />
                         <Tooltip 
                             contentStyle={{ backgroundColor: "rgba(10, 10, 15, 0.9)", borderColor: "rgba(255, 255, 255, 0.1)", borderRadius: "12px", color: "#fff", backdropFilter: "blur(10px)" }} 
                             itemStyle={{ fontFamily: 'monospace', fontWeight: 'bold' }}

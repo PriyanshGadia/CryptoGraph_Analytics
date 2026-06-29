@@ -65,7 +65,7 @@ export function PredictionCard({ asset }: { asset: Asset }) {
         {/* Signal Chip */}
         <div className="bg-surface/30 rounded-sm p-4 border border-white/5 flex flex-col justify-center gap-2">
             <span className="text-[10px] text-text-muted uppercase tracking-[0.2em] font-mono flex items-center gap-1.5"><Cpu size={12} className="text-accent"/> AI SIGNAL</span>
-            <div className={`inline-flex w-max items-center gap-2 px-3 py-1.5 shape-facet-sm text-xs font-bold uppercase tracking-widest border ${t.bgClass} ${t.textClass} ${t.borderClass}`} style={{ boxShadow: t.glow !== 'none' ? t.glow : undefined }}>
+            <div className={`inline-flex w-max items-center gap-2 px-3 py-3 shape-facet-sm text-xs font-bold uppercase tracking-widest border ${t.bgClass} ${t.textClass} ${t.borderClass}`} style={{ boxShadow: t.glow !== 'none' ? t.glow : undefined }}>
                 <Icon size={14}/>{t.label}
             </div>
         </div>

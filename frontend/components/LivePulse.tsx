@@ -30,7 +30,7 @@ export function LivePulse() {
       };
 
       ws.onerror = (error) => {
-        console.error("WebSocket error:", error);
+        // Silently handle expected disconnects to prevent Next.js dev error overlay
         ws?.close();
       };
     };

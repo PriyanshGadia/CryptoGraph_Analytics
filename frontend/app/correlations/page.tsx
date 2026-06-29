@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, memo } from "react";
+import { useChartPalette } from "@/lib/useChartPalette";
 import useSWR from "swr";
 import { fetcher } from "@/lib/api";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Cell } from "recharts";
@@ -72,6 +73,8 @@ const HeatmapCell = memo(({
 HeatmapCell.displayName = "HeatmapCell";
 
 export default function CorrelationsPage() {
+  const palette = useChartPalette();
+  
   const [days, setDays] = useState(30);
   const [selectedSector, setSelectedSector] = useState("all");
   const [cellSize, setCellSize] = useState(16);

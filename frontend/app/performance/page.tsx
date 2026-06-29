@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useChartPalette } from "@/lib/useChartPalette";
 import useSWR from "swr";
 import { fetcher } from "@/lib/api";
 import { ComposedChart, Area, Line, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
@@ -55,6 +56,8 @@ function CountUp({ end, decimals = 0, suffix = "" }: { end: number, decimals?: n
 import { useEffect } from "react";
 
 export default function PerformancePage() {
+  const palette = useChartPalette();
+  
   const [days, setDays] = useState(30);
   const [search, setSearch] = useState("");
   const [showAll, setShowAll] = useState(false);
@@ -195,8 +198,8 @@ export default function PerformancePage() {
         <div className="h-[320px]">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={data.rolling_accuracy} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-              <XAxis dataKey="date" stroke="rgba(255,255,255,0.1)" tick={{fill: 'rgba(255,255,255,0.5)', fontSize: 10, fontFamily: 'monospace'}} tickMargin={10} />
-              <YAxis domain={[0, 100]} stroke="rgba(255,255,255,0.1)" tick={{fill: 'rgba(255,255,255,0.5)', fontSize: 10, fontFamily: 'monospace'}} />
+              <XAxis dataKey="date" stroke="rgba(255,255,255,0.1)" tick={{fill: palette.text, fontSize: 10, fontFamily: 'monospace'}} tickMargin={10} />
+              <YAxis domain={[0, 100]} stroke="rgba(255,255,255,0.1)" tick={{fill: palette.text, fontSize: 10, fontFamily: 'monospace'}} />
               <Tooltip 
                 contentStyle={{ backgroundColor: "rgba(10, 10, 15, 0.9)", borderColor: "rgba(255, 255, 255, 0.1)", color: "#fff", borderRadius: "12px", boxShadow: "0 10px 25px rgba(0,0,0,0.5)", backdropFilter: "blur(10px)" }} 
                 itemStyle={{ fontFamily: 'monospace', fontSize: '12px' }}
@@ -276,8 +279,8 @@ export default function PerformancePage() {
           <div className="h-[260px]">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={data.confidence_calibration} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
-                <XAxis dataKey="confidence_range" stroke="rgba(255,255,255,0.1)" tick={{fill: 'rgba(255,255,255,0.5)', fontSize: 9, fontFamily: 'monospace'}} angle={-30} textAnchor="end" tickMargin={5} />
-                <YAxis domain={[0, 100]} stroke="rgba(255,255,255,0.1)" tick={{fill: 'rgba(255,255,255,0.5)', fontSize: 10, fontFamily: 'monospace'}} />
+                <XAxis dataKey="confidence_range" stroke="rgba(255,255,255,0.1)" tick={{fill: palette.text, fontSize: 9, fontFamily: 'monospace'}} angle={-30} textAnchor="end" tickMargin={5} />
+                <YAxis domain={[0, 100]} stroke="rgba(255,255,255,0.1)" tick={{fill: palette.text, fontSize: 10, fontFamily: 'monospace'}} />
                 <Tooltip 
                     contentStyle={{ backgroundColor: "rgba(10, 10, 15, 0.9)", borderColor: "rgba(255, 255, 255, 0.1)", color: "#fff", borderRadius: "12px", backdropFilter: "blur(10px)" }} 
                     itemStyle={{ fontFamily: 'monospace', fontSize: '12px' }}

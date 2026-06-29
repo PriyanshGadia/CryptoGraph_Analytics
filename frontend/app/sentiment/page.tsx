@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { useChartPalette } from "@/lib/useChartPalette";
 import useSWR from "swr";
 import { fetcher } from "@/lib/api";
 import { LineChart, Line, AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, BarChart, Bar, Cell, CartesianGrid, ComposedChart } from "recharts";
@@ -30,18 +31,19 @@ const getSectorColor = (sector: string) => {
 
 // --- SVG Gauge Component ---
 const FearGreedGauge = ({ value }: { value: number }) => {
+  const palette = useChartPalette();
   // Convert 0-100 to rotation (-90 to +90 degrees)
   const clampedValue = Math.max(0, Math.min(100, value));
   const rotation = (clampedValue / 100) * 180 - 90;
   
   // Zones: Extreme Fear (0-24), Fear (25-44), Neutral (45-55), Greed (56-74), Extreme Greed (75-100)
   let zoneLabel = "Neutral";
-  let zoneColor = "rgb(148, 163, 184)"; // Neutral
-  if (clampedValue <= 24) { zoneLabel = "Extreme Fear"; zoneColor = "rgb(239, 68, 68)"; }
-  else if (clampedValue <= 44) { zoneLabel = "Fear"; zoneColor = "rgba(239, 68, 68, 0.7)"; }
-  else if (clampedValue <= 55) { zoneLabel = "Neutral"; zoneColor = "rgb(148, 163, 184)"; }
-  else if (clampedValue <= 74) { zoneLabel = "Greed"; zoneColor = "rgba(34, 197, 94, 0.7)"; }
-  else { zoneLabel = "Extreme Greed"; zoneColor = "rgb(34, 197, 94)"; }
+  let zoneColor: string = palette.muted; // Neutral
+  if (clampedValue <= 24) { zoneLabel = "Extreme Fear"; zoneColor = palette.danger; }
+  else if (clampedValue <= 44) { zoneLabel = "Fear"; zoneColor = palette.danger; }
+  else if (clampedValue <= 55) { zoneLabel = "Neutral"; zoneColor = palette.muted; }
+  else if (clampedValue <= 74) { zoneLabel = "Greed"; zoneColor = palette.success; }
+  else { zoneLabel = "Extreme Greed"; zoneColor = palette.success; }
 
   // SVG Geometry
   const width = 320;
@@ -75,15 +77,15 @@ const FearGreedGauge = ({ value }: { value: number }) => {
         {/* Base circle for path, rotated so it starts from left (180 deg) and goes to right */}
         <g transform={`rotate(180, ${cx}, ${cy})`}>
           {/* Extreme Greed */}
-          <circle cx={cx} cy={cy} r={r} fill="transparent" stroke="rgba(34, 197, 94, 0.8)" strokeWidth="24" strokeDasharray={`${p5} ${circ}`} strokeDashoffset={offset5} className="drop-shadow-[0_0_5px_rgba(34,197,94,0.5)]" />
+          <circle cx={cx} cy={cy} r={r} fill="transparent" stroke={palette.success} strokeWidth="24" strokeDasharray={`${p5} ${circ}`} strokeDashoffset={offset5} className="drop-shadow-[0_0_5px_rgba(34,197,94,0.5)]" />
           {/* Greed */}
-          <circle cx={cx} cy={cy} r={r} fill="transparent" stroke="rgba(34, 197, 94, 0.4)" strokeWidth="24" strokeDasharray={`${p4} ${circ}`} strokeDashoffset={offset4} />
+          <circle cx={cx} cy={cy} r={r} fill="transparent" stroke={palette.success} strokeWidth="24" strokeDasharray={`${p4} ${circ}`} strokeDashoffset={offset4} />
           {/* Neutral */}
-          <circle cx={cx} cy={cy} r={r} fill="transparent" stroke="rgba(148, 163, 184, 0.3)" strokeWidth="24" strokeDasharray={`${p3} ${circ}`} strokeDashoffset={offset3} />
+          <circle cx={cx} cy={cy} r={r} fill="transparent" stroke={palette.muted} strokeWidth="24" strokeDasharray={`${p3} ${circ}`} strokeDashoffset={offset3} />
           {/* Fear */}
-          <circle cx={cx} cy={cy} r={r} fill="transparent" stroke="rgba(239, 68, 68, 0.4)" strokeWidth="24" strokeDasharray={`${p2} ${circ}`} strokeDashoffset={offset2} />
+          <circle cx={cx} cy={cy} r={r} fill="transparent" stroke={palette.danger} strokeWidth="24" strokeDasharray={`${p2} ${circ}`} strokeDashoffset={offset2} />
           {/* Extreme Fear */}
-          <circle cx={cx} cy={cy} r={r} fill="transparent" stroke="rgba(239, 68, 68, 0.8)" strokeWidth="24" strokeDasharray={`${p1} ${circ}`} strokeDashoffset={offset1} className="drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]" />
+          <circle cx={cx} cy={cy} r={r} fill="transparent" stroke={palette.danger} strokeWidth="24" strokeDasharray={`${p1} ${circ}`} strokeDashoffset={offset1} className="drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]" />
         </g>
         
         {/* Needle Group */}
@@ -108,6 +110,7 @@ const FearGreedGauge = ({ value }: { value: number }) => {
 };
 
 export default function SentimentPage() {
+  const palette = useChartPalette();
   // SWR fetches
   const { data: fgHistory } = useSWR(`${BASE}/api/sentiment-data/fear-greed-history?days=365`, fetcher, { refreshInterval: 120000 });
   const { data: btcHistory } = useSWR(`${BASE}/api/sentiment-data/fear-greed-vs-btc?days=365`, fetcher, { refreshInterval: 120000 });
@@ -190,21 +193,21 @@ export default function SentimentPage() {
                 <AreaChart data={fgHistory} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="colorFG" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="rgba(34,197,94,0.6)" stopOpacity={1}/>
-                      <stop offset="40%" stopColor="rgba(148,163,184,0.1)" stopOpacity={0.8}/>
-                      <stop offset="100%" stopColor="rgba(239,68,68,0.6)" stopOpacity={1}/>
+                      <stop offset="0%" stopColor={palette.success} stopOpacity={1}/>
+                      <stop offset="40%" stopColor={palette.muted} stopOpacity={0.8}/>
+                      <stop offset="100%" stopColor={palette.danger} stopOpacity={1}/>
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                  <XAxis dataKey="date" stroke="rgba(255,255,255,0.3)" tick={{fill: 'rgba(255,255,255,0.5)', fontSize: 10, fontFamily: 'monospace'}} minTickGap={30} tickLine={false} axisLine={false} />
-                  <YAxis domain={[0, 100]} stroke="rgba(255,255,255,0.3)" tick={{fill: 'rgba(255,255,255,0.5)', fontSize: 10, fontFamily: 'monospace'}} tickLine={false} axisLine={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="transparent" vertical={false} />
+                  <XAxis dataKey="date" stroke={palette.muted} tick={{fill: palette.text, fontSize: 10, fontFamily: 'monospace'}} minTickGap={30} tickLine={false} axisLine={false} />
+                  <YAxis domain={[0, 100]} stroke={palette.muted} tick={{fill: palette.text, fontSize: 10, fontFamily: 'monospace'}} tickLine={false} axisLine={false} />
                   <Tooltip 
                     contentStyle={{ backgroundColor: "rgba(10, 10, 15, 0.9)", borderColor: "rgba(255, 255, 255, 0.1)", borderRadius: "12px", color: "#fff", backdropFilter: "blur(10px)" }} 
                     itemStyle={{ fontFamily: 'monospace', fontWeight: 'bold' }}
                     labelStyle={{ color: 'rgba(255,255,255,0.5)', marginBottom: '8px' }}
                   />
-                  <ReferenceLine y={75} stroke="rgba(34,197,94,0.5)" strokeDasharray="3 3" label={{ position: 'insideTopLeft', value: 'EXTREME GREED', fill: 'rgba(34,197,94,0.8)', fontSize: 9, fontFamily: 'sans-serif', fontWeight: 'bold', letterSpacing: '0.1em' }} />
-                  <ReferenceLine y={25} stroke="rgba(239,68,68,0.5)" strokeDasharray="3 3" label={{ position: 'insideBottomLeft', value: 'EXTREME FEAR', fill: 'rgba(239,68,68,0.8)', fontSize: 9, fontFamily: 'sans-serif', fontWeight: 'bold', letterSpacing: '0.1em' }} />
+                  <ReferenceLine y={75} stroke={palette.success} strokeDasharray="3 3" label={{ position: 'insideTopLeft', value: 'EXTREME GREED', fill: 'rgba(34,197,94,0.8)', fontSize: 9, fontFamily: 'sans-serif', fontWeight: 'bold', letterSpacing: '0.1em' }} />
+                  <ReferenceLine y={25} stroke={palette.danger} strokeDasharray="3 3" label={{ position: 'insideBottomLeft', value: 'EXTREME FEAR', fill: 'rgba(239,68,68,0.8)', fontSize: 9, fontFamily: 'sans-serif', fontWeight: 'bold', letterSpacing: '0.1em' }} />
                   <Area type="monotone" dataKey="fear_greed" stroke={CHART_HEX.dark.warning} strokeWidth={2} fillOpacity={1} fill="url(#colorFG)" />
                 </AreaChart>
               </ResponsiveContainer>
@@ -222,10 +225,10 @@ export default function SentimentPage() {
           <div className="p-8 h-[400px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={btcHistory} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                <XAxis dataKey="date" stroke="rgba(255,255,255,0.3)" tick={{fill: 'rgba(255,255,255,0.5)', fontSize: 10, fontFamily: 'monospace'}} minTickGap={30} tickLine={false} axisLine={false} />
-                <YAxis yAxisId="left" domain={['auto', 'auto']} stroke="rgba(255,255,255,0.3)" tick={{fill: 'rgba(255,255,255,0.8)', fontSize: 10, fontFamily: 'monospace'}} tickFormatter={(v) => `$${v.toLocaleString()}`} tickLine={false} axisLine={false} />
-                <YAxis yAxisId="right" orientation="right" domain={[0, 100]} stroke="rgba(255,255,255,0.3)" tick={{fill: CHART_HEX.dark.warning, fontSize: 10, fontFamily: 'monospace', fontWeight: 'bold'}} tickLine={false} axisLine={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="transparent" vertical={false} />
+                <XAxis dataKey="date" stroke={palette.muted} tick={{fill: palette.text, fontSize: 10, fontFamily: 'monospace'}} minTickGap={30} tickLine={false} axisLine={false} />
+                <YAxis yAxisId="left" domain={['auto', 'auto']} stroke={palette.muted} tick={{fill: palette.text, fontSize: 10, fontFamily: 'monospace'}} tickFormatter={(v) => `$${v.toLocaleString()}`} tickLine={false} axisLine={false} />
+                <YAxis yAxisId="right" orientation="right" domain={[0, 100]} stroke={palette.muted} tick={{fill: CHART_HEX.dark.warning, fontSize: 10, fontFamily: 'monospace', fontWeight: 'bold'}} tickLine={false} axisLine={false} />
                 <Tooltip 
                   contentStyle={{ backgroundColor: "rgba(10, 10, 15, 0.9)", borderColor: "rgba(255, 255, 255, 0.1)", borderRadius: "12px", color: "#fff", backdropFilter: "blur(10px)" }} 
                   itemStyle={{ fontFamily: 'monospace', fontWeight: 'bold' }}
@@ -252,8 +255,8 @@ export default function SentimentPage() {
             <div className="h-[320px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={sectorSent} layout="vertical" margin={{ top: 5, right: 30, left: 10, bottom: 5 }}>
-                  <XAxis type="number" domain={[-1, 1]} stroke="rgba(255,255,255,0.3)" tick={{fill: 'rgba(255,255,255,0.5)', fontSize: 10, fontFamily: 'monospace'}} tickLine={false} axisLine={false} />
-                  <YAxis dataKey="sector" type="category" stroke="rgba(255,255,255,0.3)" tick={{fill: 'rgba(255,255,255,0.8)', fontSize: 10, fontFamily: 'monospace', fontWeight: 'bold'}} tickFormatter={(val) => typeof val === 'string' ? val.toUpperCase() : val} tickLine={false} axisLine={false} width={80} />
+                  <XAxis type="number" domain={[-1, 1]} stroke={palette.muted} tick={{fill: palette.text, fontSize: 10, fontFamily: 'monospace'}} tickLine={false} axisLine={false} />
+                  <YAxis dataKey="sector" type="category" stroke={palette.muted} tick={{fill: palette.text, fontSize: 10, fontFamily: 'monospace', fontWeight: 'bold'}} tickFormatter={(val) => typeof val === 'string' ? val.toUpperCase() : val} tickLine={false} axisLine={false} width={80} />
                   <Tooltip 
                     cursor={{fill: 'rgba(255,255,255,0.05)'}} 
                     contentStyle={{ backgroundColor: "rgba(10, 10, 15, 0.9)", borderColor: "rgba(255, 255, 255, 0.1)", borderRadius: "12px", color: "#fff", backdropFilter: "blur(10px)" }}

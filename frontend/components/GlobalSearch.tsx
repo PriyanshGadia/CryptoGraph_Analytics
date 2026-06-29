@@ -106,7 +106,7 @@ export function GlobalSearch() {
               <Link
                 key={asset.id}
                 href={`/coin/${asset.symbol}`}
-                className={`flex items-center justify-between px-6 py-4 shape-ledger glass-flat transition-all duration-[var(--dur-enter)] ease-glide transform block animate-in fade-in slide-in-from-bottom-4 ${
+                className={`flex items-center justify-between px-8 py-8 shape-ledger glass-flat transition-all duration-[var(--dur-enter)] ease-glide transform block animate-in fade-in slide-in-from-bottom-4 ${
                   idx === selectedIndex 
                     ? "bg-accent/10 border-accent/40 shadow-[0_0_20px_rgba(var(--accent),0.15)] scale-[1.02]" 
                     : "bg-surface/30 border-white/5 hover:bg-white/10 hover:border-white/20 hover:scale-[1.01]"
