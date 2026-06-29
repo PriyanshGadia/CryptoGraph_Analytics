@@ -7,6 +7,7 @@ import { RefreshCcw, ZoomIn, Activity } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useMemo, useRef, useState, useEffect, useCallback } from "react";
 import { useChartPalette } from "@/lib/useChartPalette";
+import { useTheme } from "next-themes";
 import * as d3 from "d3-force";
 
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
@@ -15,25 +16,28 @@ const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
 });
 
 const SECTOR_COLORS: Record<string, string> = {
-  layer1: "#6366f1",
-  defi: "#22c55e",
-  exchange: "#f59e0b",
-  payment: "#06b6d4",
-  gaming: "#a855f7",
-  privacy: "#ef4444",
-  storage: "#f97316",
-  other: "#64748b",
+"Layer 1": "#6366f1",
+"Layer 2": "#3b82f6",
+"DeFi": "#22c55e",
+"Infrastructure": "#f59e0b",
+"Gaming": "#a855f7",
+"Meme": "#ec4899",
+"Other": "#64748b",
 };
 
 const SECTOR_LABELS: Record<string, string> = {
-  layer1: "Layer 1", defi: "DeFi", exchange: "Exchange", payment: "Payment",
-  gaming: "Gaming", privacy: "Privacy", storage: "Storage", other: "Other",
+"Layer 1": "Layer 1",
+"Layer 2": "Layer 2",
+"DeFi": "DeFi",
+"Infrastructure": "Infrastructure",
+"Gaming": "Gaming",
+"Meme": "Meme",
+"Other": "Other",
 };
 
 const EDGE_STYLES: Record<string, { color: string; opacity: number; widthMul: number }> = {
-  correlation: { color: "#6366f1", opacity: 0.6, widthMul: 3 },
-  sector:      { color: "#22c55e", opacity: 0.4, widthMul: 2 },
-  market_cap:  { color: "#f59e0b", opacity: 0.4, widthMul: 2 },
+positive_correlation: { color: "#22c55e", opacity: 0.6, widthMul: 3 },
+negative_correlation: { color: "#ef4444", opacity: 0.6, widthMul: 3 },
 };
 const DEFAULT_EDGE = { color: "#94a3b8", opacity: 0.3, widthMul: 1 };
 
@@ -61,7 +65,8 @@ function hexToRgb(hex: string): string {
 }
 
 export default function GraphPage() {
-  const palette = useChartPalette();
+const palette = useChartPalette();
+const { resolvedTheme } = useTheme();
   
   const { data, error, isLoading, mutate } = useSWR<GraphResponse>("/api/graph/latest", fetcher, {
     revalidateOnFocus: false, dedupingInterval: 30000,
@@ -161,23 +166,23 @@ export default function GraphPage() {
   }, [data]);
 
   const nodeCanvasObject = useCallback((node: any, ctx: CanvasRenderingContext2D) => {
-    const r = node.radius || 7;
-    const color = node.color || "#64748b";
-    // Circle fill
-    ctx.beginPath();
-    ctx.arc(node.x, node.y, r, 0, 2 * Math.PI);
-    ctx.fillStyle = color;
-    ctx.fill();
-    // White border
-    ctx.strokeStyle = "rgba(255,255,255,0.8)";
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-    // Label below
-    ctx.font = "10px monospace";
-    ctx.textAlign = "center";
-    ctx.fillStyle = palette.text;
-    ctx.fillText(node.symbol, node.x, node.y + r + 12);
-  }, [palette.text]);
+  const r = node.radius || 7;
+  const color = node.color || "#64748b";
+  // Circle fill
+  ctx.beginPath();
+  ctx.arc(node.x, node.y, r, 0, 2 * Math.PI);
+  ctx.fillStyle = color;
+  ctx.fill();
+  // Border (halo effect)
+  ctx.strokeStyle = resolvedTheme === "dark" ? "#0b0d12" : "#f6f1e7";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // Label below
+  ctx.font = "bold 9px monospace";
+  ctx.textAlign = "center";
+  ctx.fillStyle = palette.text;
+  ctx.fillText(node.symbol, node.x, node.y + r + 12);
+  }, [palette.text, resolvedTheme]);
 
   const linkColor = useCallback((link: any) => {
     const style = EDGE_STYLES[link.edge_type] || DEFAULT_EDGE;
@@ -195,7 +200,7 @@ export default function GraphPage() {
         <div className="text-danger bg-danger/10 p-4 rounded-sm border border-danger/20">
           Failed to load graph data
         </div>
-        <button onClick={() => mutate()} className="flex items-center gap-2 px-6 py-3 glass hover:bg-white/10 transition-colors rounded-sm text-text border border-white/10">
+        <button onClick={() => mutate()} className="flex items-center gap-2 px-6 py-3 glass hover:bg-text/5 transition-colors rounded-sm text-text border border-text/10">
           <RefreshCcw size={16} /> Retry
         </button>
       </div>
@@ -214,7 +219,8 @@ export default function GraphPage() {
           <Skeleton className="w-full h-full" />
         ) : (
           <ForceGraph2D
-            ref={graphRef}
+          key={resolvedTheme || 'dark'}
+          ref={graphRef}
             width={dimensions.width}
             height={dimensions.height}
             graphData={graphData}
@@ -261,24 +267,24 @@ export default function GraphPage() {
         )}
 
         {/* Controls panel */}
-        <div className="absolute top-4 right-4 glass-3 rounded-xl p-5 border border-white/5 space-y-4 z-10 w-64 shadow-2xl backdrop-blur-2xl">
+        <div className="absolute top-4 right-4 glass-3 rounded-xl p-5 border border-text/5 space-y-4 z-10 w-64 shadow-2xl backdrop-blur-2xl">
           <div className="text-[10px] font-mono font-bold text-accent uppercase tracking-widest flex items-center gap-2">
             <Activity size={14} /> Network Controls
           </div>
           <button onClick={() => graphRef.current?.zoomToFit(400, 40)} className="w-full flex justify-center items-center gap-2 px-4 py-2.5 glass bg-accent/10 hover:bg-accent/20 text-accent rounded-sm text-xs font-bold transition-all border border-accent/20 shadow-[0_0_15px_rgba(var(--accent),0.1)]">
             <ZoomIn size={14} /> Center Graph
           </button>
-          <button onClick={() => mutate()} className="w-full flex justify-center items-center gap-2 px-4 py-2.5 glass bg-surface/50 hover:bg-white/10 text-text rounded-sm text-xs transition-colors border border-white/5">
+          <button onClick={() => mutate()} className="w-full flex justify-center items-center gap-2 px-4 py-2.5 glass bg-surface/50 hover:bg-text/5 text-text rounded-sm text-xs transition-colors border border-text/5">
             <RefreshCcw size={14} /> Refresh Data
           </button>
-          <div className="flex gap-2 text-[10px] uppercase tracking-widest font-mono pt-2 border-t border-white/10">
+          <div className="flex gap-2 text-[10px] uppercase tracking-widest font-mono pt-2 border-t border-text/10">
             <span className="flex-1 text-center py-1.5 bg-success/10 text-success rounded-sm border border-success/20">{graphData.nodes.length} Nodes</span>
             <span className="flex-1 text-center py-1.5 bg-warning/10 text-warning rounded-sm border border-warning/20">{graphData.links.length} Edges</span>
           </div>
         </div>
 
         {/* Legend */}
-        <div className="absolute bottom-4 left-4 glass-3 rounded-xl p-5 border border-white/5 shadow-2xl backdrop-blur-2xl z-10">
+        <div className="absolute bottom-4 left-4 glass-3 rounded-xl p-5 border border-text/5 shadow-2xl backdrop-blur-2xl z-10">
           <div className="text-[10px] font-mono font-bold text-accent mb-3 uppercase tracking-widest">Sectors</div>
           <div className="grid grid-cols-2 gap-x-6 gap-y-2">
               {Object.entries(SECTOR_LABELS).map(([key, label]) => (
@@ -287,10 +293,10 @@ export default function GraphPage() {
                 </div>
               ))}
           </div>
-          <div className="border-t border-white/10 my-4" />
+          <div className="border-t border-text/10 my-4" />
           <div className="text-[10px] font-mono font-bold text-accent mb-3 uppercase tracking-widest">Connection Types</div>
           <div className="space-y-2.5">
-              {Object.entries({ correlation: "Price Correlation", sector: "Sector Relation", market_cap: "Size Equivalence" }).map(([key, label]) => (
+              {Object.entries({ positive_correlation: "Positive Correlation", negative_correlation: "Negative Correlation" }).map(([key, label]) => (
                 <div key={key} className="flex items-center gap-3 text-xs text-text/80 font-medium">
                   <div className="w-6 h-0.5 rounded shadow-[0_0_8px_currentColor]" style={{ backgroundColor: EDGE_STYLES[key]?.color, color: EDGE_STYLES[key]?.color }} /> {label}
                 </div>
@@ -300,10 +306,10 @@ export default function GraphPage() {
 
         {/* Selected node panel */}
         {selectedNode && (
-          <div className="absolute top-4 left-4 w-72 glass-3 rounded-xl p-6 border border-white/10 z-20 space-y-4 shadow-2xl backdrop-blur-2xl animate-in fade-in slide-in-from-left-4">
+          <div className="absolute top-4 left-4 w-72 glass-3 rounded-xl p-6 border border-text/10 z-20 space-y-4 shadow-2xl backdrop-blur-2xl animate-in fade-in slide-in-from-left-4">
             <div className="flex justify-between items-start">
               <div className="font-sans text-3xl font-black text-text tracking-tight">{selectedNode.symbol}</div>
-              <button onClick={() => setSelectedNode(null)} className="text-text-muted hover:text-text text-sm transition-colors w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/10">✕</button>
+              <button onClick={() => setSelectedNode(null)} className="text-text-muted hover:text-text text-sm transition-colors w-6 h-6 flex items-center justify-center rounded-full hover:bg-text/5">✕</button>
             </div>
             
             <div className="inline-flex px-3 py-1 rounded-sm text-[10px] font-bold uppercase tracking-widest border" style={{ backgroundColor: selectedNode.color + "15", color: selectedNode.color, borderColor: selectedNode.color + "30" }}>
@@ -338,4 +344,3 @@ export default function GraphPage() {
     </div>
   );
 }
-
