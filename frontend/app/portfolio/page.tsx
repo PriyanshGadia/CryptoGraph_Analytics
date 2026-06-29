@@ -84,35 +84,21 @@ export default function PortfolioPage() {
   const handleWeb3Sign = async (trade: TradeRecord) => {
     setSigningTradeId(trade.id);
     try {
-      // Phase 7: EIP-712 Typed Data Simulation
-      console.log("Requesting EIP-712 Signature for:", {
-        domain: { name: 'ST-GCN Autonomous Swarm', version: '1', chainId: 1 },
-        types: {
-          Trade: [
-            { name: 'asset', type: 'string' },
-            { name: 'side', type: 'string' },
-            { name: 'amount', type: 'uint256' },
-            { name: 'action', type: 'string' },
-          ]
-        },
-        message: {
-          asset: trade.symbol,
-          side: trade.side,
-          amount: trade.total_usd,
-          action: "MEV-Shielded Execution via Flashbots RPC"
-        }
+      console.log("Logging Simulated Paper Trade for:", {
+        asset: trade.symbol,
+        side: trade.side,
+        amount: trade.total_usd
       });
       
-      // Mock Web3 Execution Delay (e.g. MetaMask popup & confirmation)
-      await new Promise(resolve => setTimeout(resolve, 2500));
-      // Mock TX hash
-      const mockTxHash = "0x" + Array.from({length: 40}, () => Math.floor(Math.random() * 16).toString(16)).join('');
+      // Delay for visual feedback of logging
+      await new Promise(resolve => setTimeout(resolve, 800));
+      const simulatedTxId = "paper_trade_" + Date.now();
       
-      await apiService.confirmWeb3Trade(trade.id, mockTxHash);
+      await apiService.confirmWeb3Trade(trade.id, simulatedTxId);
       await mutateTrades();
       await mutatePortfolio();
     } catch (e) {
-      console.error("Failed to sign Web3 transaction", e);
+      console.error("Failed to log paper trade", e);
     } finally {
       setSigningTradeId(null);
     }
@@ -423,21 +409,21 @@ export default function PortfolioPage() {
                                             </button>
                                         </div>
 
-                                        {/* Web3 Signer Panel (if pending) */}
+                                        {/* Paper Trade Simulation Panel (if pending) */}
                                         {trade.status === "PENDING_WEB3_SIGNATURE" && (
                                         <div className="md:col-span-2 mt-2 p-6 glass-panel bg-warning/5 border border-warning/20 rounded-sm flex flex-col md:flex-row items-center justify-between gap-6 shadow-[0_0_30px_rgba(245,158,11,0.05)] relative overflow-hidden">
                                             <div className="absolute top-0 right-0 w-32 h-32 bg-warning/10 blur-[40px]" />
                                             <div className="relative z-10">
                                                 <h4 className="text-sm font-bold text-warning flex items-center gap-2 tracking-widest uppercase font-mono mb-2">
                                                     <Zap size={16} />
-                                                    Web3 DEX Execution Required
+                                                    Paper Trade Logging Required
                                                 </h4>
                                                 <p className="text-xs text-text-muted font-light tracking-wide">
-                                                    The CIO Agent has routed this trade to a decentralized exchange to prevent slippage.
+                                                    The CIO Agent has routed this trade. Action is required to log the simulated paper execution.
                                                 </p>
                                                 <div className="flex items-center gap-2 mt-4 text-[9px] text-success font-mono uppercase tracking-widest bg-success/10 border border-success/20 px-3 py-1.5 rounded w-fit">
                                                     <ShieldCheck size={12} />
-                                                    EIP-712 Structured Signing • Flashbots RPC Shielded
+                                                    Simulated Execution • Paper Trade
                                                 </div>
                                             </div>
                                             <button
@@ -450,7 +436,7 @@ export default function PortfolioPage() {
                                                 ) : (
                                                 <Wallet size={16} />
                                                 )}
-                                                {signingTradeId === trade.id ? "Awaiting Signature..." : "Sign via Web3"}
+                                                {signingTradeId === trade.id ? "Logging Trade..." : "Log Paper Trade"}
                                             </button>
                                         </div>
                                         )}

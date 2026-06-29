@@ -13,7 +13,7 @@ function timeAgo(isoString: string | null): string {
   return `${Math.floor(hours/24)}d ago`
 }
 
-export function StatusIndicator() {
+export function StatusIndicator({ compact = false }: { compact?: boolean }) {
   const { data } = useSWR("/api/status", fetcher, { refreshInterval: 60000 });
 
   if (!data) return (
@@ -22,7 +22,7 @@ export function StatusIndicator() {
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-warning opacity-75"></span>
             <span className="relative inline-flex rounded-full h-4 w-4 border-2 border-warning bg-transparent"></span>
         </div>
-        <span className="text-[9px] uppercase tracking-widest text-text-muted font-mono">Initializing...</span>
+        {!compact && <span className="text-[9px] uppercase tracking-widest text-text-muted font-mono">Initializing...</span>}
     </div>
   );
 
@@ -49,20 +49,24 @@ export function StatusIndicator() {
             "bg-danger text-danger"
           }`}></span>
         </div>
-        <span className={`text-[10px] uppercase tracking-widest font-mono font-bold transition-colors ${
-          statusColor === "success" ? "text-success" :
-          statusColor === "warning" ? "text-warning" :
-          "text-danger"
-        }`}>
-          {statusColor === "success" ? "System Online" :
-           statusColor === "warning" ? "Sync Pending" :
-           "Data Stale"}
-        </span>
+        {!compact && (
+          <span className={`text-[10px] uppercase tracking-widest font-mono font-bold transition-colors ${
+            statusColor === "success" ? "text-success" :
+            statusColor === "warning" ? "text-warning" :
+            "text-danger"
+          }`}>
+            {statusColor === "success" ? "System Online" :
+             statusColor === "warning" ? "Sync Pending" :
+             "Data Stale"}
+          </span>
+        )}
       </div>
-      <div className="flex flex-col gap-0.5 ml-6 opacity-0 max-h-0 overflow-hidden group-hover:opacity-100 group-hover:max-h-20 transition-all duration-300 ease-in-out">
-        <span className="text-[8px] text-text-muted uppercase tracking-wider font-mono">Market Data: {timeAgo(data.ohlcv_last_updated)}</span>
-        <span className="text-[8px] text-text-muted uppercase tracking-wider font-mono">Predictions: {timeAgo(data.predictions_last_updated)}</span>
-      </div>
+      {!compact && (
+        <div className="flex flex-col gap-0.5 ml-6 opacity-0 max-h-0 overflow-hidden group-hover:opacity-100 group-hover:max-h-20 transition-all duration-300 ease-in-out">
+          <span className="text-[8px] text-text-muted uppercase tracking-wider font-mono">Market Data: {timeAgo(data.ohlcv_last_updated)}</span>
+          <span className="text-[8px] text-text-muted uppercase tracking-wider font-mono">Predictions: {timeAgo(data.predictions_last_updated)}</span>
+        </div>
+      )}
     </div>
   );
 }

@@ -208,7 +208,7 @@ export default function SentimentPage() {
                   />
                   <ReferenceLine y={75} stroke={palette.success} strokeDasharray="3 3" label={{ position: 'insideTopLeft', value: 'EXTREME GREED', fill: 'rgba(34,197,94,0.8)', fontSize: 9, fontFamily: 'sans-serif', fontWeight: 'bold', letterSpacing: '0.1em' }} />
                   <ReferenceLine y={25} stroke={palette.danger} strokeDasharray="3 3" label={{ position: 'insideBottomLeft', value: 'EXTREME FEAR', fill: 'rgba(239,68,68,0.8)', fontSize: 9, fontFamily: 'sans-serif', fontWeight: 'bold', letterSpacing: '0.1em' }} />
-                  <Area type="monotone" dataKey="fear_greed" stroke={CHART_HEX.dark.warning} strokeWidth={2} fillOpacity={1} fill="url(#colorFG)" />
+                  <Area type="monotone" dataKey="fear_greed" stroke={palette.warning} strokeWidth={2} fillOpacity={1} fill="url(#colorFG)" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -228,7 +228,7 @@ export default function SentimentPage() {
                 <CartesianGrid strokeDasharray="3 3" stroke="transparent" vertical={false} />
                 <XAxis dataKey="date" stroke={palette.muted} tick={{fill: palette.text, fontSize: 10, fontFamily: 'monospace'}} minTickGap={30} tickLine={false} axisLine={false} />
                 <YAxis yAxisId="left" domain={['auto', 'auto']} stroke={palette.muted} tick={{fill: palette.text, fontSize: 10, fontFamily: 'monospace'}} tickFormatter={(v) => `$${v.toLocaleString()}`} tickLine={false} axisLine={false} />
-                <YAxis yAxisId="right" orientation="right" domain={[0, 100]} stroke={palette.muted} tick={{fill: CHART_HEX.dark.warning, fontSize: 10, fontFamily: 'monospace', fontWeight: 'bold'}} tickLine={false} axisLine={false} />
+                <YAxis yAxisId="right" orientation="right" domain={[0, 100]} stroke={palette.muted} tick={{fill: palette.warning, fontSize: 10, fontFamily: 'monospace', fontWeight: 'bold'}} tickLine={false} axisLine={false} />
                 <Tooltip 
                   contentStyle={{ backgroundColor: "rgba(10, 10, 15, 0.9)", borderColor: "rgba(255, 255, 255, 0.1)", borderRadius: "12px", color: "#fff", backdropFilter: "blur(10px)" }} 
                   itemStyle={{ fontFamily: 'monospace', fontWeight: 'bold' }}

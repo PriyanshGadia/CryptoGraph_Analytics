@@ -188,7 +188,7 @@ export default function RiskPage() {
                         itemStyle={{ fontFamily: 'monospace', fontWeight: 'bold' }}
                         formatter={(v: any) => [`${Number(v).toFixed(2)}%`, "Volatility"]} 
                       />
-                      <Bar dataKey="volatility" fill={CHART_HEX.dark.warning} radius={[4, 4, 0, 0]} className="drop-shadow-[0_0_5px_rgba(212,165,71,0.5)]" />
+                      <Bar dataKey="volatility" fill={palette.warning} radius={[4, 4, 0, 0]} className="drop-shadow-[0_0_5px_rgba(212,165,71,0.5)]" />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -430,7 +430,7 @@ export default function RiskPage() {
                             </linearGradient>
                         </defs>
                         <Area type="monotone" dataKey="vix" fill="url(#vixGrad)" stroke="none" />
-                        <Line type="monotone" dataKey="vix" name="VIX Level" stroke={CHART_HEX.dark.warning} dot={false} strokeWidth={3} className="drop-shadow-[0_0_5px_rgba(234,179,8,0.5)]" />
+                        <Line type="monotone" dataKey="vix" name="VIX Level" stroke={palette.warning} dot={false} strokeWidth={3} className="drop-shadow-[0_0_5px_rgba(234,179,8,0.5)]" />
                       </ComposedChart>
                     </ResponsiveContainer>
                   </div>
