@@ -75,14 +75,14 @@ export function GlobalSearch() {
   if (!isOpen) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-start justify-center pt-32 glass-3 shape-squircle transition-all duration-[var(--dur-enter)] ease-glide" onClick={() => setIsOpen(false)}>
+    <div className="fixed inset-0 z-[100] flex items-start justify-center pt-32 glass-3 transition-all duration-[var(--dur-enter)] ease-glide" onClick={() => setIsOpen(false)}>
       <div 
         className="w-full max-w-2xl flex flex-col gap-4 px-4"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Search Input Pill */}
-        <div className="glass-flat shape-squircle p-2 shadow-[0_10px_40px_rgba(0,0,0,0.5)] transform animate-in fade-in slide-in-from-top-4 duration-[var(--dur-enter)] ease-glide">
-          <div className="flex items-center px-4 py-2 bg-surface/40 shape-squircle border border-white/5 focus-within:border-accent/50 focus-within:shadow-[0_0_20px_rgba(var(--accent),0.2)] transition-all duration-[var(--dur-hover)] ease-glide">
+        <div className="glass-flat rounded-2xl p-2 shadow-[0_10px_40px_rgba(0,0,0,0.5)] transform animate-in fade-in slide-in-from-top-4 duration-[var(--dur-enter)] ease-glide">
+          <div className="flex items-center px-4 py-2 bg-surface/40 rounded-xl border border-white/5 focus-within:border-accent/50 focus-within:shadow-[0_0_20px_rgba(var(--accent),0.2)] transition-all duration-[var(--dur-hover)] ease-glide">
             <Search className="text-accent mr-3" size={24} />
             <input
               ref={inputRef}
@@ -106,7 +106,7 @@ export function GlobalSearch() {
               <Link
                 key={asset.id}
                 href={`/coin/${asset.symbol}`}
-                className={`flex items-center justify-between px-8 py-8 shape-ledger glass-flat transition-all duration-[var(--dur-enter)] ease-glide transform block animate-in fade-in slide-in-from-bottom-4 ${
+                className={`flex items-center justify-between px-8 py-8 rounded-xl glass-flat transition-all duration-[var(--dur-enter)] ease-glide transform block animate-in fade-in slide-in-from-bottom-4 ${
                   idx === selectedIndex 
                     ? "bg-accent/10 border-accent/40 shadow-[0_0_20px_rgba(var(--accent),0.15)] scale-[1.02]" 
                     : "bg-surface/30 border-white/5 hover:bg-white/10 hover:border-white/20 hover:scale-[1.01]"

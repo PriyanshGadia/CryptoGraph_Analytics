@@ -109,7 +109,7 @@ export default function PerformancePage() {
   });
 
   return (
-    <div className="space-y-8 pt-8 p-6 glass-2 shape-seal overflow-hidden max-w-[1600px] mx-auto">
+    <div className="space-y-8 pt-8 p-6 glass-2 rounded-2xl overflow-hidden max-w-[1600px] mx-auto">
       
       {/* HEADER */}
       <div className="relative flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-4">
@@ -143,7 +143,7 @@ export default function PerformancePage() {
       
       {/* SECTION 1 - Hero Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 relative z-10">
-        <GlassCard tier={2} shape="shape-squircle" className="p-6 group relative overflow-hidden flex flex-col justify-between h-36 border border-white/10 hover:border-white/20 hover:bg-white/[0.02]">
+        <GlassCard tier={2} shape="none" className="rounded-xl p-6 group relative overflow-hidden flex flex-col justify-between h-36 border border-white/10 hover:border-white/20 hover:bg-white/[0.02]">
           <div className="absolute top-0 right-0 w-24 h-24 bg-success/5 rounded-full blur-[40px] group-hover:bg-success/10 transition-colors pointer-events-none" />
           <div className="text-[10px] text-text-muted uppercase tracking-widest font-bold flex items-center gap-2">
               <Activity size={12} className="text-success" />
@@ -154,7 +154,7 @@ export default function PerformancePage() {
           </div>
         </GlassCard>
         
-        <GlassCard tier={2} shape="shape-squircle" className="p-6 group relative overflow-hidden flex flex-col justify-between h-36 border border-white/10 hover:border-white/20 hover:bg-white/[0.02]">
+        <GlassCard tier={2} shape="none" className="rounded-xl p-6 group relative overflow-hidden flex flex-col justify-between h-36 border border-white/10 hover:border-white/20 hover:bg-white/[0.02]">
           <div className="absolute top-0 right-0 w-24 h-24 bg-accent/5 rounded-full blur-[40px] group-hover:bg-accent/10 transition-colors pointer-events-none" />
           <div className="text-[10px] text-text-muted uppercase tracking-widest font-bold flex items-center gap-2">
               <Cpu size={12} className="text-accent" />
@@ -165,7 +165,7 @@ export default function PerformancePage() {
           </div>
         </GlassCard>
         
-        <GlassCard tier={2} shape="shape-squircle" className="p-6 group relative overflow-hidden flex flex-col justify-between h-36 border border-white/10 hover:border-white/20 hover:bg-white/[0.02]">
+        <GlassCard tier={2} shape="none" className="rounded-xl p-6 group relative overflow-hidden flex flex-col justify-between h-36 border border-white/10 hover:border-white/20 hover:bg-white/[0.02]">
           <div className="absolute top-0 right-0 w-24 h-24 bg-success/5 rounded-full blur-[40px] group-hover:bg-success/10 transition-colors pointer-events-none" />
           <div className="text-[10px] text-text-muted uppercase tracking-widest font-bold flex items-center gap-2">
               <TrendingUp size={12} className={stratRet > 0 ? "text-success" : "text-danger"} />
@@ -176,7 +176,7 @@ export default function PerformancePage() {
           </div>
         </GlassCard>
         
-        <GlassCard tier={2} shape="shape-squircle" className="p-6 group relative overflow-hidden flex flex-col justify-between h-36 border border-white/10 hover:border-white/20 hover:bg-white/[0.02]">
+        <GlassCard tier={2} shape="none" className="rounded-xl p-6 group relative overflow-hidden flex flex-col justify-between h-36 border border-white/10 hover:border-white/20 hover:bg-white/[0.02]">
           <div className="absolute top-0 right-0 w-24 h-24 bg-warning/5 rounded-full blur-[40px] group-hover:bg-warning/10 transition-colors pointer-events-none" />
           <div className="text-[10px] text-text-muted uppercase tracking-widest font-bold flex items-center gap-2">
               <Target size={12} className="text-warning" />
@@ -189,7 +189,7 @@ export default function PerformancePage() {
       </div>
       
       {/* SECTION 2 - Rolling Accuracy */}
-      <GlassCard tier={2} shape="shape-squircle" className="p-8 relative z-10">
+      <GlassCard tier={2} shape="none" className="rounded-xl p-8 relative z-10">
         <h3 className="text-xl font-black text-text tracking-tight mb-1 flex items-center gap-3">
           Rolling Validation Curve
         </h3>
@@ -201,9 +201,9 @@ export default function PerformancePage() {
               <XAxis dataKey="date" stroke="rgba(255,255,255,0.1)" tick={{fill: palette.text, fontSize: 10, fontFamily: 'monospace'}} tickMargin={10} />
               <YAxis domain={[0, 100]} stroke="rgba(255,255,255,0.1)" tick={{fill: palette.text, fontSize: 10, fontFamily: 'monospace'}} />
               <Tooltip 
-                contentStyle={{ backgroundColor: "rgba(10, 10, 15, 0.9)", borderColor: "rgba(255, 255, 255, 0.1)", color: "#fff", borderRadius: "12px", boxShadow: "0 10px 25px rgba(0,0,0,0.5)", backdropFilter: "blur(10px)" }} 
+                contentStyle={{ backgroundColor: "rgba(var(--background), 0.9)", borderColor: "rgba(var(--text), 0.1)", color: "rgb(var(--text))", borderRadius: "12px", boxShadow: "0 10px 25px rgba(0,0,0,0.5)", backdropFilter: "blur(10px)" }} 
                 itemStyle={{ fontFamily: 'monospace', fontSize: '12px' }}
-                labelStyle={{ fontWeight: 'bold', marginBottom: '8px', color: 'rgba(255,255,255,0.7)' }}
+                labelStyle={{ fontWeight: 'bold', marginBottom: '8px', color: palette.muted }}
               />
               <ReferenceLine y={50} stroke="rgba(234,179,8,0.5)" strokeDasharray="3 3" />
               <defs>
@@ -224,7 +224,7 @@ export default function PerformancePage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 relative z-10">
         
         {/* Confusion Matrix */}
-        <GlassCard tier={2} shape="shape-squircle" className="p-8">
+        <GlassCard tier={2} shape="none" className="rounded-xl p-8">
           <h3 className="text-xl font-black text-text tracking-tight mb-1 flex items-center gap-3">
             Confusion Matrix
           </h3>
@@ -270,7 +270,7 @@ export default function PerformancePage() {
         </GlassCard>
         
         {/* Confidence Calibration */}
-        <GlassCard tier={2} shape="shape-squircle" className="p-8">
+        <GlassCard tier={2} shape="none" className="rounded-xl p-8">
           <h3 className="text-xl font-black text-text tracking-tight mb-1 flex items-center gap-3">
             Confidence Calibration
           </h3>
@@ -286,7 +286,7 @@ export default function PerformancePage() {
                 <YAxis yAxisId="left" domain={[0, 100]} stroke="rgba(255,255,255,0.1)" tick={{fill: palette.text, fontSize: 10, fontFamily: 'monospace'}} />
                 <YAxis yAxisId="right" orientation="right" hide />
                 <Tooltip 
-                    contentStyle={{ backgroundColor: "rgba(10, 10, 15, 0.9)", borderColor: "rgba(255, 255, 255, 0.1)", color: "#fff", borderRadius: "12px", backdropFilter: "blur(10px)" }} 
+                    contentStyle={{ backgroundColor: "rgba(var(--background), 0.9)", borderColor: "rgba(var(--text), 0.1)", color: "rgb(var(--text))", borderRadius: "12px", backdropFilter: "blur(10px)" }} 
                     itemStyle={{ fontFamily: 'monospace', fontSize: '12px' }}
                 />
                 <Bar yAxisId="right" dataKey="bucket_counts" fill={palette.muted} fillOpacity={0.2} radius={[4, 4, 0, 0]} name="Frequency" />
@@ -302,7 +302,7 @@ export default function PerformancePage() {
       </div>
       
       {/* SECTION 4 - Per Direction */}
-      <GlassCard tier={2} shape="shape-squircle" className="p-8 relative z-10">
+      <GlassCard tier={2} shape="none" className="rounded-xl p-8 relative z-10">
         <h3 className="text-xl font-black text-text tracking-tight mb-8">Precision by Intent Vector</h3>
         <div className="space-y-6">
           {[
@@ -328,7 +328,7 @@ export default function PerformancePage() {
       </GlassCard>
       
       {/* SECTION 5 - Per Asset */}
-      <GlassCard tier={2} shape="shape-squircle" className="p-0 relative z-10 overflow-hidden">
+      <GlassCard tier={2} shape="none" className="rounded-xl p-0 relative z-10 overflow-hidden">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 p-8 border-b border-white/5 bg-surface/30">
           <div>
             <h3 className="text-xl font-black text-text tracking-tight">Asset Isolation Metrics</h3>

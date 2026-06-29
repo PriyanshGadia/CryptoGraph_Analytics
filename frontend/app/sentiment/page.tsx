@@ -92,20 +92,22 @@ const FearGreedGauge = ({ value }: { value: number }) => {
         {/* Needle Group */}
         <g transform={`translate(${cx}, ${cy}) rotate(${rotation})`} className="transition-transform duration-1000 ease-out">
           {/* Needle base */}
-          <circle cx="0" cy="0" r="10" fill="#f1f5f9" className="drop-shadow-[0_0_5px_rgba(255,255,255,0.8)]" />
-          <circle cx="0" cy="0" r="4" fill="#0f172a" />
+          <circle cx="0" cy="0" r="10" fill="rgb(var(--text))" className="opacity-90" />
+          <circle cx="0" cy="0" r="4" fill="rgb(var(--background))" />
           {/* Needle pointer */}
-          <polygon points="-3,0 3,0 0,-115" fill="#f1f5f9" className="drop-shadow-[0_0_5px_rgba(255,255,255,0.5)]" />
+          <polygon points="-3,0 3,0 0,-115" fill="rgb(var(--text))" className="opacity-90" />
         </g>
         
-        {/* Text */}
-        <text x={cx} y={cy - 35} textAnchor="middle" fill="#f1f5f9" fontSize="48" fontWeight="900" fontFamily="monospace" className="drop-shadow-[0_0_10px_rgba(255,255,255,0.3)] tracking-tighter">
-          {Math.round(value)}
-        </text>
-        <text x={cx} y={cy + 15} textAnchor="middle" fill={zoneColor} fontSize="14" fontWeight="bold" className="uppercase tracking-widest drop-shadow-[0_0_5px_currentColor]">
-          {zoneLabel}
-        </text>
       </svg>
+      {/* Text Label Below SVG */}
+      <div className="flex flex-col items-center mt-2 relative z-20">
+        <span className="text-5xl font-black text-text font-mono tracking-tighter">
+          {Math.round(value)}
+        </span>
+        <span className="text-xs font-bold tracking-widest uppercase mt-1" style={{ color: zoneColor }}>
+          {zoneLabel}
+        </span>
+      </div>
     </div>
   );
 };
@@ -132,7 +134,7 @@ export default function SentimentPage() {
   const avg7 = last7.reduce((sum: number, curr: any) => sum + curr.fear_greed, 0) / (last7.length || 1);
 
   return (
-    <div className="space-y-8 pt-8 p-6 glass-2 shape-seal overflow-hidden max-w-[1600px] mx-auto relative">
+    <div className="space-y-8 pt-8 p-6 glass-2 rounded-2xl overflow-hidden max-w-[1600px] mx-auto relative">
       <div className="absolute top-[10%] right-[-10%] w-[500px] h-[500px] bg-accent/5 rounded-full blur-[150px] pointer-events-none" />
       <div className="absolute bottom-[20%] left-[-10%] w-[400px] h-[400px] bg-success/5 rounded-full blur-[120px] pointer-events-none" />
 
@@ -156,7 +158,7 @@ export default function SentimentPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
           {/* Gauge Card */}
-          <GlassCard tier={2} shape="shape-squircle" className="p-8 flex flex-col items-center justify-center relative overflow-hidden group">
+          <GlassCard tier={2} shape="none" className="rounded-xl p-8 flex flex-col items-center justify-center relative overflow-hidden group">
             <div className="absolute top-0 right-0 p-4">
                 <HeartPulse size={20} className={`opacity-50 group-hover:opacity-100 transition-opacity ${today > 60 ? 'text-success animate-pulse' : today < 40 ? 'text-danger' : 'text-text-muted'}`} />
             </div>
@@ -176,7 +178,7 @@ export default function SentimentPage() {
           </GlassCard>
           
           {/* Fear & Greed History Area */}
-          <GlassCard tier={2} shape="shape-squircle" className="p-8 lg:col-span-2">
+          <GlassCard tier={2} shape="none" className="rounded-xl p-8 lg:col-span-2">
             <div className="mb-6 flex justify-between items-end">
                 <div>
                     <h3 className="text-xl font-black text-text tracking-tight flex items-center gap-3">
@@ -208,9 +210,9 @@ export default function SentimentPage() {
                   <XAxis dataKey="date" stroke={palette.muted} tick={{fill: palette.text, fontSize: 10, fontFamily: 'monospace'}} minTickGap={30} tickLine={false} axisLine={false} />
                   <YAxis domain={[0, 100]} stroke={palette.muted} tick={{fill: palette.text, fontSize: 10, fontFamily: 'monospace'}} tickLine={false} axisLine={false} />
                   <Tooltip 
-                    contentStyle={{ backgroundColor: "rgba(10, 10, 15, 0.9)", borderColor: "rgba(255, 255, 255, 0.1)", borderRadius: "12px", color: "#fff", backdropFilter: "blur(10px)" }} 
+                    contentStyle={{ backgroundColor: "rgba(var(--background), 0.9)", borderColor: "rgba(var(--text), 0.1)", borderRadius: "12px", color: "rgb(var(--text))", backdropFilter: "blur(10px)" }} 
                     itemStyle={{ fontFamily: 'monospace', fontWeight: 'bold' }}
-                    labelStyle={{ color: 'rgba(255,255,255,0.5)', marginBottom: '8px' }}
+                    labelStyle={{ color: palette.muted, marginBottom: '8px' }}
                   />
                   <ReferenceLine y={75} stroke={palette.success} strokeDasharray="3 3" label={{ position: 'insideTopLeft', value: 'EXTREME GREED', fill: 'rgba(34,197,94,0.8)', fontSize: 9, fontFamily: 'sans-serif', fontWeight: 'bold', letterSpacing: '0.1em' }} />
                   <ReferenceLine y={25} stroke={palette.danger} strokeDasharray="3 3" label={{ position: 'insideBottomLeft', value: 'EXTREME FEAR', fill: 'rgba(239,68,68,0.8)', fontSize: 9, fontFamily: 'sans-serif', fontWeight: 'bold', letterSpacing: '0.1em' }} />
@@ -223,7 +225,7 @@ export default function SentimentPage() {
         
                 {/* SECTION 2.5 - Qualitative Synthesis */}
         {synthesis && (
-          <GlassCard tier={2} shape="shape-squircle" className="p-8 relative overflow-hidden mb-8 group">
+          <GlassCard tier={2} shape="none" className="rounded-xl p-8 relative overflow-hidden mb-8 group">
             <div className="absolute top-0 right-0 w-64 h-64 bg-accent/5 rounded-full blur-[80px] pointer-events-none" />
             <h3 className="text-xl font-black text-text tracking-tight flex items-center gap-3 mb-6">
               <div className="w-8 h-8 rounded-full glass bg-accent/10 border border-accent/20 flex items-center justify-center">
@@ -253,7 +255,7 @@ export default function SentimentPage() {
         )}
 
         {/* SECTION 3 - Dual Axis: Fear & Greed vs BTC Price */}
-        <GlassCard tier={2} shape="shape-squircle" className="p-0 overflow-hidden">
+        <GlassCard tier={2} shape="none" className="rounded-xl p-0 overflow-hidden">
           <div className="p-8 border-b border-white/5 bg-surface/30">
             <h3 className="text-xl font-black text-text tracking-tight">Psychology vs. Price Action</h3>
             <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-1">Cross-referencing network sentiment against BTC valuations</p>
@@ -267,9 +269,9 @@ export default function SentimentPage() {
                 <YAxis yAxisId="left" domain={['auto', 'auto']} stroke={palette.muted} tick={{fill: palette.text, fontSize: 10, fontFamily: 'monospace'}} tickFormatter={(v) => `$${v.toLocaleString()}`} tickLine={false} axisLine={false} />
                 <YAxis yAxisId="right" orientation="right" domain={[0, 100]} stroke={palette.muted} tick={{fill: palette.warning, fontSize: 10, fontFamily: 'monospace', fontWeight: 'bold'}} tickLine={false} axisLine={false} />
                 <Tooltip 
-                  contentStyle={{ backgroundColor: "rgba(10, 10, 15, 0.9)", borderColor: "rgba(255, 255, 255, 0.1)", borderRadius: "12px", color: "#fff", backdropFilter: "blur(10px)" }} 
+                  contentStyle={{ backgroundColor: "rgba(var(--background), 0.9)", borderColor: "rgba(var(--text), 0.1)", borderRadius: "12px", color: "rgb(var(--text))", backdropFilter: "blur(10px)" }} 
                   itemStyle={{ fontFamily: 'monospace', fontWeight: 'bold' }}
-                  labelStyle={{ color: 'rgba(255,255,255,0.5)', marginBottom: '8px' }}
+                  labelStyle={{ color: palette.muted, marginBottom: '8px' }}
                   formatter={(val: any, name: any) => [name === 'btc_price' ? `$${Number(val).toLocaleString()}` : val, name === 'btc_price' ? 'BTC Price' : 'Index Level']}
                 />
                 <Area yAxisId="right" type="monotone" dataKey="fear_greed" fill="url(#colorFG)" stroke="none" fillOpacity={0.15} />
@@ -283,7 +285,7 @@ export default function SentimentPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           
           {/* LEFT: Sentiment by Sector */}
-          <GlassCard tier={2} shape="shape-squircle" className="p-8">
+          <GlassCard tier={2} shape="none" className="rounded-xl p-8">
             <div className="mb-8">
               <h3 className="text-xl font-black text-text tracking-tight">Sector Disposition</h3>
               <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-1">Aggregated sentiment variance across topology</p>
@@ -296,7 +298,7 @@ export default function SentimentPage() {
                   <YAxis dataKey="sector" type="category" stroke={palette.muted} tick={{fill: palette.text, fontSize: 10, fontFamily: 'monospace', fontWeight: 'bold'}} tickFormatter={(val) => typeof val === 'string' ? val.toUpperCase() : val} tickLine={false} axisLine={false} width={80} />
                   <Tooltip 
                     cursor={{fill: 'rgba(255,255,255,0.05)'}} 
-                    contentStyle={{ backgroundColor: "rgba(10, 10, 15, 0.9)", borderColor: "rgba(255, 255, 255, 0.1)", borderRadius: "12px", color: "#fff", backdropFilter: "blur(10px)" }}
+                    contentStyle={{ backgroundColor: "rgba(var(--background), 0.9)", borderColor: "rgba(var(--text), 0.1)", borderRadius: "12px", color: "rgb(var(--text))", backdropFilter: "blur(10px)" }}
                     itemStyle={{ fontFamily: 'monospace', fontWeight: 'bold' }}
                     formatter={(v: any, n: any, props: any) => [`${v > 0 ? '+' : ''}${Number(v).toFixed(3)} (${props.payload.asset_count} nodes)`, 'Vector']}
                   />
@@ -314,7 +316,7 @@ export default function SentimentPage() {
           </GlassCard>
           
           {/* RIGHT: Trending Assets */}
-          <GlassCard tier={2} shape="shape-squircle" className="p-0 overflow-hidden flex flex-col">
+          <GlassCard tier={2} shape="none" className="rounded-xl p-0 overflow-hidden flex flex-col">
             <div className="p-8 border-b border-white/5 bg-surface/30">
               <h3 className="text-xl font-black text-text tracking-tight">Social Velocity Movers</h3>
               <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-1">Highest derivative changes in NLP scores (7d)</p>

@@ -38,11 +38,11 @@ export function GlassCard({
     else if (asymmetric === "sm") finalShape = "shape-facet-sm";
     else if (asymmetric === "lg") finalShape = "shape-squircle";
     else if (asymmetric === "xl") finalShape = "shape-hex";
-    else finalShape = "shape-facet"; // default, md
+    else finalShape = "rounded-2xl" as any; // default, md
   }
   const shapeClass = finalShape === "none" ? "" : finalShape;
 
-  const baseClass = "transition-all duration-[var(--dur-enter)] ease-glide relative overflow-hidden";
+  const baseClass = "transition-all duration-[var(--dur-enter)] ease-glide relative";
 
   const hoverClass = hoverable
     ? "hover:scale-[1.02] hover:-translate-y-1 hover:shadow-[0_0_15px_rgba(var(--accent),0.3)] hover:border-accent/50 cursor-pointer"

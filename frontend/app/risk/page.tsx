@@ -21,6 +21,7 @@ interface PredictionRow {
   volatility_regime: string;
   predicted_at: string;
   model_version: string;
+  confidence_interval?: number[];
 }
 
 const DIRECTION_COLORS: Record<string, string> = {
@@ -51,7 +52,7 @@ function RiskLivingGauge({ volatility, intervalSpread }: { volatility: number, i
   const hue = intervalSpread ? 120 - (normalizedSpread * 120) : 120 - (normalizedVol * 120); 
   
   return (
-    <GlassCard tier={2} shape="shape-squircle" className="p-6 flex items-center gap-4 group hover:bg-white/[0.02] transition-colors border border-white/10 hover:border-white/20 h-32 relative overflow-hidden">
+    <GlassCard tier={2} shape="none" className="rounded-xl p-6 flex items-center gap-4 group hover:bg-white/[0.02] transition-colors border border-white/10 hover:border-white/20 h-32 relative overflow-hidden">
        <div 
           className="absolute inset-0 pointer-events-none transition-all duration-1000"
           style={{ background: `radial-gradient(circle at center, hsla(${hue}, 80%, 50%, ${glowOpacity}) 0%, transparent ${intervalSpread ? 50 + (normalizedSpread * 50) : 70}%)` }}
@@ -119,7 +120,7 @@ export default function RiskPage() {
   })) || [];
 
   return (
-    <div className="space-y-8 pt-8 p-6 glass-2 shape-seal overflow-hidden max-w-[1600px] mx-auto relative">
+    <div className="space-y-8 pt-8 p-6 glass-2 rounded-2xl overflow-hidden max-w-[1600px] mx-auto relative">
       <div className="absolute top-[-100px] right-[-100px] w-96 h-96 bg-danger/5 rounded-full blur-[120px] pointer-events-none" />
       <div className="absolute bottom-[20%] left-[-100px] w-80 h-80 bg-accent/5 rounded-full blur-[100px] pointer-events-none" />
 
@@ -147,7 +148,7 @@ export default function RiskPage() {
       ) : (
         <div className="relative z-10 space-y-8">
           {/* Regime Banner */}
-          <GlassCard tier={2} shape="shape-squircle" className={`p-0 overflow-hidden relative group border ${
+          <GlassCard tier={2} shape="none" className={`rounded-xl p-0 overflow-hidden relative group border ${
             data.market_regime === "bull"
               ? "border-success/30 hover:border-success/50 hover:shadow-[0_0_30px_rgba(34,197,94,0.1)]"
               : data.market_regime === "bear"
@@ -202,7 +203,7 @@ export default function RiskPage() {
               { label: "Monitored Nodes", value: String(data.total_assets_monitored ?? 50), icon: Shield, color: "text-text" },
               { label: "Isomorphic Clusters", value: String(Object.keys(data.correlation_clusters || {}).length), icon: BarChart3, color: "text-accent" },
             ].map((s, i) => (
-              <GlassCard key={i} tier={2} shape="shape-squircle" className="p-6 flex items-center gap-4 group hover:bg-white/[0.02] transition-colors border border-white/10 hover:border-white/20 h-32">
+              <GlassCard key={i} tier={2} shape="none" className="rounded-xl p-6 flex items-center gap-4 group hover:bg-white/[0.02] transition-colors border border-white/10 hover:border-white/20 h-32">
                 <div className="p-3 rounded-sm glass bg-white/5 group-hover:bg-white/10 transition-colors shadow-inner shadow-white/5 border border-white/10">
                     <s.icon size={24} className={s.color} />
                 </div>
@@ -217,7 +218,7 @@ export default function RiskPage() {
           {/* Charts Row */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {/* Top Volatile Assets Bar Chart */}
-            <GlassCard tier={2} shape="shape-squircle" className="p-8">
+            <GlassCard tier={2} shape="none" className="rounded-xl p-8">
                 <div className="mb-8">
                   <h3 className="text-xl font-black text-text tracking-tight flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full glass bg-accent/10 border border-accent/20 flex items-center justify-center">
@@ -234,7 +235,7 @@ export default function RiskPage() {
                       <XAxis dataKey="name" stroke={palette.muted} fontSize={10} fontFamily="monospace" tickLine={false} axisLine={false} tickMargin={10} />
                       <YAxis stroke={palette.muted} fontSize={10} fontFamily="monospace" tickLine={false} axisLine={false} tickFormatter={(v: number) => `${v.toFixed(0)}%`} />
                       <Tooltip 
-                        contentStyle={{ backgroundColor: "rgba(10, 10, 15, 0.9)", borderColor: "rgba(255, 255, 255, 0.1)", color: "#f1f5f9", borderRadius: "12px", backdropFilter: "blur(10px)" }} 
+                        contentStyle={{ backgroundColor: "rgba(var(--background), 0.9)", borderColor: "rgba(var(--text), 0.1)", color: palette.text, borderRadius: "12px", backdropFilter: "blur(10px)" }} 
                         itemStyle={{ fontFamily: 'monospace', fontWeight: 'bold' }}
                         formatter={(v: any) => [`${Number(v).toFixed(2)}%`, "Volatility"]} 
                       />
@@ -245,7 +246,7 @@ export default function RiskPage() {
             </GlassCard>
 
             {/* Prediction Distribution Pie */}
-            <GlassCard tier={2} shape="shape-squircle" className="p-8">
+            <GlassCard tier={2} shape="none" className="rounded-xl p-8">
                 <div className="mb-8">
                   <h3 className="text-xl font-black text-text tracking-tight flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full glass bg-accent/10 border border-accent/20 flex items-center justify-center">
@@ -282,10 +283,10 @@ export default function RiskPage() {
                             {predDist.map((d, i) => <Cell key={i} fill={d.color} />)}
                             </Pie>
                             <Tooltip 
-                                contentStyle={{ backgroundColor: "rgba(10, 10, 15, 0.9)", borderColor: "rgba(255, 255, 255, 0.1)", borderRadius: "12px", backdropFilter: "blur(10px)", color: "#fff", fontWeight: "bold" }} 
+                                contentStyle={{ backgroundColor: "rgba(var(--background), 0.9)", borderColor: "rgba(var(--text), 0.1)", borderRadius: "12px", backdropFilter: "blur(10px)", color: palette.text, fontWeight: "bold" }} 
                                 itemStyle={{ fontFamily: 'monospace' }}
                             />
-                            <Legend wrapperStyle={{ fontSize: 10, fontFamily: 'monospace', fontWeight: 'bold', color: "#94a3b8", paddingTop: "20px" }} iconType="circle" />
+                            <Legend wrapperStyle={{ fontSize: 10, fontFamily: 'monospace', fontWeight: 'bold', color: palette.muted, paddingTop: "20px" }} iconType="circle" />
                         </PieChart>
                         </ResponsiveContainer>
                     </>
@@ -298,7 +299,7 @@ export default function RiskPage() {
 
           {/* Correlation Clusters */}
           {data.correlation_clusters && Object.keys(data.correlation_clusters).length > 0 && (
-            <GlassCard tier={2} shape="shape-squircle" className="p-0 overflow-hidden">
+            <GlassCard tier={2} shape="none" className="rounded-xl p-0 overflow-hidden">
               <div className="p-8 border-b border-white/5 bg-surface/30">
                 <h3 className="text-xl font-black text-text tracking-tight">Topological Correlation Clusters</h3>
                 <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-1">Assets exhibiting strong price action isomorphism</p>
@@ -335,7 +336,7 @@ export default function RiskPage() {
           )}
 
           {/* Risk Alerts — Structured Cards */}
-          <GlassCard tier={2} shape="shape-squircle" className="p-0 overflow-hidden border border-white/10 relative">
+          <GlassCard tier={2} shape="none" className="rounded-xl p-0 overflow-hidden border border-white/10 relative">
              <div className="absolute top-0 right-0 w-full h-1 bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-50" />
              <div className="p-8 border-b border-white/5 bg-surface/30 flex items-center justify-between">
               <div>
@@ -418,7 +419,7 @@ export default function RiskPage() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <GlassCard tier={2} shape="shape-squircle" className="p-6 flex items-center gap-6 group hover:border-white/20 transition-all hover:-translate-y-1">
+                <GlassCard tier={2} shape="none" className="rounded-xl p-6 flex items-center gap-6 group hover:border-white/20 transition-all hover:-translate-y-1">
                     <div className="p-4 rounded-sm glass bg-accent/10 text-accent border border-accent/20 group-hover:scale-110 transition-transform"><Activity size={28} /></div>
                     <div>
                       <div className="text-3xl font-black font-sans text-text tracking-tight">{(macro.current_fed_rate ?? 0).toFixed(2)}<span className="text-lg text-text-muted">%</span></div>
@@ -430,7 +431,7 @@ export default function RiskPage() {
                       )}
                     </div>
                 </GlassCard>
-                <GlassCard tier={2} shape="shape-squircle" className="p-6 flex items-center gap-6 group hover:border-white/20 transition-all hover:-translate-y-1">
+                <GlassCard tier={2} shape="none" className="rounded-xl p-6 flex items-center gap-6 group hover:border-white/20 transition-all hover:-translate-y-1">
                     <div className="p-4 rounded-sm glass bg-warning/10 text-warning border border-warning/20 group-hover:scale-110 transition-transform"><TrendingUp size={28} /></div>
                     <div>
                       <div className="text-3xl font-black font-sans text-text tracking-tight">{(macro.current_vix ?? 0).toFixed(1)}</div>
@@ -442,7 +443,7 @@ export default function RiskPage() {
                       )}
                     </div>
                 </GlassCard>
-                <GlassCard tier={2} shape="shape-squircle" className="p-6 flex items-center gap-6 group hover:border-white/20 transition-all hover:-translate-y-1">
+                <GlassCard tier={2} shape="none" className="rounded-xl p-6 flex items-center gap-6 group hover:border-white/20 transition-all hover:-translate-y-1">
                     <div className="p-4 rounded-sm glass bg-danger/10 text-danger border border-danger/20 group-hover:scale-110 transition-transform"><AlertTriangle size={28} /></div>
                     <div>
                       <div className="text-3xl font-black font-sans text-text tracking-tight">{(macro.crypto_vix_correlation ?? 0).toFixed(3)}</div>
@@ -452,7 +453,7 @@ export default function RiskPage() {
               </div>
 
               {macro.history && macro.history.length > 0 && (
-                <GlassCard tier={2} shape="shape-squircle" className="p-8">
+                <GlassCard tier={2} shape="none" className="rounded-xl p-8">
                   <div className="mb-8">
                     <h3 className="text-xl font-black text-text tracking-tight flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full glass bg-warning/10 border border-warning/20 flex items-center justify-center">
@@ -469,9 +470,9 @@ export default function RiskPage() {
                         <XAxis dataKey="date" stroke={palette.muted} fontSize={10} fontFamily="monospace" tickLine={false} axisLine={false} minTickGap={30} />
                         <YAxis stroke={palette.muted} fontSize={10} fontFamily="monospace" tickLine={false} axisLine={false} />
                         <Tooltip 
-                            contentStyle={{ backgroundColor: "rgba(10, 10, 15, 0.9)", borderColor: "rgba(255, 255, 255, 0.1)", borderRadius: "12px", color: "#fff", backdropFilter: "blur(10px)" }} 
+                            contentStyle={{ backgroundColor: "rgba(var(--background), 0.9)", borderColor: "rgba(var(--text), 0.1)", borderRadius: "12px", color: palette.text, backdropFilter: "blur(10px)" }} 
                             itemStyle={{ fontFamily: 'monospace', fontWeight: 'bold' }}
-                            labelStyle={{ color: 'rgba(255,255,255,0.5)', marginBottom: '8px' }}
+                            labelStyle={{ color: palette.muted, marginBottom: '8px' }}
                         />
                         <defs>
                             <linearGradient id="vixGrad" x1="0" y1="0" x2="0" y2="1">

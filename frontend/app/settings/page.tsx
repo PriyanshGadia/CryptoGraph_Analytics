@@ -140,7 +140,7 @@ export default function SettingsPage() {
   ];
 
   return (
-    <div className="max-w-4xl mx-auto space-y-10 pt-8 p-6 glass-2 shape-seal overflow-hidden relative">
+    <div className="max-w-4xl mx-auto space-y-10 pt-8 p-6 glass-2 rounded-2xl overflow-hidden relative">
       
       {/* HEADER */}
       <div className="relative">
@@ -159,7 +159,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Currency Preferences Section */}
-      <GlassCard tier={2} shape="shape-squircle" className="p-8 relative z-10 group overflow-hidden">
+      <GlassCard tier={2} shape="none" className="rounded-xl p-8 relative z-10 group overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-accent/5 rounded-full blur-[50px] group-hover:bg-accent/10 transition-colors pointer-events-none" />
         <h2 className="text-xl font-black text-text flex items-center gap-3 mb-6 tracking-tight relative z-10">
           <Globe className="text-accent" size={24} /> Fiat Reference
@@ -186,7 +186,7 @@ export default function SettingsPage() {
       </GlassCard>
 
       {/* Performance Mode Section */}
-      <GlassCard tier={2} shape="shape-squircle" className="p-8 relative z-10 overflow-hidden">
+      <GlassCard tier={2} shape="none" className="rounded-xl p-8 relative z-10 overflow-hidden">
         <div className="absolute top-0 right-0 w-1 bg-gradient-to-b from-success to-transparent h-full" />
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div>
@@ -222,7 +222,7 @@ export default function SettingsPage() {
       </GlassCard>
 
       {/* Data Refresh Section */}
-      <GlassCard tier={2} shape="shape-squircle" className="p-8 relative z-10 overflow-hidden">
+      <GlassCard tier={2} shape="none" className="rounded-xl p-8 relative z-10 overflow-hidden">
         <div className="absolute top-0 left-0 w-1 bg-gradient-to-b from-warning to-transparent h-full" />
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div>
@@ -254,7 +254,7 @@ export default function SettingsPage() {
       </GlassCard>
 
       {/* API Keys Section */}
-      <GlassCard tier={2} shape="shape-squircle" className="p-0 relative z-10 overflow-hidden">
+      <GlassCard tier={2} shape="none" className="rounded-xl p-0 relative z-10 overflow-hidden">
         <div className="p-8 border-b border-white/5 bg-surface/30">
             <h2 className="text-xl font-black text-text flex items-center gap-3 tracking-tight">
             <Key className="text-accent" size={24} /> Integration Keys

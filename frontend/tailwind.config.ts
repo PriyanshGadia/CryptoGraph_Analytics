@@ -10,16 +10,17 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        background: "rgba(var(--background), <alpha-value>)",
-        surface: "rgba(var(--surface), <alpha-value>)",
-        "surface-2": "rgba(var(--surface-2), <alpha-value>)",
-        text: "rgba(var(--text), <alpha-value>)",
-        "text-muted": "rgba(var(--text-muted), <alpha-value>)",
-        accent: "rgba(var(--accent), <alpha-value>)",
-        "accent-2": "rgba(var(--accent-2), <alpha-value>)",
-        success: "rgba(var(--success), <alpha-value>)",
-        danger: "rgba(var(--danger), <alpha-value>)",
-        warning: "rgba(var(--warning), <alpha-value>)",
+        background: "rgb(var(--background) / <alpha-value>)",
+        surface: "rgb(var(--surface) / <alpha-value>)",
+        "surface-2": "rgb(var(--surface-2) / <alpha-value>)",
+        text: "rgb(var(--text) / <alpha-value>)",
+        "text-muted": "rgb(var(--text-muted) / <alpha-value>)",
+        accent: "rgb(var(--accent) / <alpha-value>)",
+        "accent-2": "rgb(var(--accent-2) / <alpha-value>)",
+        success: "rgb(var(--success) / <alpha-value>)",
+        danger: "rgb(var(--danger) / <alpha-value>)",
+        warning: "rgb(var(--warning) / <alpha-value>)",
+        border: "rgb(var(--text) / 0.15)",
       },
       fontFamily: {
         sans: ["var(--font-sans)"],

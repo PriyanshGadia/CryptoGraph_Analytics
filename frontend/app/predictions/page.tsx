@@ -105,7 +105,7 @@ function MathModal({ isOpen, onClose, title, formulaSteps }: { isOpen: boolean, 
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in zoom-in-95">
             <style>{`.katex { color: rgb(var(--text)) !important; } .katex-display { color: rgb(var(--accent)) !important; }`}</style>
             <div className="absolute inset-0 bg-background/80 backdrop-blur-md" onClick={onClose} />
-            <div className="glass-3 shape-squircle border border-white/10 w-full max-w-2xl shadow-2xl relative z-10 flex flex-col max-h-[85vh] overflow-hidden">
+            <div className="glass-3 rounded-xl border border-white/10 w-full max-w-2xl shadow-2xl relative z-10 flex flex-col max-h-[85vh] overflow-hidden">
                 <div className="flex items-center justify-between p-6 border-b border-white/5 bg-surface/30">
                     <h2 className="text-lg font-black text-text tracking-tight uppercase font-sans">{title}</h2>
                     <button onClick={onClose} className="text-text-muted hover:text-text transition-colors bg-white/5 hover:bg-white/10 p-2 rounded-full">
@@ -229,7 +229,7 @@ function PredictionStudio() {
   const currentDisplayPrice = livePrice !== null ? livePrice : forecastData?.last_price;
 
   return (
-    <div className="h-full relative z-0 glass-2 shape-seal overflow-hidden p-6">
+    <div className="h-full relative z-0 glass-2 rounded-2xl overflow-hidden p-6">
       
       <MathModal 
         isOpen={modalOpen} 
@@ -242,7 +242,7 @@ function PredictionStudio() {
         {!selectedSymbol ? (
           <div className="space-y-8">
             {/* Header */}
-            <div className="glass-3 shape-squircle p-8 lg:p-10 shadow-2xl relative overflow-hidden group">
+            <div className="glass-3 rounded-xl p-8 lg:p-10 shadow-2xl relative overflow-hidden group">
               <div className="absolute top-[-50px] right-[-50px] w-64 h-64 bg-accent/10 rounded-full blur-[80px] pointer-events-none group-hover:bg-accent/20 transition-all duration-700" />
               <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                 <div>
@@ -274,7 +274,7 @@ function PredictionStudio() {
                     <button
                       key={idx}
                       onClick={() => setSelectedSymbol(p.asset_symbol)}
-                      className={`group text-left glass-flat shape-ledger border border-white/5 hover:border-white/20 p-6 transition-all duration-[var(--dur-hover)] ease-glide hover:bg-white/[0.04] hover:shadow-[0_0_30px_rgba(${isUp ? '34,197,94' : isDown ? '239,68,68' : '255,255,255'},0.1)] relative overflow-hidden`}
+                      className={`group text-left glass-flat rounded-xl border border-white/5 hover:border-white/20 p-6 transition-all duration-[var(--dur-hover)] ease-glide hover:bg-white/[0.04] hover:shadow-[0_0_30px_rgba(${isUp ? '34,197,94' : isDown ? '239,68,68' : '255,255,255'},0.1)] relative overflow-hidden`}
                     >
                       
                       {/* VERDICT STAMP */}
@@ -365,7 +365,7 @@ function PredictionStudio() {
           <div className="space-y-8 pb-10 animate-in fade-in slide-in-from-bottom-8 duration-700">
             
             {/* ── HEADER ROW ── */}
-            <div className="flex flex-col md:flex-row justify-between items-end gap-6 glass-2 shape-squircle border border-white/5 p-8 lg:p-10 shadow-2xl relative overflow-hidden group">
+            <div className="flex flex-col md:flex-row justify-between items-end gap-6 glass-2 rounded-xl border border-white/5 p-8 lg:p-10 shadow-2xl relative overflow-hidden group">
               <div className="absolute top-[-50px] right-[-50px] w-64 h-64 bg-accent/10 rounded-full blur-[80px] pointer-events-none group-hover:bg-accent/20 transition-all duration-700" />
               
               <div className="relative z-10 space-y-3">
@@ -402,7 +402,7 @@ function PredictionStudio() {
               
               {/* ── CONSENSUS MATRIX (9 METRICS) ── */}
               <div className="xl:col-span-1 space-y-6">
-                  <div className="glass-2 shape-squircle border border-white/5 p-0 shadow-2xl h-full flex flex-col overflow-hidden group">
+                  <div className="glass-2 rounded-xl border border-white/5 p-0 shadow-2xl h-full flex flex-col overflow-hidden group">
                     <div className="p-6 border-b border-white/5 bg-surface/30">
                         <div className="flex items-center justify-between">
                             <h3 className="text-text text-sm uppercase tracking-widest font-black flex items-center gap-2 font-mono">
@@ -448,7 +448,7 @@ function PredictionStudio() {
 
               {/* ── FAN CHART MAIN VISUAL ── */}
               <div className="xl:col-span-2 space-y-6">
-                  <div className="glass-2 shape-squircle border border-white/5 p-0 shadow-2xl flex flex-col h-[500px] lg:h-[600px] overflow-hidden group">
+                  <div className="glass-2 rounded-xl border border-white/5 p-0 shadow-2xl flex flex-col h-[500px] lg:h-[600px] overflow-hidden group">
                     <div className="p-6 border-b border-white/5 bg-surface/30">
                         <div className="flex justify-between items-center">
                             <div>
@@ -492,7 +492,7 @@ function PredictionStudio() {
                   </div>
 
                   {/* ── MULTI-HORIZON TARGETS ── */}
-                  <div className="glass-2 shape-squircle border border-white/5 p-6 shadow-2xl">
+                  <div className="glass-2 rounded-xl border border-white/5 p-6 shadow-2xl">
                     <h3 className="text-text text-sm uppercase tracking-widest font-black mb-6 flex items-center gap-2 font-mono">
                         <Clock size={16} className="text-accent"/> Price Targets
                     </h3>
@@ -520,7 +520,7 @@ function PredictionStudio() {
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mt-6">
               
               {/* T-SHAP Widget */}
-              <div className="glass-2 shape-squircle border border-white/5 p-8 shadow-2xl overflow-hidden relative group">
+              <div className="glass-2 rounded-xl border border-white/5 p-8 shadow-2xl overflow-hidden relative group">
                 <div className="absolute inset-0 bg-gradient-to-br from-accent/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
                 <div className="relative z-10">
                     <div className="flex items-center justify-between mb-8">
@@ -556,7 +556,7 @@ function PredictionStudio() {
               </div>
 
               {/* zkML Verification Widget */}
-              <div className="glass-2 shape-squircle border border-white/5 p-1 shadow-2xl relative overflow-hidden group">
+              <div className="glass-2 rounded-xl border border-white/5 p-1 shadow-2xl relative overflow-hidden group">
                 <div className="absolute inset-0 bg-success/10 blur-[40px] pointer-events-none group-hover:bg-success/20 transition-all duration-1000" />
                 <div className="bg-surface/80 h-full w-full rounded-[31px] p-8 flex flex-col relative z-10 backdrop-blur-2xl border border-white/5">
                     <div className="flex items-center justify-between mb-6">

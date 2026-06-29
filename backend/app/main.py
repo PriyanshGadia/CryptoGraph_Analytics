@@ -1,4 +1,4 @@
-"""ST-GCN Crypto Forecasting API — main application entry point."""
+"""ST-GCN Crypto Forecasting API — main application entry point. Trigger reload."""
 
 import sentry_sdk
 import os

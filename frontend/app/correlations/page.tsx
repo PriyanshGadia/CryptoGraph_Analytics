@@ -34,7 +34,7 @@ const HeatmapCell = memo(({
 }: any) => {
   
   // Interpolate color from -1 to 1
-  let bgColor = "rgba(10, 10, 15, 0.4)";
+  let bgColor = "rgba(var(--background), 0.4)";
   if (i === j) {
     bgColor = "rgba(var(--accent), 0.8)"; // self-correlation
   } else if (value > 0) {
@@ -141,7 +141,7 @@ export default function CorrelationsPage() {
   const sectorsList = Array.from(new Set(Object.values(assetMap))).filter(Boolean) as string[];
 
   return (
-    <div className="space-y-8 pt-8 p-6 glass-2 shape-seal overflow-hidden max-w-[1600px] mx-auto relative">
+    <div className="space-y-8 pt-8 p-6 glass-2 rounded-2xl overflow-hidden max-w-[1600px] mx-auto relative">
       <div className="absolute top-[10%] right-[-100px] w-96 h-96 bg-accent/5 rounded-full blur-[120px] pointer-events-none" />
       <div className="absolute bottom-[20%] left-[-100px] w-80 h-80 bg-success/5 rounded-full blur-[100px] pointer-events-none" />
 
@@ -208,7 +208,7 @@ export default function CorrelationsPage() {
       <div className="relative z-10 space-y-8">
         {/* SECTION 1 - Header Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <GlassCard tier={2} shape="shape-squircle" className="p-6 flex items-center gap-4 group hover:bg-white/[0.02] transition-colors h-32">
+          <GlassCard tier={2} shape="none" className="rounded-xl p-6 flex items-center gap-4 group hover:bg-white/[0.02] transition-colors h-32">
             <div className="p-3 rounded-sm glass bg-white/5 group-hover:bg-white/10 transition-colors shadow-inner shadow-white/5 border border-white/10">
                 <GitGraph size={24} className="text-text" />
             </div>
@@ -217,7 +217,7 @@ export default function CorrelationsPage() {
               <div className="text-[10px] uppercase tracking-widest font-bold text-text-muted mt-1">Nodes Analyzed</div>
             </div>
           </GlassCard>
-          <GlassCard tier={2} shape="shape-squircle" className="p-6 flex items-center gap-4 group hover:bg-accent/[0.02] transition-colors h-32 hover:border-accent/30 hover:shadow-[0_0_20px_rgba(var(--accent),0.1)]">
+          <GlassCard tier={2} shape="none" className="rounded-xl p-6 flex items-center gap-4 group hover:bg-accent/[0.02] transition-colors h-32 hover:border-accent/30 hover:shadow-[0_0_20px_rgba(var(--accent),0.1)]">
             <div className="p-3 rounded-sm glass bg-accent/10 transition-colors shadow-inner shadow-accent/20 border border-accent/20">
                 <Network size={24} className="text-accent drop-shadow-[0_0_5px_currentColor]" />
             </div>
@@ -226,7 +226,7 @@ export default function CorrelationsPage() {
               <div className="text-[10px] uppercase tracking-widest font-bold text-text-muted mt-1">Mean Network Vector</div>
             </div>
           </GlassCard>
-          <GlassCard tier={2} shape="shape-squircle" className="p-6 flex items-center gap-4 group hover:bg-success/[0.02] transition-colors h-32 hover:border-success/30 hover:shadow-[0_0_20px_rgba(34,197,94,0.1)]">
+          <GlassCard tier={2} shape="none" className="rounded-xl p-6 flex items-center gap-4 group hover:bg-success/[0.02] transition-colors h-32 hover:border-success/30 hover:shadow-[0_0_20px_rgba(34,197,94,0.1)]">
             <div className="p-3 rounded-sm glass bg-success/10 transition-colors shadow-inner shadow-success/20 border border-success/20">
                 <Zap size={24} className="text-success drop-shadow-[0_0_5px_currentColor]" />
             </div>
@@ -242,7 +242,7 @@ export default function CorrelationsPage() {
         </div>
         
         {/* SECTION 2 - Correlation Heatmap */}
-        <GlassCard tier={2} shape="shape-squircle" className="p-0 overflow-hidden relative">
+        <GlassCard tier={2} shape="none" className="rounded-xl p-0 overflow-hidden relative">
           <div className="p-8 border-b border-white/5 bg-surface/30 flex justify-between items-center flex-wrap gap-4">
             <div>
               <h3 className="text-xl font-black text-text tracking-tight">N-Dimensional Adjacency Matrix</h3>
@@ -351,7 +351,7 @@ export default function CorrelationsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           
           {/* LEFT: Top Correlated Pairs */}
-          <GlassCard tier={2} shape="shape-squircle" className="p-0 overflow-hidden">
+          <GlassCard tier={2} shape="none" className="rounded-xl p-0 overflow-hidden">
             <div className="p-8 border-b border-white/5 bg-surface/30">
               <h3 className="text-xl font-black text-text tracking-tight flex items-center gap-3">
                   <div className="w-8 h-8 rounded-full glass bg-success/10 border border-success/20 flex items-center justify-center">
@@ -409,7 +409,7 @@ export default function CorrelationsPage() {
           </GlassCard>
           
           {/* RIGHT: Sector Correlation Summary */}
-          <GlassCard tier={2} shape="shape-squircle" className="p-0 flex flex-col overflow-hidden">
+          <GlassCard tier={2} shape="none" className="rounded-xl p-0 flex flex-col overflow-hidden">
             <div className="p-8 border-b border-white/5 bg-surface/30">
               <h3 className="text-xl font-black text-text tracking-tight flex items-center gap-3">
                   <div className="w-8 h-8 rounded-full glass bg-accent/10 border border-accent/20 flex items-center justify-center">
@@ -427,7 +427,7 @@ export default function CorrelationsPage() {
                   <YAxis dataKey="name" type="category" stroke="rgba(255,255,255,0.5)" fontSize={10} fontFamily="monospace" tickLine={false} axisLine={false} tickFormatter={(val) => typeof val === 'string' ? val.toUpperCase() : val} />
                   <Tooltip 
                     cursor={{fill: 'rgba(255,255,255,0.05)'}} 
-                    contentStyle={{ backgroundColor: "rgba(10, 10, 15, 0.9)", borderColor: "rgba(255, 255, 255, 0.1)", borderRadius: "12px", color: "#fff", backdropFilter: "blur(10px)" }} 
+                    contentStyle={{ backgroundColor: "rgba(var(--background), 0.9)", borderColor: "rgba(var(--text), 0.1)", borderRadius: "12px", color: "rgb(var(--text))", backdropFilter: "blur(10px)" }} 
                     itemStyle={{ fontFamily: 'monospace', fontWeight: 'bold' }}
                     formatter={(value: any) => [Number(value).toFixed(4), 'Affinity Score']}
                   />

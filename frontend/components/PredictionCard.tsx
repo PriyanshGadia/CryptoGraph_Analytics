@@ -21,7 +21,7 @@ export function PredictionCard({ asset }: { asset: Asset }) {
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (confidence / 100) * circumference;
   return (
-    <GlassCard tier={2} shape="shape-hex" hoverable className={`p-6 depth-bevel ${isStrong ? 'hover:border-accent/50 hover:shadow-[0_0_30px_rgba(var(--accent),0.15)]' : 'hover:border-white/20'}`}>
+    <GlassCard tier={2} shape="none" hoverable className={`rounded-xl p-6 depth-bevel ${isStrong ? 'hover:border-accent/50 hover:shadow-[0_0_30px_rgba(var(--accent),0.15)]' : 'hover:border-white/20'}`}>
       
       {/* Background Ambient Glow */}
       <div className={`absolute -top-10 -right-10 w-40 h-40 rounded-full blur-[60px] opacity-10 transition-opacity duration-700 group-hover:opacity-30 ${isUp ? 'bg-success' : isDown ? 'bg-danger' : 'bg-accent'}`} />
@@ -83,7 +83,7 @@ export function PredictionCard({ asset }: { asset: Asset }) {
         {/* Signal Chip */}
         <div className="bg-surface/30 rounded-sm p-4 border border-white/5 flex flex-col justify-center gap-2">
             <span className="text-[10px] text-text-muted uppercase tracking-[0.2em] font-mono flex items-center gap-1.5"><Cpu size={12} className="text-accent"/> AI SIGNAL</span>
-            <div className={`inline-flex w-max items-center gap-2 px-3 py-3 shape-facet-sm text-xs font-bold uppercase tracking-widest border ${t.bgClass} ${t.textClass} ${t.borderClass}`} style={{ boxShadow: t.glow !== 'none' ? t.glow : undefined }}>
+            <div className={`inline-flex w-max items-center gap-2 px-3 py-3 rounded-lg text-xs font-bold uppercase tracking-widest border ${t.bgClass} ${t.textClass} ${t.borderClass}`} style={{ boxShadow: t.glow !== 'none' ? t.glow : undefined }}>
                 <Icon size={14}/>{t.label}
             </div>
         </div>

@@ -139,7 +139,7 @@ export default function GraphPage() {
       graphRef.current.d3Force('link')?.strength((link: any) =>
         (link.weight || 0.5) * 0.8
       );
-      graphRef.current.d3Force('charge')?.strength(-120);
+      graphRef.current.d3Force('charge')?.strength(-200);
       graphRef.current.d3Force('collision', 
         d3.forceCollide().radius((node: any) => getNodeRadius(node.market_cap_usd) + 2)
       );
@@ -175,9 +175,9 @@ export default function GraphPage() {
     // Label below
     ctx.font = "10px monospace";
     ctx.textAlign = "center";
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = palette.text;
     ctx.fillText(node.symbol, node.x, node.y + r + 12);
-  }, []);
+  }, [palette.text]);
 
   const linkColor = useCallback((link: any) => {
     const style = EDGE_STYLES[link.edge_type] || DEFAULT_EDGE;
@@ -203,13 +203,13 @@ export default function GraphPage() {
   }
 
   return (
-    <div className="h-[calc(100vh-8rem)] flex flex-col relative w-full pt-8 p-6 glass-2 shape-seal overflow-hidden">
+    <div className="h-[calc(100vh-8rem)] flex flex-col relative w-full pt-8 p-6 glass-2 rounded-2xl overflow-hidden">
       <div className="mb-6 relative z-10 px-4 max-w-6xl mx-auto w-full">
         <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-text via-text/80 to-text-muted tracking-tight font-sans">Topological Graph</h1>
         <p className="text-text-muted font-light tracking-wide mt-2">Spatial-Temporal Graph — {graphData.nodes.length} assets, {graphData.links.length} connections</p>
       </div>
 
-      <div ref={containerRef} className="flex-1 w-full relative glass-flat shape-squircle overflow-hidden">
+      <div ref={containerRef} className="flex-1 w-full relative glass-flat rounded-xl bg-background overflow-hidden">
         {isLoading || !data ? (
           <Skeleton className="w-full h-full" />
         ) : (
@@ -261,7 +261,7 @@ export default function GraphPage() {
         )}
 
         {/* Controls panel */}
-        <div className="absolute top-4 right-4 glass-3 shape-facet-sm p-5 border border-white/5 space-y-4 z-10 w-64 shadow-2xl backdrop-blur-2xl">
+        <div className="absolute top-4 right-4 glass-3 rounded-xl p-5 border border-white/5 space-y-4 z-10 w-64 shadow-2xl backdrop-blur-2xl">
           <div className="text-[10px] font-mono font-bold text-accent uppercase tracking-widest flex items-center gap-2">
             <Activity size={14} /> Network Controls
           </div>
@@ -278,7 +278,7 @@ export default function GraphPage() {
         </div>
 
         {/* Legend */}
-        <div className="absolute bottom-4 left-4 glass-3 shape-facet-sm p-5 border border-white/5 shadow-2xl backdrop-blur-2xl z-10">
+        <div className="absolute bottom-4 left-4 glass-3 rounded-xl p-5 border border-white/5 shadow-2xl backdrop-blur-2xl z-10">
           <div className="text-[10px] font-mono font-bold text-accent mb-3 uppercase tracking-widest">Sectors</div>
           <div className="grid grid-cols-2 gap-x-6 gap-y-2">
               {Object.entries(SECTOR_LABELS).map(([key, label]) => (
@@ -300,7 +300,7 @@ export default function GraphPage() {
 
         {/* Selected node panel */}
         {selectedNode && (
-          <div className="absolute top-4 left-4 w-72 glass-3 shape-facet-sm p-6 border border-white/10 z-20 space-y-4 shadow-2xl backdrop-blur-2xl animate-in fade-in slide-in-from-left-4">
+          <div className="absolute top-4 left-4 w-72 glass-3 rounded-xl p-6 border border-white/10 z-20 space-y-4 shadow-2xl backdrop-blur-2xl animate-in fade-in slide-in-from-left-4">
             <div className="flex justify-between items-start">
               <div className="font-sans text-3xl font-black text-text tracking-tight">{selectedNode.symbol}</div>
               <button onClick={() => setSelectedNode(null)} className="text-text-muted hover:text-text text-sm transition-colors w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/10">✕</button>

@@ -23,7 +23,7 @@ export default function Dashboard() {
   if (!mounted) return null;
 
   return (
-    <div className="relative min-h-[calc(100vh-8rem)] w-full flex flex-col gap-8 glass-2 shape-seal p-6 overflow-hidden">
+    <div className="relative min-h-[calc(100vh-8rem)] w-full flex flex-col gap-8 glass-2 rounded-2xl p-6 overflow-hidden">
       
       {/* Animated Network Background */}
       <div className="absolute inset-0 z-0 pointer-events-none opacity-20">
@@ -49,10 +49,10 @@ export default function Dashboard() {
                     Live crypto market forecasts synthesized by ST-GCN neural networks. Decrypting market topology in real-time.
                 </p>
                 <div className="flex items-center gap-4 mt-2">
-                    <button className="glass-3 shape-facet-sm px-6 py-3 text-sm font-bold tracking-widest uppercase text-text border border-accent-2/50 hover:bg-accent-2/10 hover:shadow-[0_0_20px_rgba(var(--accent-2),0.2)] transition-all duration-[var(--dur-hover)] ease-glide">
+                    <button className="glass-3 rounded-xl px-6 py-3 text-sm font-bold tracking-widest uppercase text-text border border-accent-2/50 hover:bg-accent-2/10 hover:shadow-[0_0_20px_rgba(var(--accent-2),0.2)] transition-all duration-[var(--dur-hover)] ease-glide">
                         View Models
                     </button>
-                    <button className="glass-flat shape-facet-sm px-6 py-3 text-sm font-bold tracking-widest uppercase text-text-muted hover:text-text border border-white/10 hover:bg-white/5 transition-all duration-[var(--dur-hover)] ease-glide flex items-center gap-2">
+                    <button className="glass-flat rounded-xl px-6 py-3 text-sm font-bold tracking-widest uppercase text-text-muted hover:text-text border border-white/10 hover:bg-white/5 transition-all duration-[var(--dur-hover)] ease-glide flex items-center gap-2">
                         <Cpu size={16}/> API Docs
                     </button>
                 </div>
@@ -97,7 +97,7 @@ export default function Dashboard() {
                 <BookOpen size={16} className="text-accent" /> The Ledger: Live Swarm Intelligence
             </h2>
             
-            <GlassCard tier={2} shape="shape-squircle" className="p-8 border-accent/20 shadow-[0_0_30px_rgba(var(--accent),0.1)]">
+            <GlassCard tier={2} shape="none" className="rounded-xl p-8 border-accent/20 shadow-[0_0_30px_rgba(var(--accent),0.1)]">
                 <div className="flex flex-col md:flex-row gap-8 justify-between">
                     <div className="max-w-md">
                         <h3 className="text-3xl font-black text-text tracking-tight font-sans mb-3 flex items-center gap-3">
@@ -143,8 +143,8 @@ export default function Dashboard() {
 
         {/* Info Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4 relative z-10">
-            <GlassCard tier={1} shape="shape-squircle" hoverable className="p-6 flex flex-col gap-3">
-                <div className="w-10 h-10 shape-facet-sm bg-accent-2/10 flex items-center justify-center text-accent-2 mb-2">
+            <GlassCard tier={1} shape="none" hoverable className="p-6 flex flex-col gap-3">
+                <div className="w-10 h-10 rounded-xl bg-accent-2/10 flex items-center justify-center text-accent-2 mb-2">
                     <Activity size={20} />
                 </div>
                 <h3 className="text-lg font-bold text-text tracking-tight">Real-Time Sync</h3>
@@ -153,8 +153,8 @@ export default function Dashboard() {
                 </p>
             </GlassCard>
             
-            <GlassCard tier={1} shape="shape-squircle" hoverable className="p-6 flex flex-col gap-3">
-                <div className="w-10 h-10 shape-facet-sm bg-success/10 flex items-center justify-center text-success mb-2">
+            <GlassCard tier={1} shape="none" hoverable className="p-6 flex flex-col gap-3">
+                <div className="w-10 h-10 rounded-xl bg-success/10 flex items-center justify-center text-success mb-2">
                     <TrendingUp size={20} />
                 </div>
                 <h3 className="text-lg font-bold text-text tracking-tight">Temporal Forecasting</h3>
@@ -163,8 +163,8 @@ export default function Dashboard() {
                 </p>
             </GlassCard>
             
-            <GlassCard tier={1} shape="shape-squircle" hoverable className="p-6 flex flex-col gap-3">
-                <div className="w-10 h-10 shape-facet-sm bg-danger/10 flex items-center justify-center text-danger mb-2">
+            <GlassCard tier={1} shape="none" hoverable className="p-6 flex flex-col gap-3">
+                <div className="w-10 h-10 rounded-xl bg-danger/10 flex items-center justify-center text-danger mb-2">
                     <TrendingDown size={20} />
                 </div>
                 <h3 className="text-lg font-bold text-text tracking-tight">Risk Intelligence</h3>

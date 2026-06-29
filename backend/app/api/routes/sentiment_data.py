@@ -183,6 +183,9 @@ def get_latest_synthesis(db: Session = Depends(get_db)):
         "sentiment_analysis": latest_debate.sentiment_analysis,
         "symbol": latest_debate.symbol
     }
+
+
+@router.get("/sector-sentiment")
 @cached(ttl_seconds=300)
 def get_sector_sentiment(db: Session = Depends(get_db)):
     """

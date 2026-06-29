@@ -40,13 +40,13 @@ export default function ExplainPage() {
   };
 
   return (
-    <div className="space-y-8 max-w-5xl mx-auto pt-8 p-6 glass-2 shape-seal overflow-hidden">
+    <div className="space-y-8 max-w-5xl mx-auto pt-8 p-6 glass-2 rounded-2xl overflow-hidden">
       <div>
         <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-text via-text/80 to-text-muted tracking-tight font-sans">Explain Predictions</h1>
         <p className="text-text-muted font-light tracking-wide mt-2">Get LLM-generated rationale behind the ST-GCN forecasting.</p>
       </div>
 
-      <GlassCard tier={2} shape="shape-squircle" className="p-8 relative overflow-hidden">
+      <GlassCard tier={2} shape="none" className="rounded-xl p-8 relative overflow-hidden">
         {/* Glow */}
         <div className="absolute top-0 right-0 w-64 h-64 bg-accent/5 rounded-full blur-[80px] pointer-events-none" />
         
@@ -73,7 +73,7 @@ export default function ExplainPage() {
             disabled={!selectedSymbol || isExplaining || assetsLoading}
             className="glass bg-accent/20 hover:bg-accent/30 text-accent px-8 py-3 rounded-sm font-bold flex justify-center items-center gap-3 disabled:opacity-50 transition-all border border-accent/30 hover:shadow-[0_0_15px_rgba(var(--accent),0.2)] tracking-widest uppercase text-xs"
           >
-            <div className="w-8 h-8 flex items-center justify-center shape-hex glass-1 border border-accent-2/50 text-accent-2">
+            <div className="w-8 h-8 flex items-center justify-center rounded-md glass-1 border border-accent-2/50 text-accent-2">
               <Bot size={16} />
             </div>
             {isExplaining ? "Analyzing..." : "Explain Rationale"}
@@ -89,7 +89,7 @@ export default function ExplainPage() {
       )}
 
       {isExplaining && (
-        <GlassCard tier={2} shape="shape-squircle" className="p-8">
+        <GlassCard tier={2} shape="none" className="rounded-xl p-8">
             <div className="flex items-center gap-3 mb-6">
                 <div className="w-5 h-5 rounded-full border-2 border-accent/20 border-t-accent animate-spin" />
                 <span className="text-xs font-mono tracking-widest uppercase text-accent animate-pulse">Generating neural interpretation...</span>
@@ -104,11 +104,11 @@ export default function ExplainPage() {
       )}
 
       {explanation && !isExplaining && (
-        <GlassCard tier={3} shape="shape-squircle" className="p-0 border-accent/30 shadow-[0_0_30px_rgba(var(--accent),0.1)] overflow-hidden animate-in fade-in slide-in-from-bottom-4">
+        <GlassCard tier={3} shape="none" className="rounded-xl p-0 border-accent/30 shadow-[0_0_30px_rgba(var(--accent),0.1)] overflow-hidden animate-in fade-in slide-in-from-bottom-4">
           <div className="border-b border-white/10 bg-surface/30 p-6 sm:p-8">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <h2 className="flex items-center gap-3 text-2xl font-black text-text font-sans tracking-tight">
-                <div className="w-10 h-10 flex items-center justify-center shape-hex glass-1 border border-accent-2/50 text-accent-2 shadow-[0_0_15px_rgba(var(--accent-2),0.2)]">
+                <div className="w-10 h-10 flex items-center justify-center rounded-lg glass-1 border border-accent-2/50 text-accent-2 shadow-[0_0_15px_rgba(var(--accent-2),0.2)]">
                   <MessageSquare size={18} />
                 </div>
                 Analysis for {explanation.symbol}

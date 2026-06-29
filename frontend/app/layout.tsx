@@ -35,7 +35,7 @@ export default function RootLayout({
               <Console />
 
               {/* Main Content */}
-              <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden flex flex-col relative shape-seal glass-1 transition-all duration-500" style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
+              <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden flex flex-col relative rounded-2xl transition-all duration-500" style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
                 <div className="flex-1 p-8">
                   <GlobalSearch />
                   {children}

@@ -133,7 +133,7 @@ export default function PortfolioPage() {
   const trades = tradesData?.trades || [];
 
   return (
-    <div className="space-y-8 pt-8 p-6 glass-2 shape-seal overflow-hidden max-w-7xl mx-auto">
+    <div className="space-y-8 pt-8 p-6 glass-2 rounded-2xl overflow-hidden max-w-7xl mx-auto">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 relative">
         <div className="absolute top-[-50px] left-[-50px] w-64 h-64 bg-accent/5 rounded-full blur-[80px] pointer-events-none" />
         <div className="relative z-10">
@@ -156,7 +156,7 @@ export default function PortfolioPage() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <GlassCard tier={2} shape="shape-squircle" className="p-6 relative overflow-hidden group">
+        <GlassCard tier={2} shape="none" className="rounded-xl p-6 relative overflow-hidden group">
           <div className="absolute inset-0 bg-gradient-to-br from-accent/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
           <div className="text-[10px] font-bold font-mono tracking-widest text-text-muted uppercase mb-4 flex items-center gap-2">
             <Wallet size={16} className="text-accent" /> Total Value
@@ -169,7 +169,7 @@ export default function PortfolioPage() {
           </div>
         </GlassCard>
 
-        <GlassCard tier={2} shape="shape-squircle" className="p-6 relative overflow-hidden group">
+        <GlassCard tier={2} shape="none" className="rounded-xl p-6 relative overflow-hidden group">
           <div className="absolute inset-0 bg-gradient-to-br from-success/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
           <div className="text-[10px] font-bold font-mono tracking-widest text-text-muted uppercase mb-4 flex items-center gap-2">
             <Activity size={16} className="text-success" /> Return on Investment
@@ -186,7 +186,7 @@ export default function PortfolioPage() {
           </div>
         </GlassCard>
 
-        <GlassCard tier={2} shape="shape-squircle" className="p-6 relative overflow-hidden group">
+        <GlassCard tier={2} shape="none" className="rounded-xl p-6 relative overflow-hidden group">
           <div className="absolute inset-0 bg-gradient-to-br from-warning/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
           <div className="text-[10px] font-bold font-mono tracking-widest text-text-muted uppercase mb-4 flex items-center gap-2">
             <Target size={16} className="text-warning" /> Win Rate
@@ -199,7 +199,7 @@ export default function PortfolioPage() {
           </div>
         </GlassCard>
 
-        <GlassCard tier={2} shape="shape-squircle" className="p-6 relative overflow-hidden group">
+        <GlassCard tier={2} shape="none" className="rounded-xl p-6 relative overflow-hidden group">
           <div className="absolute inset-0 bg-gradient-to-br from-danger/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
           <div className="text-[10px] font-bold font-mono tracking-widest text-text-muted uppercase mb-4 flex items-center gap-2">
             <TrendingDown size={16} className="text-danger" /> Max Drawdown
@@ -214,7 +214,7 @@ export default function PortfolioPage() {
       </div>
 
       {/* Main Performance Chart */}
-      <GlassCard tier={2} shape="shape-squircle" className="p-8 relative overflow-hidden">
+      <GlassCard tier={2} shape="none" className="rounded-xl p-8 relative overflow-hidden">
         <div className="flex justify-between items-center mb-6">
            <div>
              <h2 className="text-xl font-black text-text flex items-center gap-2 tracking-tight"><TrendingUp size={20} className="text-accent"/> Equity Curve</h2>
@@ -251,7 +251,7 @@ export default function PortfolioPage() {
                <XAxis dataKey="date" stroke={palette.muted} fontSize={10} fontFamily="monospace" tickLine={false} axisLine={false} minTickGap={30} />
                <YAxis yAxisId="left" stroke={palette.text} fontSize={10} fontFamily="monospace" tickLine={false} axisLine={false} tickFormatter={(v) => '$' + v.toLocaleString()} domain={['auto', 'auto']} />
                <Tooltip 
-                 contentStyle={{ backgroundColor: "rgba(10, 10, 15, 0.9)", borderColor: "rgba(255, 255, 255, 0.1)", borderRadius: "12px", color: "#fff", backdropFilter: "blur(10px)" }} 
+                 contentStyle={{ backgroundColor: "rgba(var(--background), 0.9)", borderColor: "rgba(var(--text), 0.1)", borderRadius: "12px", color: "rgb(var(--text))", backdropFilter: "blur(10px)" }} 
                  itemStyle={{ fontFamily: 'monospace', fontWeight: 'bold' }} 
                  formatter={(value) => '$' + Number(value).toLocaleString(undefined, {maximumFractionDigits:2})}
                />
@@ -267,7 +267,7 @@ export default function PortfolioPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Holdings */}
-        <GlassCard tier={2} shape="shape-squircle" className="p-0 overflow-hidden lg:col-span-1 flex flex-col h-[600px]">
+        <GlassCard tier={2} shape="none" className="rounded-xl p-0 overflow-hidden lg:col-span-1 flex flex-col h-[600px]">
           <div className="p-6 border-b border-white/5 bg-surface/30">
             <h2 className="flex items-center gap-3 text-lg font-black text-text tracking-tight">
               <PieChart size={20} className="text-accent" />
@@ -304,7 +304,7 @@ export default function PortfolioPage() {
         </GlassCard>
 
         {/* Recent Trades */}
-        <GlassCard tier={2} shape="shape-squircle" className="p-0 overflow-hidden lg:col-span-2 flex flex-col h-[600px]">
+        <GlassCard tier={2} shape="none" className="rounded-xl p-0 overflow-hidden lg:col-span-2 flex flex-col h-[600px]">
           <div className="p-6 border-b border-white/5 bg-surface/30">
             <h2 className="flex items-center gap-3 text-lg font-black text-text tracking-tight">
               <ArrowRightLeft size={20} className="text-accent" />

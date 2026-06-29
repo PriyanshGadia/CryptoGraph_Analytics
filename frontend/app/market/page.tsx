@@ -112,7 +112,7 @@ export default function MarketPage() {
   });
 
   return (
-    <div className="relative min-h-[calc(100vh-8rem)] flex flex-col items-center justify-start pt-10 p-6 max-w-6xl mx-auto w-full glass-2 shape-seal overflow-hidden">
+    <div className="relative min-h-[calc(100vh-8rem)] flex flex-col items-center justify-start pt-10 p-6 max-w-6xl mx-auto w-full glass-2 rounded-2xl">
       
       {/* Absolute Ambient Background Lights */}
       <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-accent/10 rounded-full blur-[120px] pointer-events-none" />
@@ -155,7 +155,7 @@ export default function MarketPage() {
         {isLoading || !assets || assets.length === 0 ? (
           <div className="flex flex-col gap-4 w-full">
             {Array.from({ length: 8 }).map((_, i) => (
-              <GlassCard tier="flat" shape="shape-ledger" key={i} className="w-full h-24 animate-pulse bg-[rgba(var(--text),0.06)]" />
+              <GlassCard tier="flat" shape="none" key={i} className="rounded-xl w-full h-24 animate-pulse bg-[rgba(var(--text),0.06)]" />
             ))}
           </div>
         ) : (
@@ -167,7 +167,7 @@ export default function MarketPage() {
                     <div className="absolute -top-4 left-12 w-[1px] h-4 bg-white/10 group-hover:bg-accent/40 group-hover:shadow-[0_0_8px_rgba(var(--accent),0.8)] transition-all duration-300" />
                 )}
                 
-                <GlassCard tier="flat" shape="shape-ledger" hoverable className="p-4 flex items-center justify-between animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: `${index * 50}ms` }}>
+                <GlassCard tier="flat" shape="none" hoverable className="rounded-xl p-4 flex items-center justify-between animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: `${index * 50}ms` }}>
                     <div className="flex items-center gap-8">
                         <Link href={`/coin/${asset.symbol}`} className="block transition-transform">
                             <PredictionNode asset={asset} />

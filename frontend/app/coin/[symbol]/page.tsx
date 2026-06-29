@@ -183,15 +183,15 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
       height: isFullscreen ? window.innerHeight - 100 : 480,
       layout: {
         background: { type: ColorType.Solid, color: "transparent" },
-        textColor: "rgba(255, 255, 255, 0.5)",
+        textColor: palette.muted,
       },
       grid: {
-        vertLines: { color: "rgba(255, 255, 255, 0.05)" },
-        horzLines: { color: "rgba(255, 255, 255, 0.05)" },
+        vertLines: { color: `${palette.muted}15` },
+        horzLines: { color: `${palette.muted}15` },
       },
       crosshair: { mode: 1 },
-      rightPriceScale: { borderColor: "rgba(255, 255, 255, 0.1)" },
-      timeScale: { borderColor: "rgba(255, 255, 255, 0.1)", timeVisible: true },
+      rightPriceScale: { borderColor: `${palette.muted}25` },
+      timeScale: { borderColor: `${palette.muted}25`, timeVisible: true },
     });
     
     chartRef.current = chart;
@@ -300,7 +300,7 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
       chart.remove();
       chartRef.current = null;
     };
-  }, [ohlcv, showBB, chartType, isFullscreen]); 
+  }, [ohlcv, showBB, chartType, isFullscreen, palette.muted]); 
   
   useEffect(() => {
     if (chartRef.current && ohlcv && ohlcv.length > 0) {
@@ -353,7 +353,7 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
   const liveBB = calculateBB(livePrices, 20);
   
   return (
-    <div className="space-y-6 min-h-screen pb-12 p-6 glass-2 shape-seal overflow-hidden relative">
+    <div className="space-y-6 min-h-screen pb-12 p-6 glass-2 rounded-2xl overflow-hidden relative">
       
       {/* Subtle Glow Backgrounds */}
       <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-accent/10 rounded-full blur-[120px] pointer-events-none" />
@@ -368,7 +368,7 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
 
       <div className="max-w-[1600px] mx-auto px-4 relative z-10 space-y-6">
           {/* SECTION 1 - Header */}
-          <GlassCard tier={2} shape="shape-squircle" className="p-6 lg:p-8 flex flex-col gap-4 overflow-visible">
+          <GlassCard tier={2} shape="none" className="rounded-xl p-6 lg:p-8 flex flex-col gap-4 overflow-visible">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
               <div className="flex flex-col">
                 <div className="flex items-center gap-4">
@@ -419,7 +419,7 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
           </GlassCard>
           
           {/* SECTION 2 - Main Chart */}
-          <GlassCard tier={2} shape="shape-squircle" className={`p-4 overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50 rounded-none m-0 bg-background border-0 backdrop-blur-none' : ''}`}>
+          <GlassCard tier={2} shape="none" className={`rounded-xl p-4 overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50 rounded-none m-0 bg-background border-0 backdrop-blur-none' : ''}`}>
             
             {/* Chart Actions Toolbar */}
             <div className="flex flex-wrap justify-between items-center mb-4 gap-4 bg-surface/30 p-2 rounded-sm border border-white/5">
@@ -518,7 +518,7 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             
             {/* Real-Time Fundamentals */}
-            <GlassCard tier={2} shape="shape-squircle" className="p-8 relative overflow-hidden group">
+            <GlassCard tier={2} shape="none" className="rounded-xl p-8 relative overflow-hidden group">
               <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity">
                   <Layers size={100} className="text-text-muted" />
               </div>
@@ -561,7 +561,7 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
             </GlassCard>
 
             {/* Real-Time Technical Analysis */}
-            <GlassCard tier={2} shape="shape-squircle" className="p-8 relative overflow-hidden group">
+            <GlassCard tier={2} shape="none" className="rounded-xl p-8 relative overflow-hidden group">
               <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity">
                   <Activity size={100} className="text-text-muted" />
               </div>
@@ -624,7 +624,7 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
             </div>
             
             {showRSI && (
-              <GlassCard tier={2} shape="shape-squircle" className="p-6 overflow-hidden">
+              <GlassCard tier={2} shape="none" className="rounded-xl p-6 overflow-hidden">
                 <h3 className="text-[10px] font-mono font-black uppercase tracking-widest text-text-muted mb-4">Relative Strength Index History (14)</h3>
                 <div className="h-48">
                   <ResponsiveContainer width="100%" height="100%">
@@ -632,7 +632,7 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
                       <XAxis dataKey="time" hide />
                       <YAxis domain={[0, 100]} hide />
                       <RechartsTooltip 
-                        contentStyle={{ backgroundColor: "rgba(10,10,15,0.9)", borderColor: "rgba(255,255,255,0.1)", borderRadius: "8px", fontFamily: "monospace", fontSize: "10px", fontWeight: "bold" }} 
+                        contentStyle={{ backgroundColor: "rgba(var(--background), 0.9)", borderColor: "rgba(var(--text), 0.1)", borderRadius: "8px", fontFamily: "monospace", fontSize: "10px", fontWeight: "bold" }} 
                         labelFormatter={(label) => new Date(label * 1000).toLocaleString()}
                       />
                       <ReferenceLine y={70} stroke={palette.danger} strokeDasharray="3 3" label={{ value: "OVERBOUGHT", fill: "rgba(239,68,68,0.8)", position: "insideTopLeft", fontSize: 9, fontFamily: "sans-serif", fontWeight: "bold", letterSpacing: "0.1em" }} />
@@ -649,7 +649,7 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             
             {/* LEFT COLUMN: Prediction History */}
-            <GlassCard tier={2} shape="shape-squircle" className="p-0 overflow-hidden flex flex-col">
+            <GlassCard tier={2} shape="none" className="rounded-xl p-0 overflow-hidden flex flex-col">
               <div className="p-8 border-b border-white/5 bg-surface/30">
                 <div className="flex justify-between items-center">
                   <div>
@@ -689,7 +689,7 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
             </GlassCard>
             
             {/* RIGHT COLUMN: Correlated Coins */}
-            <GlassCard tier={2} shape="shape-squircle" className="p-0 overflow-hidden flex flex-col">
+            <GlassCard tier={2} shape="none" className="rounded-xl p-0 overflow-hidden flex flex-col">
               <div className="p-8 border-b border-white/5 bg-surface/30">
                 <h3 className="text-xl font-black text-text tracking-tight">Matrix Correlations</h3>
                 <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-1">Asset relationship structural mapping</p>
