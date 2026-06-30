@@ -6,7 +6,38 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
-import pandas_ta as ta  # noqa: F401
+
+def compute_rsi(close: pd.Series, length: int = 14) -> pd.Series:
+    delta = close.diff()
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    avg_gain = gain.ewm(com=length - 1, adjust=False).mean()
+    avg_loss = loss.ewm(com=length - 1, adjust=False).mean()
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    rsi = 100 - (100 / (1 + rs))
+    return rsi.fillna(50.0)
+
+def compute_macd(close: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9):
+    ema_fast = close.ewm(span=fast, adjust=False).mean()
+    ema_slow = close.ewm(span=slow, adjust=False).mean()
+    macd = ema_fast - ema_slow
+    macd_signal = macd.ewm(span=signal, adjust=False).mean()
+    return macd, macd_signal
+
+def compute_atr(high: pd.Series, low: pd.Series, close: pd.Series, length: int = 14) -> pd.Series:
+    tr1 = high - low
+    tr2 = (high - close.shift(1)).abs()
+    tr3 = (low - close.shift(1)).abs()
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    atr = tr.ewm(alpha=1/length, adjust=False).mean()
+    return atr
+
+def compute_bb_width(close: pd.Series, length: int = 20, std: float = 2.0) -> pd.Series:
+    bbm = close.rolling(window=length).mean()
+    bbs = close.rolling(window=length).std()
+    bbu = bbm + std * bbs
+    bbl = bbm - std * bbs
+    return (bbu - bbl) / bbm.replace(0, np.nan)
 
 DB_PATH = Path(__file__).parent.parent.parent.parent / "backend" / "cryptograph.db"
 
@@ -40,34 +71,22 @@ def main() -> None:
             continue
 
         df = pd.DataFrame([dict(r) for r in all_rows])
-        df["timestamp"] = pd.to_datetime(df["timestamp"])
+        df["timestamp"] = pd.to_datetime(df["timestamp"], format="ISO8601")
         df = df.sort_values("timestamp")
         
         # Ensure numerical types
         cols_to_numeric = ["open", "high", "low", "close", "volume"]
         df[cols_to_numeric] = df[cols_to_numeric].apply(pd.to_numeric)
 
-        # Compute pandas-ta indicators
-        df["rsi_14"] = df.ta.rsi(length=14)
+        # Compute indicators using custom pure-python logic
+        df["rsi_14"] = compute_rsi(df["close"], length=14)
         
-        macd = df.ta.macd(fast=12, slow=26, signal=9)
-        if macd is not None and not macd.empty:
-            df["macd"] = macd["MACD_12_26_9"]
-            df["macd_signal"] = macd["MACDs_12_26_9"]
-        else:
-            df["macd"] = np.nan
-            df["macd_signal"] = np.nan
+        macd_val, macd_sig_val = compute_macd(df["close"], fast=12, slow=26, signal=9)
+        df["macd"] = macd_val
+        df["macd_signal"] = macd_sig_val
             
-        df["atr_14"] = df.ta.atr(length=14)
-        
-        bb = df.ta.bbands(length=20, std=2)
-        if bb is not None and not bb.empty:
-            bbu = bb["BBU_20_2.0_2.0"]
-            bbl = bb["BBL_20_2.0_2.0"]
-            bbm = bb["BBM_20_2.0_2.0"]
-            df["bb_width"] = (bbu - bbl) / bbm
-        else:
-            df["bb_width"] = np.nan
+        df["atr_14"] = compute_atr(df["high"], df["low"], df["close"], length=14)
+        df["bb_width"] = compute_bb_width(df["close"], length=20, std=2.0)
 
         # Compute manual indicators
         df["returns_1d"] = np.log(df["close"] / df["close"].shift(1))

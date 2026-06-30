@@ -1,6 +1,6 @@
 "use client";
+import React, { useState, useEffect, useRef, use } from "react";
 
-import { useEffect, useState, useRef, use } from "react";
 import { useChartPalette } from "@/lib/useChartPalette";
 import { createChart, ColorType, IChartApi } from "lightweight-charts";
 import { AreaChart, Area, ComposedChart, Line, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceLine, Cell } from "recharts";
@@ -17,7 +17,7 @@ function DirectionBadge({ dir }: { dir: string }) {
   const config: Record<string, {bg: string, text: string, label: string, border: string, shadow: string}> = {
     strong_up:   {bg:"bg-success/10",  text:"text-success", label:"STRONG BUY", border:"border-success/30", shadow:"shadow-[0_0_10px_rgba(34,197,94,0.2)]"},
     up:          {bg:"bg-success/5",  text:"text-success", label:"BUY", border:"border-success/20", shadow:""},
-    neutral:     {bg:"bg-white/5",   text:"text-text-muted",  label:"NEUTRAL", border:"border-white/10", shadow:""},
+    neutral:     {bg:"bg-text/5",   text:"text-text-muted",  label:"NEUTRAL", border:"border-text/10", shadow:""},
     down:        {bg:"bg-danger/5",    text:"text-danger",   label:"SELL", border:"border-danger/20", shadow:""},
     strong_down: {bg:"bg-danger/10",    text:"text-danger",   label:"STRONG SELL", border:"border-danger/30", shadow:"shadow-[0_0_10px_rgba(239,68,68,0.2)]"},
   }
@@ -83,6 +83,13 @@ function calculateBB(prices: number[], period: number = 20) {
 
 
 export default function CoinDetailPage({ params }: { params: Promise<{ symbol: string }> }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) return <div className="h-screen w-full flex items-center justify-center text-text-muted font-mono bg-background">Loading chart components...</div>;
+
   const palette = useChartPalette();
   
   const resolvedParams = use(params);
@@ -325,7 +332,7 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
   
   if (!ohlcv || !history) return (
     <div className="h-[50vh] flex flex-col items-center justify-center space-y-6">
-      <div className="text-text bg-surface/30 p-6 rounded-sm border border-white/10 font-mono text-center flex flex-col items-center gap-4 shadow-inner">
+      <div className="text-text bg-surface/30 p-6 rounded-sm border border-text/10 font-mono text-center flex flex-col items-center gap-4 shadow-inner">
           <RefreshCw size={32} className="text-accent animate-spin" />
           <p className="uppercase tracking-widest text-[10px] font-bold text-text-muted">Loading Asset Profile...</p>
       </div>
@@ -362,7 +369,7 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
       {/* Breadcrumb Navigation */}
       <div className="flex items-center text-[10px] font-mono font-bold text-text-muted uppercase tracking-widest mb-2 relative z-10 pt-4 max-w-[1600px] mx-auto px-4">
         <Link href="/market" className="hover:text-accent transition-colors">Market Data</Link>
-        <ChevronRight size={14} className="mx-2 text-white/20" />
+        <ChevronRight size={14} className="mx-2 text-text-muted/30" />
         <span className="text-text">{symbol}</span>
       </div>
 
@@ -394,19 +401,19 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
               <div className="flex flex-col items-end gap-4 w-full md:w-auto">
                 <Link 
                   href={`/predictions?symbol=${symbol}`}
-                  className="glass bg-accent hover:bg-accent/90 text-white px-6 py-3 rounded-sm text-[10px] uppercase font-black tracking-widest transition-all shadow-[0_0_20px_rgba(var(--accent),0.4)] flex items-center gap-2 hover:scale-105 border border-white/20"
+                  className="glass bg-accent hover:bg-accent/90 text-white px-6 py-3 rounded-sm text-[10px] uppercase font-black tracking-widest transition-all shadow-[0_0_20px_rgba(var(--accent),0.4)] flex items-center gap-2 hover:scale-105 border border-text/20"
                 >
                   <Brain size={16} /> Analyze in Prediction Studio
                 </Link>
-                <div className="flex items-center gap-4 glass bg-surface/50 border border-white/10 rounded-sm p-4 w-full md:w-auto justify-between shadow-inner">
+                <div className="flex items-center gap-4 glass bg-surface/50 border border-text/10 rounded-sm p-4 w-full md:w-auto justify-between shadow-inner">
                     <div className="flex items-center gap-3">
                         <span className="text-[9px] text-text-muted uppercase font-black tracking-widest">Latest Signal</span>
                         <DirectionBadge dir={latestPred.direction || "neutral"} />
                     </div>
-                    <div className="w-px h-6 bg-white/10 hidden md:block" />
+                    <div className="w-px h-6 bg-text/10 hidden md:block" />
                     <div className="flex flex-col items-end">
                         <span className="text-[9px] text-text-muted uppercase tracking-widest mb-1.5 font-black">Confidence</span>
-                        <div className="w-24 h-1.5 bg-black/50 rounded-full overflow-hidden border border-white/5">
+                        <div className="w-24 h-1.5 bg-black/50 rounded-full overflow-hidden border border-text/5">
                         <div 
                             className="h-full bg-accent shadow-[0_0_5px_rgba(var(--accent),0.5)]" 
                             style={{ width: `${latestPred.confidence || 0}%` }}
@@ -422,15 +429,15 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
           <GlassCard tier={2} shape="none" className={`rounded-xl p-4 overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50 rounded-none m-0 bg-background border-0 backdrop-blur-none' : ''}`}>
             
             {/* Chart Actions Toolbar */}
-            <div className="flex flex-wrap justify-between items-center mb-4 gap-4 bg-surface/30 p-2 rounded-sm border border-white/5">
+            <div className="flex flex-wrap justify-between items-center mb-4 gap-4 bg-surface/30 p-2 rounded-sm border border-text/5">
               <div className="flex gap-2 items-center">
-                <div className="flex bg-black/40 rounded-sm border border-white/5 p-1 shadow-inner">
+                <div className="flex bg-black/40 rounded-sm border border-text/5 p-1 shadow-inner">
                   {["1m", "5m", "15m", "1h", "4h", "1d", "1w"].map(i => (
                     <button
                       key={i}
                       onClick={() => setIntervalState(i)}
                       className={`px-3 py-1.5 rounded-sm text-[10px] font-black uppercase tracking-widest transition-all ${
-                        interval === i ? "bg-accent/20 text-accent border border-accent/30 shadow-[0_0_10px_rgba(var(--accent),0.2)]" : "text-text-muted hover:text-text hover:bg-white/5 border border-transparent"
+                        interval === i ? "bg-accent/20 text-accent border border-accent/30 shadow-[0_0_10px_rgba(var(--accent),0.2)]" : "text-text-muted hover:text-text hover:bg-text/5 border border-transparent"
                       }`}
                     >
                       {i}
@@ -438,23 +445,23 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
                   ))}
                 </div>
                 
-                <div className="w-px h-6 bg-white/10 mx-2" />
+                <div className="w-px h-6 bg-text/10 mx-2" />
                 
-                <div className="flex bg-black/40 rounded-sm border border-white/5 p-1 shadow-inner">
+                <div className="flex bg-black/40 rounded-sm border border-text/5 p-1 shadow-inner">
                   <button 
                     onClick={() => setChartType('candlestick')}
-                    className={`px-3 py-1.5 rounded-sm text-[10px] font-black uppercase tracking-widest transition-all ${chartType === 'candlestick' ? "bg-white/10 text-text border border-white/20" : "text-text-muted hover:bg-white/5 border border-transparent"}`}
+                    className={`px-3 py-1.5 rounded-sm text-[10px] font-black uppercase tracking-widest transition-all ${chartType === 'candlestick' ? "bg-text/10 text-text border border-text/20" : "text-text-muted hover:bg-text/5 border border-transparent"}`}
                   >
                     Candles
                   </button>
                   <button 
                     onClick={() => setChartType('line')}
-                    className={`px-3 py-1.5 rounded-sm text-[10px] font-black uppercase tracking-widest transition-all ${chartType === 'line' ? "bg-white/10 text-text border border-white/20" : "text-text-muted hover:bg-white/5 border border-transparent"}`}
+                    className={`px-3 py-1.5 rounded-sm text-[10px] font-black uppercase tracking-widest transition-all ${chartType === 'line' ? "bg-text/10 text-text border border-text/20" : "text-text-muted hover:bg-text/5 border border-transparent"}`}
                   >
                     Line
                   </button>
                 </div>
-                <div className="w-px h-6 bg-white/10 mx-2" />
+                <div className="w-px h-6 bg-text/10 mx-2" />
                 <div className="flex items-center gap-2 px-2">
                   <span className="relative flex h-2 w-2 mr-1">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success/80"></span>
@@ -465,13 +472,13 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
               </div>
 
               <div className="flex items-center gap-2">
-                <div className="flex bg-black/40 rounded-sm border border-white/5 p-1 shadow-inner mr-2">
+                <div className="flex bg-black/40 rounded-sm border border-text/5 p-1 shadow-inner mr-2">
                   {["1D", "1W", "1M", "3M", "1Y", "ALL"].map(p => (
                     <button
                       key={p}
                       onClick={() => setPeriod(p)}
                       className={`px-3 py-1.5 rounded-sm text-[10px] font-black uppercase tracking-widest transition-all ${
-                        period === p ? "bg-white/10 text-text border border-white/20" : "text-text-muted hover:text-text border border-transparent"
+                        period === p ? "bg-text/10 text-text border border-text/20" : "text-text-muted hover:text-text border border-transparent"
                       }`}
                     >
                       {p}
@@ -481,7 +488,7 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
                 
                 <button 
                   onClick={() => setIsFullscreen(!isFullscreen)}
-                  className="p-2 rounded-sm text-text-muted hover:bg-white/10 hover:text-text transition-colors border border-transparent hover:border-white/10"
+                  className="p-2 rounded-sm text-text-muted hover:bg-text/10 hover:text-text transition-colors border border-transparent hover:border-text/10"
                   title="Toggle Fullscreen"
                 >
                   {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
@@ -497,12 +504,12 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
               </div>
             </div>
             
-            <div className="relative border border-white/5 rounded-sm bg-black/20 p-2" style={{ height: isFullscreen ? 'calc(100vh - 100px)' : '480px' }}>
+            <div className="relative border border-text/5 rounded-sm bg-black/20 p-2" style={{ height: isFullscreen ? 'calc(100vh - 100px)' : '480px' }}>
               <div ref={chartContainerRef} className="w-full h-full" />
               
               {/* Intraday Floating Tooltip */}
               {tooltipData && (
-                <div className="absolute top-4 left-4 z-10 glass bg-surface/90 backdrop-blur-xl border border-white/10 p-4 rounded-sm shadow-2xl flex gap-6 text-[10px] font-mono pointer-events-none tracking-widest uppercase font-bold">
+                <div className="absolute top-4 left-4 z-10 glass bg-surface/90 backdrop-blur-xl border border-text/10 p-4 rounded-sm shadow-2xl flex gap-6 text-[10px] font-mono pointer-events-none tracking-widest uppercase font-bold">
                   <div className="text-accent drop-shadow-[0_0_5px_rgba(var(--accent),0.5)]">{new Date(tooltipData.time * 1000).toLocaleString(undefined, {month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit'})}</div>
                   <div className="text-text-muted">O <span className="text-text ml-1">{tooltipData.open?.toFixed(2)}</span></div>
                   <div className="text-text-muted">H <span className="text-text ml-1">{tooltipData.high?.toFixed(2)}</span></div>
@@ -524,7 +531,7 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
               </div>
               <div className="flex justify-between items-center mb-8 relative z-10">
                 <h3 className="text-xl font-black text-text tracking-tight flex items-center gap-3">
-                    <div className="p-2 glass bg-white/5 rounded-sm border border-white/10 shadow-inner"><Layers size={18} className="text-text" /></div>
+                    <div className="p-2 glass bg-text/5 rounded-sm border border-text/10 shadow-inner"><Layers size={18} className="text-text" /></div>
                     Fundamental Snapshot
                 </h3>
                 <span className="flex h-2 w-2 relative">
@@ -533,25 +540,25 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-4 relative z-10">
-                <div className="glass bg-black/40 p-5 rounded-sm border border-white/5 hover:border-white/20 transition-colors shadow-inner">
+                <div className="glass bg-black/40 p-5 rounded-sm border border-text/5 hover:border-text/20 transition-colors shadow-inner">
                     <div className="text-[9px] text-text-muted mb-2 font-mono font-black uppercase tracking-widest flex items-center gap-2"><Info size={12}/> Market Cap</div>
                     <div className={`text-2xl font-mono font-black tracking-tighter transition-colors duration-300 ${livePrice ? 'text-text' : 'text-text-muted'}`}>
                         ${displayMcap ? (displayMcap / 1e9).toFixed(2) + "B" : "N/A"}
                     </div>
                 </div>
-                <div className="glass bg-black/40 p-5 rounded-sm border border-white/5 hover:border-white/20 transition-colors shadow-inner">
+                <div className="glass bg-black/40 p-5 rounded-sm border border-text/5 hover:border-text/20 transition-colors shadow-inner">
                     <div className="text-[9px] text-text-muted mb-2 font-mono font-black uppercase tracking-widest flex items-center gap-2"><ActivitySquare size={12}/> 24h Volume</div>
                     <div className={`text-2xl font-mono font-black tracking-tighter transition-colors duration-300 ${(liveVolume24h !== null && liveVolume24h > 0) ? 'text-text' : 'text-text-muted'}`}>
                         ${(liveVolume24h !== null && liveVolume24h > 0) ? (liveVolume24h / 1e6).toFixed(2) + "M" : "Loading..."}
                     </div>
                 </div>
-                <div className="glass bg-black/40 p-5 rounded-sm border border-white/5 hover:border-white/20 transition-colors shadow-inner">
+                <div className="glass bg-black/40 p-5 rounded-sm border border-text/5 hover:border-text/20 transition-colors shadow-inner">
                     <div className="text-[9px] text-text-muted mb-2 font-mono font-black uppercase tracking-widest flex items-center gap-2"><CircleDot size={12}/> Circ. Supply</div>
                     <div className={`text-2xl font-mono font-black tracking-tighter transition-colors duration-300 ${circSupply > 0 ? 'text-text' : 'text-text-muted'}`}>
                         {circSupply > 0 ? (circSupply / 1e6).toFixed(2) + "M" : "Loading..."}
                     </div>
                 </div>
-                <div className="glass bg-black/40 p-5 rounded-sm border border-white/5 hover:border-white/20 transition-colors shadow-inner">
+                <div className="glass bg-black/40 p-5 rounded-sm border border-text/5 hover:border-text/20 transition-colors shadow-inner">
                     <div className="text-[9px] text-text-muted mb-2 font-mono font-black uppercase tracking-widest flex items-center gap-2"><TrendingUp size={12}/> All-Time High</div>
                     <div className={`text-2xl font-mono font-black tracking-tighter transition-colors duration-300 ${liveATH > 0 ? 'text-text' : 'text-text-muted'}`}>
                         ${liveATH > 0 ? liveATH.toFixed(2) : "Loading..."}
@@ -577,21 +584,21 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
               </div>
               
               <div className="space-y-4 relative z-10">
-                  <div className="flex justify-between items-center glass bg-black/40 p-4 rounded-sm border border-white/5 hover:border-white/20 transition-colors shadow-inner">
+                  <div className="flex justify-between items-center glass bg-black/40 p-4 rounded-sm border border-text/5 hover:border-text/20 transition-colors shadow-inner">
                       <span className="text-[10px] text-text-muted uppercase tracking-widest font-mono font-black">RSI (14)</span>
                       <div className="flex items-center gap-4">
                           <span className="font-mono font-black text-text text-xl">{liveRSI.toFixed(2)}</span>
                           <DirectionBadge dir={liveRSI > 60 ? "down" : liveRSI < 40 ? "up" : "neutral"} />
                       </div>
                   </div>
-                  <div className="flex justify-between items-center glass bg-black/40 p-4 rounded-sm border border-white/5 hover:border-white/20 transition-colors shadow-inner">
+                  <div className="flex justify-between items-center glass bg-black/40 p-4 rounded-sm border border-text/5 hover:border-text/20 transition-colors shadow-inner">
                       <span className="text-[10px] text-text-muted uppercase tracking-widest font-mono font-black">MACD Div</span>
                       <div className="flex items-center gap-4">
                           <span className="font-mono font-black text-text text-xl">{liveMACD.toFixed(4)}</span>
                           <DirectionBadge dir={liveMACD > 0 ? "up" : "down"} />
                       </div>
                   </div>
-                  <div className="flex justify-between items-center glass bg-black/40 p-4 rounded-sm border border-white/5 hover:border-white/20 transition-colors shadow-inner">
+                  <div className="flex justify-between items-center glass bg-black/40 p-4 rounded-sm border border-text/5 hover:border-text/20 transition-colors shadow-inner">
                       <span className="text-[10px] text-text-muted uppercase tracking-widest font-mono font-black">Volatility (BB)</span>
                       <div className="flex items-center gap-4">
                           <span className="font-mono font-black text-text text-xl">{liveBB.width.toFixed(4)}</span>
@@ -608,7 +615,7 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
               <button 
                 onClick={() => setShowRSI(!showRSI)}
                 className={`px-5 py-2.5 rounded-sm text-[10px] font-black uppercase tracking-widest border transition-all ${
-                  showRSI ? "border-accent/50 text-accent glass bg-accent/10 shadow-[0_0_15px_rgba(var(--accent),0.2)]" : "border-white/10 text-text-muted hover:border-white/20 hover:text-text glass bg-surface/30"
+                  showRSI ? "border-accent/50 text-accent glass bg-accent/10 shadow-[0_0_15px_rgba(var(--accent),0.2)]" : "border-text/10 text-text-muted hover:border-text/20 hover:text-text glass bg-surface/30"
                 }`}
               >
                 Toggle Chart RSI
@@ -616,7 +623,7 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
               <button 
                 onClick={() => setShowBB(!showBB)}
                 className={`px-5 py-2.5 rounded-sm text-[10px] font-black uppercase tracking-widest border transition-all ${
-                  showBB ? "border-accent/50 text-accent glass bg-accent/10 shadow-[0_0_15px_rgba(var(--accent),0.2)]" : "border-white/10 text-text-muted hover:border-white/20 hover:text-text glass bg-surface/30"
+                  showBB ? "border-accent/50 text-accent glass bg-accent/10 shadow-[0_0_15px_rgba(var(--accent),0.2)]" : "border-text/10 text-text-muted hover:border-text/20 hover:text-text glass bg-surface/30"
                 }`}
               >
                 Toggle Chart BB
@@ -627,7 +634,7 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
               <GlassCard tier={2} shape="none" className="rounded-xl p-6 overflow-hidden">
                 <h3 className="text-[10px] font-mono font-black uppercase tracking-widest text-text-muted mb-4">Relative Strength Index History (14)</h3>
                 <div className="h-48">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                     <AreaChart data={ohlcv.map((d:any, i:number) => ({ time: d.time, rsi: calculateRSI(ohlcv.map((x:any)=>x.close).slice(0, i+1), 14) }))}>
                       <XAxis dataKey="time" hide />
                       <YAxis domain={[0, 100]} hide />
@@ -650,13 +657,13 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
             
             {/* LEFT COLUMN: Prediction History */}
             <GlassCard tier={2} shape="none" className="rounded-xl p-0 overflow-hidden flex flex-col">
-              <div className="p-8 border-b border-white/5 bg-surface/30">
+              <div className="p-8 border-b border-text/10 bg-surface/30">
                 <div className="flex justify-between items-center">
                   <div>
                     <h3 className="text-xl font-black text-text tracking-tight">Prediction History</h3>
                     <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-1">AI signal accuracy audit log</p>
                   </div>
-                  <div className="flex items-center gap-3 bg-black/40 px-4 py-2 rounded-sm border border-white/5">
+                  <div className="flex items-center gap-3 bg-text/5 px-4 py-2 rounded-sm border border-text/10">
                     <span className="text-2xl font-mono font-black text-accent drop-shadow-[0_0_10px_rgba(var(--accent),0.5)]">{history.summary.accuracy_pct.toFixed(0)}%</span>
                     <span className="text-[8px] uppercase tracking-widest font-black text-text-muted">accuracy</span>
                   </div>
@@ -666,7 +673,7 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
               <div className="flex-1 p-8">
                 <div className="space-y-3 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
                   {history.predictions.map((p: any, i: number) => (
-                    <div key={i} className={`flex items-center justify-between p-4 rounded-sm border transition-colors ${i % 2 === 0 ? "glass bg-black/30 border-white/5 hover:border-white/10" : "bg-transparent border-transparent hover:bg-white/[0.02]"}`}>
+                    <div key={i} className={`flex items-center justify-between p-4 rounded-sm border transition-colors ${i % 2 === 0 ? "glass bg-text/5 border-text/5 hover:border-text/10" : "bg-transparent border-transparent hover:bg-text/[0.02]"}`}>
                       <div className="flex items-center gap-4">
                         <span className="text-[10px] font-mono font-bold text-text-muted w-28">{p.date}</span>
                         <div className="w-28"><DirectionBadge dir={p.direction} /></div>
@@ -690,7 +697,7 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
             
             {/* RIGHT COLUMN: Correlated Coins */}
             <GlassCard tier={2} shape="none" className="rounded-xl p-0 overflow-hidden flex flex-col">
-              <div className="p-8 border-b border-white/5 bg-surface/30">
+              <div className="p-8 border-b border-text/10 bg-surface/30">
                 <h3 className="text-xl font-black text-text tracking-tight">Matrix Correlations</h3>
                 <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-1">Asset relationship structural mapping</p>
               </div>
@@ -698,15 +705,15 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
               <div className="flex-1 p-8">
                 <div className="space-y-2">
                   {correlations?.map((c: any, i: number) => (
-                    <Link href={`/coin/${c.symbol}`} key={c.symbol} className="flex items-center justify-between p-4 glass bg-surface/30 hover:bg-white/5 rounded-sm border border-white/5 hover:border-white/20 transition-all group shadow-inner">
+                    <Link href={`/coin/${c.symbol}`} key={c.symbol} className="flex items-center justify-between p-4 glass bg-surface/30 hover:bg-text/5 rounded-sm border border-text/10 hover:border-text/20 transition-all group shadow-inner">
                       <div className="flex items-center gap-4 w-1/3">
                         <span className="text-[10px] text-text-muted font-mono font-black opacity-50">#{String(i + 1).padStart(2, '0')}</span>
                         <span className="font-mono font-black text-text group-hover:text-accent transition-colors text-lg tracking-tight">{c.symbol}</span>
                       </div>
                       
                       <div className="flex-1 flex items-center px-6">
-                        <div className="w-full bg-black/60 h-2 rounded-full overflow-hidden flex relative shadow-inner border border-white/5">
-                          <div className="absolute left-1/2 top-0 bottom-0 w-px bg-white/20 z-10" />
+                        <div className="w-full bg-text/10 h-2 rounded-full overflow-hidden flex relative shadow-inner border border-text/10">
+                          <div className="absolute left-1/2 top-0 bottom-0 w-px bg-text/20 z-10" />
                           {c.correlation > 0 ? (
                             <div className="h-full bg-success absolute left-1/2 shadow-[0_0_5px_rgba(34,197,94,0.8)]" style={{ width: `${c.correlation * 50}%` }} />
                           ) : (

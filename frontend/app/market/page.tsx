@@ -85,7 +85,7 @@ export default function MarketPage() {
     ? "bg-success/10 text-success border-success/30 shadow-[0_0_15px_rgba(34,197,94,0.2)]"
     : riskData?.market_regime === "bear"
       ? "bg-danger/10 text-danger border-danger/30 shadow-[0_0_15px_rgba(239,68,68,0.2)]"
-      : "bg-text-muted/10 text-text-muted border-white/10";
+      : "bg-text-muted/10 text-text-muted border-text/10";
 
   const RegimeIcon = riskData?.market_regime === "bull" ? TrendingUp
     : riskData?.market_regime === "bear" ? TrendingDown : Minus;
@@ -98,7 +98,7 @@ export default function MarketPage() {
         </div>
         <button
           onClick={() => mutate()}
-          className="flex items-center gap-2 px-6 py-3 glass hover:bg-white/10 transition-colors rounded-sm text-text border border-white/10"
+          className="flex items-center gap-2 px-6 py-3 glass hover:bg-text/10 transition-colors rounded-sm text-text border border-text/10"
         >
           <RefreshCcw size={16} />
           Reconnect
@@ -132,11 +132,11 @@ export default function MarketPage() {
         {/* Stats Bar */}
         {assets && assets.length > 0 && (
             <div className="flex flex-wrap items-center gap-3">
-                <span className="flex items-center gap-2 px-4 py-2 glass border-white/10 rounded-sm text-xs font-mono text-text shadow-lg">
+                 <span className="flex items-center gap-2 px-4 py-2 glass border-text/10 rounded-sm text-xs font-mono text-text shadow-lg">
                     <Network size={14} className="text-accent" />
                     {assets.length} Nodes
                 </span>
-                <span className="flex items-center gap-2 px-4 py-2 glass border-white/10 rounded-sm text-xs font-mono text-text shadow-lg">
+                <span className="flex items-center gap-2 px-4 py-2 glass border-text/10 rounded-sm text-xs font-mono text-text shadow-lg">
                     <Activity size={14} className="text-accent" />
                     Conf: {avgConfidence}%
                 </span>
@@ -150,58 +150,20 @@ export default function MarketPage() {
         )}
       </div>
 
-      {/* Glass Card List view */}
-      <div className="relative z-10 w-full flex flex-col gap-4">
+      {/* Compact Hover-detail Grid view */}
+      <div className="relative z-10 w-full">
         {isLoading || !assets || assets.length === 0 ? (
-          <div className="flex flex-col gap-4 w-full">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <GlassCard tier="flat" shape="none" key={i} className="rounded-xl w-full h-24 animate-pulse bg-[rgba(var(--text),0.06)]" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 w-full">
+            {Array.from({ length: 25 }).map((_, i) => (
+              <GlassCard tier="flat" shape="none" key={i} className="rounded-sm h-[64px] animate-pulse bg-[rgba(var(--text),0.03)] border border-text/5" />
             ))}
           </div>
         ) : (
-          <div className="flex flex-col gap-4">
-            {sortedAssets.map((asset, index) => (
-              <div key={asset.symbol} className="relative group">
-                {/* Connecting lines for previous items */}
-                {index > 0 && (
-                    <div className="absolute -top-4 left-12 w-[1px] h-4 bg-white/10 group-hover:bg-accent/40 group-hover:shadow-[0_0_8px_rgba(var(--accent),0.8)] transition-all duration-300" />
-                )}
-                
-                <GlassCard tier="flat" shape="none" hoverable className="rounded-xl p-4 flex items-center justify-between animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: `${index * 50}ms` }}>
-                    <div className="flex items-center gap-8">
-                        <Link href={`/coin/${asset.symbol}`} className="block transition-transform">
-                            <PredictionNode asset={asset} />
-                        </Link>
-                        
-                        <div className="hidden md:flex flex-col">
-                            <span className="text-[10px] text-text-muted uppercase tracking-widest font-mono">Prediction</span>
-                            <span className={`text-sm font-bold uppercase ${asset.predicted_direction?.includes('up') ? 'text-success' : asset.predicted_direction?.includes('down') ? 'text-danger' : 'text-text-muted'}`}>
-                                {asset.predicted_direction?.replace('_', ' ') || 'NEUTRAL'}
-                            </span>
-                        </div>
-                    </div>
-                    
-                    <div className="flex items-center gap-12">
-                        <div className="hidden lg:flex flex-col items-end">
-                            <span className="text-[10px] text-text-muted uppercase tracking-widest font-mono">24h Vol</span>
-                            <span className="text-sm font-mono font-bold text-text">${((asset.volume_24h || 0) / 1000000).toFixed(2)}M</span>
-                        </div>
-                        <div className="hidden lg:flex flex-col items-end">
-                            <span className="text-[10px] text-text-muted uppercase tracking-widest font-mono">24h Change</span>
-                            <span className={`text-sm font-mono font-bold ${(asset.price_change_24h_pct || 0) > 0 ? 'text-success' : (asset.price_change_24h_pct || 0) < 0 ? 'text-danger' : 'text-text'}`}>{(asset.price_change_24h_pct || 0) > 0 ? '+' : ''}{(asset.price_change_24h_pct || 0).toFixed(3)}%</span>
-                        </div>
-                        <div className="hidden lg:flex flex-col items-end">
-                            <span className="text-[10px] text-text-muted uppercase tracking-widest font-mono">RSI 14D</span>
-                            <span className={`text-sm font-mono font-bold ${(asset.rsi_14 || 50) > 70 ? 'text-danger' : (asset.rsi_14 || 50) < 30 ? 'text-success' : 'text-text'}`}>{(asset.rsi_14 || 0).toFixed(1)}</span>
-                        </div>
-                        
-                        <div className="flex flex-col items-end min-w-[80px]">
-                            <span className="text-[10px] text-text-muted uppercase tracking-widest font-mono">Conf</span>
-                            <span className="text-xl font-mono font-black text-text">{(asset.confidence || 0).toFixed(1)}%</span>
-                        </div>
-                    </div>
-                </GlassCard>
-              </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 w-full">
+            {sortedAssets.map((asset) => (
+              <Link key={asset.symbol} href={`/coin/${asset.symbol}`} className="block w-full">
+                <PredictionNode asset={asset} />
+              </Link>
             ))}
           </div>
         )}

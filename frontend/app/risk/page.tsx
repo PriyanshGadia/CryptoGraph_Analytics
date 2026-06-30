@@ -1,4 +1,5 @@
 "use client";
+import React, { useState, useEffect } from "react";
 import { useChartPalette } from "@/lib/useChartPalette";
 
 import useSWR from "swr";
@@ -80,6 +81,7 @@ function RiskLivingGauge({ volatility, intervalSpread }: { volatility: number, i
 }
 
 export default function RiskPage() {
+  const [mounted, setMounted] = useState(false);
   const palette = useChartPalette();
   
   const { data, error, isLoading, mutate } = useSWR<RiskData>("/api/risk", fetcher, {
@@ -91,6 +93,10 @@ export default function RiskPage() {
   const { data: macro } = useSWR("/api/risk/macro", fetcher, {
     revalidateOnFocus: false, dedupingInterval: 30000, refreshInterval: 300000,
   });
+
+  useEffect(() => setMounted(true), []);
+
+  if (!mounted) return <div className="h-screen w-full flex items-center justify-center text-text-muted font-mono bg-background">Loading chart components...</div>;
 
   if (error) {
     return (

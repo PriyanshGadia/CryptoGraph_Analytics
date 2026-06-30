@@ -5,7 +5,7 @@ import pandas as pd
 import yfinance as yf
 from app.api.deps import get_db
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, text
+from sqlalchemy import desc, text, func
 from datetime import datetime, timezone, timedelta
 from app.db.models_sqla import Prediction, Asset, OHLCV
 from app.core.cache import cached
@@ -18,15 +18,16 @@ router = APIRouter(prefix="/risk", tags=["risk"])
 @cached(ttl_seconds=120)
 def get_risk_data(db: Session = Depends(get_db)):
     """Returns full risk dashboard data with real metrics."""
-    # 1. Get latest predictions (deduplicated per asset)
-    preds = db.query(Prediction).order_by(desc(Prediction.predicted_at)).limit(200).all()
+    # 1. Get latest predictions per asset (deduplicated)
+    subq = db.query(
+        Prediction.asset_id,
+        func.max(Prediction.predicted_at).label("max_at")
+    ).group_by(Prediction.asset_id).subquery()
 
-    seen = set()
-    latest_preds = []
-    for p in preds:
-        if p.asset_id not in seen:
-            seen.add(p.asset_id)
-            latest_preds.append(p)
+    latest_preds = db.query(Prediction).join(
+        subq,
+        (Prediction.asset_id == subq.c.asset_id) & (Prediction.predicted_at == subq.c.max_at)
+    ).all()
 
     # 2. Market regime
     up_count = sum(1 for p in latest_preds if p.direction in ["up", "strong_up"])
@@ -49,13 +50,13 @@ def get_risk_data(db: Session = Depends(get_db)):
     asset_map = {a.id: a for a in assets}
 
     tech_rows = db.execute(text("""
-        SELECT asset_id, volatility_7d, returns_1d
-        FROM technical_features
-        WHERE (asset_id, timestamp) IN (
-            SELECT asset_id, MAX(timestamp)
+        SELECT t1.asset_id, t1.volatility_7d, t1.returns_1d
+        FROM technical_features t1
+        JOIN (
+            SELECT asset_id, MAX(timestamp) as max_ts
             FROM technical_features
             GROUP BY asset_id
-        )
+        ) t2 ON t1.asset_id = t2.asset_id AND t1.timestamp = t2.max_ts
     """)).fetchall()
 
     vol_data = {}
@@ -188,7 +189,7 @@ def get_macro_data(db: Session = Depends(get_db)):
     try:
         # Get VIX
         vix = yf.Ticker("^VIX")
-        vix_hist = vix.history(period="3mo")
+        vix_hist = vix.history(period="3mo", timeout=1.0)
         if not vix_hist.empty:
             current_vix = float(vix_hist["Close"].iloc[-1])
             macro["current_vix"] = round(current_vix, 2)
@@ -212,7 +213,7 @@ def get_macro_data(db: Session = Depends(get_db)):
 
         # Get Treasury yield (10Y as proxy for rates)
         tnx = yf.Ticker("^TNX")
-        tnx_hist = tnx.history(period="5d")
+        tnx_hist = tnx.history(period="5d", timeout=1.0)
         if not tnx_hist.empty:
             rate = float(tnx_hist["Close"].iloc[-1])
             macro["current_fed_rate"] = round(rate, 2)

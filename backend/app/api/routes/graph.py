@@ -1,7 +1,7 @@
 """Graph routes — local SQLAlchemy backend."""
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, text
+from sqlalchemy import desc, text, func
 from app.api.deps import get_db
 from app.db.models import GraphResponse, GraphNode, GraphEdge
 from app.db.models_sqla import Asset, Prediction, OHLCV
@@ -47,9 +47,17 @@ def _compute_correlation_graph(db: Session, top_n_edges: int = 100):
     asset_map = {a.id: a for a in assets}
 
     # Get latest predictions
-    preds = db.query(Prediction).order_by(desc(Prediction.predicted_at)).limit(200).all()
+    subq = db.query(
+        Prediction.asset_id,
+        func.max(Prediction.predicted_at).label("max_at")
+    ).group_by(Prediction.asset_id).subquery()
+
+    latest_preds = db.query(Prediction).join(
+        subq,
+        (Prediction.asset_id == subq.c.asset_id) & (Prediction.predicted_at == subq.c.max_at)
+    ).all()
     pred_map = {}
-    for p in preds:
+    for p in latest_preds:
         if p.asset_id not in pred_map:
             pred_map[p.asset_id] = p
 
@@ -82,13 +90,13 @@ def _compute_correlation_graph(db: Session, top_n_edges: int = 100):
 
     # Load latest technical features for Motif Mining (Structural Similarity)
     latest_tech_query = text("""
-        SELECT asset_id, returns_1d, volatility_7d, rsi_14, macd, macd_signal
-        FROM technical_features
-        WHERE (asset_id, timestamp) IN (
-            SELECT asset_id, MAX(timestamp)
+        SELECT t1.asset_id, t1.returns_1d, t1.volatility_7d, t1.rsi_14, t1.macd, t1.macd_signal
+        FROM technical_features t1
+        JOIN (
+            SELECT asset_id, MAX(timestamp) as max_ts
             FROM technical_features
             GROUP BY asset_id
-        )
+        ) t2 ON t1.asset_id = t2.asset_id AND t1.timestamp = t2.max_ts
     """)
     latest_tech_rows = db.execute(latest_tech_query).fetchall()
     

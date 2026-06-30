@@ -200,13 +200,13 @@ def get_sector_sentiment(db: Session = Depends(get_db)):
 
     # Get latest technicals per asset (batched)
     tech_rows = db.execute(text("""
-        SELECT asset_id, returns_1d, returns_7d, volatility_7d, rsi_14
-        FROM technical_features
-        WHERE (asset_id, timestamp) IN (
-            SELECT asset_id, MAX(timestamp)
+        SELECT t1.asset_id, t1.returns_1d, t1.returns_7d, t1.volatility_7d, t1.rsi_14
+        FROM technical_features t1
+        JOIN (
+            SELECT asset_id, MAX(timestamp) as max_ts
             FROM technical_features
             GROUP BY asset_id
-        )
+        ) t2 ON t1.asset_id = t2.asset_id AND t1.timestamp = t2.max_ts
     """)).fetchall()
 
     tech_map = {r[0]: {
@@ -286,13 +286,13 @@ def get_trending_assets(db: Session = Depends(get_db)):
 
     # Get latest technicals
     tech_rows = db.execute(text("""
-        SELECT asset_id, returns_1d, returns_7d, rsi_14, timestamp
-        FROM technical_features
-        WHERE (asset_id, timestamp) IN (
-            SELECT asset_id, MAX(timestamp)
+        SELECT t1.asset_id, t1.returns_1d, t1.returns_7d, t1.rsi_14, t1.timestamp
+        FROM technical_features t1
+        JOIN (
+            SELECT asset_id, MAX(timestamp) as max_ts
             FROM technical_features
             GROUP BY asset_id
-        )
+        ) t2 ON t1.asset_id = t2.asset_id AND t1.timestamp = t2.max_ts
     """)).fetchall()
 
     changes = []

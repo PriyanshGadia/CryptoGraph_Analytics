@@ -57,6 +57,20 @@ function Get-PythonExecutable {
     return $null
 }
 
+# Copy environment templates if missing
+if (-not (Test-Path "$ScriptDir\backend\.env")) {
+    if (Test-Path "$ScriptDir\backend\.env.example") {
+        Write-Host "[*] Creating backend .env from template..." -ForegroundColor Yellow
+        Copy-Item "$ScriptDir\backend\.env.example" "$ScriptDir\backend\.env"
+    }
+}
+if (-not (Test-Path "$ScriptDir\frontend\.env.local")) {
+    if (Test-Path "$ScriptDir\frontend\.env.example") {
+        Write-Host "[*] Creating frontend .env.local from template..." -ForegroundColor Yellow
+        Copy-Item "$ScriptDir\frontend\.env.example" "$ScriptDir\frontend\.env.local"
+    }
+}
+
 # 3. Setup Python Backend
 Write-Host "[*] Setting up Backend Environment..." -ForegroundColor Cyan
 Set-Location "$ScriptDir\backend"

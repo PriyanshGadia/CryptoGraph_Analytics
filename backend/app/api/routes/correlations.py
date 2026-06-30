@@ -50,13 +50,13 @@ def get_correlation_matrix(
 
     if basis == "Motif Similarity":
         latest_tech_query = text("""
-            SELECT asset_id, returns_1d, volatility_7d, rsi_14, macd, macd_signal
-            FROM technical_features
-            WHERE (asset_id, timestamp) IN (
-                SELECT asset_id, MAX(timestamp)
+            SELECT t1.asset_id, t1.returns_1d, t1.volatility_7d, t1.rsi_14, t1.macd, t1.macd_signal
+            FROM technical_features t1
+            JOIN (
+                SELECT asset_id, MAX(timestamp) as max_ts
                 FROM technical_features
                 GROUP BY asset_id
-            )
+            ) t2 ON t1.asset_id = t2.asset_id AND t1.timestamp = t2.max_ts
         """)
         latest_tech_rows = db.execute(latest_tech_query).fetchall()
         

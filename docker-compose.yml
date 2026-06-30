@@ -8,13 +8,20 @@ services:
     container_name: cryptograph_backend
     ports:
       - "8000:8000"
+    env_file:
+      - ./backend/.env
     environment:
       - ENVIRONMENT=production
+      - DATABASE_PATH=/app/database/cryptograph.db
     volumes:
-      - ./cryptograph.db:/app/cryptograph.db
-      - ./cryptograph.db-wal:/app/cryptograph.db-wal
-      - ./cryptograph.db-shm:/app/cryptograph.db-shm
+      - ./database:/app/database
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
   frontend:
     build:
@@ -23,8 +30,11 @@ services:
     container_name: cryptograph_frontend
     ports:
       - "3000:3000"
+    env_file:
+      - ./frontend/.env.local
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped

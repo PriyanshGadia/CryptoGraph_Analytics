@@ -52,7 +52,7 @@ export default function Dashboard() {
                     <button className="glass-3 rounded-xl px-6 py-3 text-sm font-bold tracking-widest uppercase text-text border border-accent-2/50 hover:bg-accent-2/10 hover:shadow-[0_0_20px_rgba(var(--accent-2),0.2)] transition-all duration-[var(--dur-hover)] ease-glide">
                         View Models
                     </button>
-                    <button className="glass-flat rounded-xl px-6 py-3 text-sm font-bold tracking-widest uppercase text-text-muted hover:text-text border border-white/10 hover:bg-white/5 transition-all duration-[var(--dur-hover)] ease-glide flex items-center gap-2">
+                    <button className="glass-flat rounded-xl px-6 py-3 text-sm font-bold tracking-widest uppercase text-text-muted hover:text-text border border-text/10 hover:bg-text/5 transition-all duration-[var(--dur-hover)] ease-glide flex items-center gap-2">
                         <Cpu size={16}/> API Docs
                     </button>
                 </div>
@@ -112,25 +112,25 @@ export default function Dashboard() {
                     </div>
                     
                     <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div className="bg-surface/50 border border-white/5 p-4 rounded-sm">
+                        <div className="bg-surface/50 border border-text/5 p-4 rounded-sm">
                             <div className="text-[10px] text-text-muted uppercase tracking-widest font-mono font-bold mb-2">Net Alpha (ROI)</div>
                             <div className={`text-2xl font-black font-sans tracking-tight ${portfolio?.roi_pct > 0 ? 'text-success drop-shadow-[0_0_10px_rgba(34,197,94,0.3)]' : portfolio?.roi_pct < 0 ? 'text-danger' : 'text-text'}`}>
                                 {portfolio?.roi_pct > 0 ? '+' : ''}{portfolio?.roi_pct?.toFixed(2) || '0.00'}%
                             </div>
                         </div>
-                        <div className="bg-surface/50 border border-white/5 p-4 rounded-sm">
+                        <div className="bg-surface/50 border border-text/5 p-4 rounded-sm">
                             <div className="text-[10px] text-text-muted uppercase tracking-widest font-mono font-bold mb-2">Total Executed</div>
                             <div className="text-2xl font-black font-sans tracking-tight text-text">
                                 {portfolio?.total_trades || 0}
                             </div>
                         </div>
-                        <div className="bg-surface/50 border border-white/5 p-4 rounded-sm">
+                        <div className="bg-surface/50 border border-text/5 p-4 rounded-sm">
                             <div className="text-[10px] text-text-muted uppercase tracking-widest font-mono font-bold mb-2">Win Rate</div>
                             <div className={`text-2xl font-black font-sans tracking-tight ${portfolio?.win_rate > 50 ? 'text-success' : 'text-warning'}`}>
                                 {portfolio?.win_rate?.toFixed(1) || '0.0'}%
                             </div>
                         </div>
-                        <div className="bg-surface/50 border border-white/5 p-4 rounded-sm">
+                        <div className="bg-surface/50 border border-text/5 p-4 rounded-sm">
                             <div className="text-[10px] text-text-muted uppercase tracking-widest font-mono font-bold mb-2">Total Value</div>
                             <div className="text-2xl font-black font-sans tracking-tight text-text">
                                 ${(portfolio?.total_value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}

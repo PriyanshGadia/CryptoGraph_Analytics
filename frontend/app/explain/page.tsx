@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/Badge";
 import { MessageSquare, Bot, AlertCircle, ChevronDown, ChevronUp, BarChart2, TrendingUp, TrendingDown } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { useChartPalette } from "@/lib/useChartPalette";
+import { useTheme } from "next-themes";
 import dynamic from 'next/dynamic';
 const ForceGraph2D = dynamic(() => import('react-force-graph-2d'), { ssr: false });
 
@@ -23,6 +24,7 @@ export default function ExplainPage() {
   const [error, setError] = useState<string | null>(null);
   const [showTranscript, setShowTranscript] = useState(false);
   const palette = useChartPalette();
+  const { resolvedTheme } = useTheme();
 
   const handleExplain = async () => {
     if (!selectedSymbol) return;
@@ -55,7 +57,7 @@ export default function ExplainPage() {
           <select
             value={selectedSymbol}
             onChange={(e) => setSelectedSymbol(e.target.value)}
-            className="flex-1 bg-surface/50 border border-white/10 rounded-sm px-5 py-3 text-text focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/50 transition-all font-mono"
+            className="flex-1 bg-surface/50 border border-text/10 rounded-sm px-5 py-3 text-text focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/50 transition-all font-mono"
             disabled={assetsLoading || isExplaining}
           >
             {assetsLoading ? (
@@ -95,17 +97,17 @@ export default function ExplainPage() {
                 <span className="text-xs font-mono tracking-widest uppercase text-accent animate-pulse">Generating neural interpretation...</span>
             </div>
             <div className="space-y-4">
-              <Skeleton className="h-6 w-1/3 rounded-sm bg-white/5" />
-              <Skeleton className="h-4 w-full rounded-sm bg-white/5" />
-              <Skeleton className="h-4 w-full rounded-sm bg-white/5" />
-              <Skeleton className="h-4 w-5/6 rounded-sm bg-white/5" />
+              <Skeleton className="h-6 w-1/3 rounded-sm bg-text/5" />
+              <Skeleton className="h-4 w-full rounded-sm bg-text/5" />
+              <Skeleton className="h-4 w-full rounded-sm bg-text/5" />
+              <Skeleton className="h-4 w-5/6 rounded-sm bg-text/5" />
             </div>
         </GlassCard>
       )}
 
       {explanation && !isExplaining && (
         <GlassCard tier={3} shape="none" className="rounded-xl p-0 border-accent/30 shadow-[0_0_30px_rgba(var(--accent),0.1)] overflow-hidden animate-in fade-in slide-in-from-bottom-4">
-          <div className="border-b border-white/10 bg-surface/30 p-6 sm:p-8">
+          <div className="border-b border-text/10 bg-surface/30 p-6 sm:p-8">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <h2 className="flex items-center gap-3 text-2xl font-black text-text font-sans tracking-tight">
                 <div className="w-10 h-10 flex items-center justify-center rounded-lg glass-1 border border-accent-2/50 text-accent-2 shadow-[0_0_15px_rgba(var(--accent-2),0.2)]">
@@ -113,7 +115,7 @@ export default function ExplainPage() {
                 </div>
                 Analysis for {explanation.symbol}
               </h2>
-              <div className={`px-4 py-1.5 rounded-sm text-xs font-bold uppercase tracking-widest border shadow-lg ${explanation.direction.toLowerCase().includes('up') ? 'bg-success/10 text-success border-success/30 shadow-success/20' : explanation.direction.toLowerCase().includes('down') ? 'bg-danger/10 text-danger border-danger/30 shadow-danger/20' : 'bg-text-muted/10 text-text-muted border-white/10'}`}>
+              <div className={`px-4 py-1.5 rounded-sm text-xs font-bold uppercase tracking-widest border shadow-lg ${explanation.direction.toLowerCase().includes('up') ? 'bg-success/10 text-success border-success/30 shadow-success/20' : explanation.direction.toLowerCase().includes('down') ? 'bg-danger/10 text-danger border-danger/30 shadow-danger/20' : 'bg-text-muted/10 text-text-muted border-text/10'}`}>
                 {explanation.direction.replace('_', ' ')}
               </div>
             </div>
@@ -121,11 +123,11 @@ export default function ExplainPage() {
           
           <div className="p-6 sm:p-8">
             {explanation.top_features && Object.keys(explanation.top_features).length > 0 && (
-              <div className="mb-8 p-6 bg-surface/50 border border-white/5 rounded-sm">
+              <div className="mb-8 p-6 bg-surface/50 border border-text/5 rounded-sm">
                 <h3 className="text-sm font-bold font-mono tracking-widest uppercase text-accent mb-4 flex items-center gap-2">
                   <BarChart2 size={16} /> Feature Attribution Subgraph
                 </h3>
-                <div className="h-64 w-full relative overflow-hidden rounded-sm border border-white/5 bg-black/20" style={{ cursor: 'crosshair' }}>
+                <div className="h-64 w-full relative overflow-hidden rounded-sm border border-text/5 bg-surface/30" style={{ cursor: 'crosshair' }}>
                   <ForceGraph2D 
                     width={800}
                     height={256}
@@ -139,7 +141,7 @@ export default function ExplainPage() {
                     nodeLabel="name"
                     nodeColor="color"
                     nodeRelSize={6}
-                    linkColor={() => 'rgba(255,255,255,0.2)'}
+                    linkColor={() => resolvedTheme === 'dark' ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)'}
                     linkWidth={(link) => link.value * 5}
                     linkDirectionalParticles={3}
                     linkDirectionalParticleWidth={(link) => link.value * 3}
@@ -162,7 +164,7 @@ export default function ExplainPage() {
             
                         {/* Debate Council UI */}
             {(explanation.bull_case || explanation.bear_case || explanation.risk_case) && (
-              <div className="mt-8 pt-6 border-t border-white/10">
+              <div className="mt-8 pt-6 border-t border-text/10">
                 <div className="text-[10px] text-text uppercase tracking-widest font-mono font-bold mb-4 flex items-center gap-2">
                   <Bot size={14} className="text-accent" /> Debate Council (Multi-Agent Consensus)
                 </div>
@@ -196,11 +198,11 @@ export default function ExplainPage() {
             )}
             
             {explanation.news_sources && explanation.news_sources.length > 0 && (
-              <div className="mt-8 pt-6 border-t border-white/10">
+              <div className="mt-8 pt-6 border-t border-text/10">
                 <div className="text-[10px] text-text-muted uppercase tracking-widest font-mono font-bold mb-4">Market Context Sources</div>
                 <div className="flex flex-wrap gap-2.5">
                   {explanation.news_sources.map((source, idx) => (
-                    <span key={idx} className="text-xs text-text-muted bg-surface/50 border border-white/5 px-3 py-1.5 rounded-sm hover:text-text hover:bg-white/5 transition-colors cursor-default">
+                    <span key={idx} className="text-xs text-text-muted bg-surface/50 border border-text/5 px-3 py-1.5 rounded-sm hover:text-text hover:bg-text/5 transition-colors cursor-default">
                       {source}
                     </span>
                   ))}

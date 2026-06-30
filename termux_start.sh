@@ -31,6 +31,9 @@ fi
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
+# Register a cleanup trap to remove the temporary wrapper script on exit
+trap 'rm -f "${DIR}/run_in_proot.sh"' EXIT INT TERM
+
 # To avoid issues with Termux permissions inside Ubuntu, we'll
 # copy a startup script that runs inside the chroot.
 cat << 'EOF' > "${DIR}/run_in_proot.sh"
@@ -40,7 +43,7 @@ apt-get update -y
 apt-get install -y sudo tzdata curl wget git python3 python3-pip python3-venv build-essential
 # Ensure Node is installed
 if ! command -v node >/dev/null; then
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
     apt-get install -y nodejs
 fi
 cd /app

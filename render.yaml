@@ -11,14 +11,28 @@ services:
         value: 3.10.12
       - key: PYTHONPATH
         value: "/opt/render/project/src/backend"
-      # These environment variables can be securely added in the Render dashboard:
-      # - key: BINANCE_API_KEY
-      #   sync: false
-      # - key: BINANCE_SECRET
-      #   sync: false
+      - key: ENVIRONMENT
+        value: production
+      # Add these securely via the Render dashboard:
       # - key: GROQ_API_KEY
       #   sync: false
     disk:
       name: sqlite-data
-      mountPath: /opt/render/project/src/backend/database
+      mountPath: /opt/render/project/src
       sizeGB: 1
+
+  - type: web
+    name: cryptograph-frontend
+    env: node
+    region: ohio
+    plan: starter
+    buildCommand: "cd frontend && npm install && npm run build"
+    startCommand: "cd frontend && node .next/standalone/server.js"
+    envVars:
+      - key: NODE_VERSION
+        value: 20.18.0
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          name: cryptograph-backend
+          type: web
+          property: host

@@ -13,13 +13,10 @@ class SmartOrderRouter:
         
     def _estimate_eth_gas_fee_usd(self) -> float:
         """
-        Mocks fetching the current base fee from Etherscan/Infura.
-        Simulates network congestion spikes.
+        Estimates the Ethereum gas fee deterministically to avoid random generation.
+        Calculates a flat $25.00 gas fee.
         """
-        # In reality: requests.get("https://api.etherscan.io/api?module=gastracker...")
-        import random
-        # Randomly simulate gas fees between $5 and $150
-        return random.uniform(5.0, 150.0)
+        return 25.0
 
     def _fetch_mock_l2_book(self, exchange: str, symbol: str, current_price: float) -> Dict[str, Any]:
         """

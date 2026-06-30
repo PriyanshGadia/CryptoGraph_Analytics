@@ -2,6 +2,7 @@ import { Asset } from "@/lib/api";
 import { ArrowDownRight, ArrowUpRight, TrendingUp, TrendingDown, Minus, Cpu } from "lucide-react";
 import { DIRECTION_TOKENS, Direction } from "@/lib/design-tokens";
 import { GlassCard } from "./ui/GlassCard";
+import Link from "next/link";
 
 export function PredictionCard({ asset }: { asset: Asset }) {
   const direction = asset.predicted_direction?.toLowerCase() ?? "neutral";
@@ -126,6 +127,16 @@ export function PredictionCard({ asset }: { asset: Asset }) {
               </div>
             )}
         </div>
+      </div>
+
+      {/* Footer Link */}
+      <div className="mt-6 pt-4 border-t border-text/5 flex justify-between items-center relative z-10">
+        <Link href={`/predictions?symbol=${asset.symbol}`} className="text-[10px] text-text-muted hover:text-accent font-mono font-bold uppercase tracking-widest transition-colors">
+          → Launch Studio
+        </Link>
+        <Link href="/explain" className="text-[10px] text-text-muted hover:text-accent font-mono font-bold uppercase tracking-widest transition-colors flex items-center gap-1">
+          <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" /> Explain AI
+        </Link>
       </div>
     </GlassCard>
   );

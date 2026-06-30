@@ -5,10 +5,18 @@ from sqlalchemy.orm import sessionmaker
 import os
 from pathlib import Path
 
-# Local SQLite connection string - explicitly point to backend/cryptograph.db
-base_dir = Path(__file__).resolve().parent.parent.parent
-db_path = base_dir / "cryptograph.db"
-SQLALCHEMY_DATABASE_URL = f"sqlite:///{db_path}"
+# Local SQLite connection string - allow override via DATABASE_URL or DATABASE_PATH
+db_url_env = os.getenv("DATABASE_URL")
+if db_url_env:
+    SQLALCHEMY_DATABASE_URL = db_url_env
+else:
+    db_path_env = os.getenv("DATABASE_PATH")
+    if db_path_env:
+        SQLALCHEMY_DATABASE_URL = f"sqlite:///{db_path_env}"
+    else:
+        base_dir = Path(__file__).resolve().parent.parent.parent
+        db_path = base_dir / "cryptograph.db"
+        SQLALCHEMY_DATABASE_URL = f"sqlite:///{db_path}"
 
 # Setting check_same_thread=False is needed for SQLite in FastAPI/multi-thread envs
 engine = create_engine(

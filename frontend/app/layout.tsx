@@ -23,7 +23,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${fraunces.variable} ${bricolage.variable} ${geistMono.variable}`}>
+    <html lang="en" suppressHydrationWarning className={`bg-background ${fraunces.variable} ${bricolage.variable} ${geistMono.variable}`}>
       <body className="font-sans antialiased">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <CurrencyProvider>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useChartPalette } from "@/lib/useChartPalette";
 import useSWR from "swr";
 import { fetcher } from "@/lib/api";
@@ -24,45 +24,42 @@ function DirectionBadge({ dir }: { dir: string }) {
 function CountUp({ end, decimals = 0, suffix = "" }: { end: number, decimals?: number, suffix?: string }) {
   const [count, setCount] = useState(0);
   
-  // Custom hook usage instead of importing
-  // Need to use React's useEffect to handle the animation lifecycle
-  import("react").then((React) => {
-    React.useEffect(() => {
-      let startTime: number;
-      let animationFrame: number;
-      const duration = 1000;
-      
-      const step = (timestamp: number) => {
-        if (!startTime) startTime = timestamp;
-        const progress = Math.min((timestamp - startTime) / duration, 1);
-        const easeProgress = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
-        setCount(easeProgress * end);
-        if (progress < 1) {
-          animationFrame = window.requestAnimationFrame(step);
-        }
-      };
-      
-      animationFrame = window.requestAnimationFrame(step);
-      
-      return () => {
-        if (animationFrame) window.cancelAnimationFrame(animationFrame);
-      };
-    }, [end]);
-  });
+  useEffect(() => {
+    let startTime: number;
+    let animationFrame: number;
+    const duration = 1000;
+    
+    const step = (timestamp: number) => {
+      if (!startTime) startTime = timestamp;
+      const progress = Math.min((timestamp - startTime) / duration, 1);
+      const easeProgress = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
+      setCount(easeProgress * end);
+      if (progress < 1) {
+        animationFrame = window.requestAnimationFrame(step);
+      }
+    };
+    
+    animationFrame = window.requestAnimationFrame(step);
+    
+    return () => {
+      if (animationFrame) window.cancelAnimationFrame(animationFrame);
+    };
+  }, [end]);
   
   return <>{count.toFixed(decimals)}{suffix}</>;
 }
 
-import { useEffect } from "react";
-
 export default function PerformancePage() {
+  const [mounted, setMounted] = useState(false);
   const palette = useChartPalette();
-  
   const [days, setDays] = useState(30);
   const [search, setSearch] = useState("");
   const [showAll, setShowAll] = useState(false);
-  
   const { data, isLoading } = useSWR(`${BASE}/api/performance?days=${days}`, fetcher);
+
+  useEffect(() => setMounted(true), []);
+
+  if (!mounted) return <div className="h-screen w-full flex items-center justify-center text-text-muted font-mono bg-background">Loading chart components...</div>;
   
   if (isLoading) return (
     <div className="space-y-8 pt-8 max-w-[1600px] mx-auto">

@@ -113,18 +113,18 @@ const FearGreedGauge = ({ value }: { value: number }) => {
 };
 
 export default function SentimentPage() {
+  const [mounted, setMounted] = useState(false);
   const palette = useChartPalette();
-  // SWR fetches
   const { data: fgHistory } = useSWR(`${BASE}/api/sentiment-data/fear-greed-history?days=365`, fetcher, { refreshInterval: 120000 });
   const { data: btcHistory } = useSWR(`${BASE}/api/sentiment-data/fear-greed-vs-btc?days=365`, fetcher, { refreshInterval: 120000 });
   const { data: sectorSent } = useSWR(`${BASE}/api/sentiment-data/sector-sentiment`, fetcher, { refreshInterval: 120000 });
-    const [synthesis, setSynthesis] = useState<any>(null);
-  useEffect(() => {
-    apiService.getLatestSynthesis().then(setSynthesis).catch(console.error);
-  }, []);
-
+  const [synthesis, setSynthesis] = useState<any>(null);
   const { data: trending } = useSWR(`${BASE}/api/sentiment-data/trending`, fetcher, { refreshInterval: 120000 });
 
+  useEffect(() => setMounted(true), []);
+  useEffect(() => { apiService.getLatestSynthesis().then(setSynthesis).catch(console.error); }, []);
+
+  if (!mounted) return <div className="h-screen w-full flex items-center justify-center text-text-muted font-mono bg-background">Loading chart components...</div>;
   if (!fgHistory || !btcHistory || !sectorSent || !trending) return <ChartSkeleton />;
 
   // Calculate current, yesterday, 7d avg

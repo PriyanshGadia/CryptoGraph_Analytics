@@ -1,6 +1,6 @@
 "use client";
+import React, { useState, useEffect } from "react";
 
-import React, { useState } from "react";
 import useSWR from "swr";
 import { fetcher, apiService, PortfolioResponse, PortfolioTradesResponse, TradeRecord } from "@/lib/api";
 import { GlassCard } from "@/components/ui/GlassCard";
@@ -28,6 +28,13 @@ import {
 } from "lucide-react";
 
 export default function PortfolioPage() {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) return <div className="h-screen w-full flex items-center justify-center text-text-muted font-mono bg-background">Loading chart components...</div>;
+
   const { data: portfolio, error: pErr, mutate: mutatePortfolio } = useSWR<PortfolioResponse>("/api/portfolio", fetcher, {
     refreshInterval: 60000,
   });
@@ -164,7 +171,7 @@ export default function PortfolioPage() {
           <div className="text-4xl font-black text-text font-mono tracking-tight">
             ${portfolio.total_value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
-          <div className="text-xs mt-3 text-text-muted font-mono bg-white/5 inline-block px-2 py-1 rounded border border-white/5">
+          <div className="text-xs mt-3 text-text-muted font-mono bg-text/5 inline-block px-2 py-1 rounded border border-text/5">
             Cash: ${portfolio.cash_balance.toLocaleString(undefined, { maximumFractionDigits: 0 })}
           </div>
         </GlassCard>
@@ -178,7 +185,7 @@ export default function PortfolioPage() {
             {portfolio.roi_pct >= 0 ? <TrendingUp size={28} /> : <TrendingDown size={28} />}
             {portfolio.roi_pct > 0 ? "+" : ""}{portfolio.roi_pct.toFixed(2)}%
           </div>
-          <div className="text-xs mt-3 text-text-muted font-mono flex items-center justify-between border-t border-white/5 pt-2">
+          <div className="text-xs mt-3 text-text-muted font-mono flex items-center justify-between border-t border-text/5 pt-2">
             <span>vs BTC Benchmark:</span>
             <span className={portfolio.roi_pct >= portfolio.btc_roi_pct ? 'text-success font-bold' : 'text-danger font-bold'}>
               {portfolio.btc_roi_pct > 0 ? "+" : ""}{portfolio.btc_roi_pct.toFixed(2)}%
@@ -220,18 +227,18 @@ export default function PortfolioPage() {
              <h2 className="text-xl font-black text-text flex items-center gap-2 tracking-tight"><TrendingUp size={20} className="text-accent"/> Equity Curve</h2>
              <p className="text-xs text-text-muted mt-1 font-mono uppercase tracking-widest">Portfolio vs BTC Benchmark</p>
            </div>
-           <div className="flex items-center gap-3 bg-surface/50 p-2 rounded-sm border border-white/5">
+           <div className="flex items-center gap-3 bg-surface/50 p-2 rounded-sm border border-text/10">
               <span className="text-[10px] font-bold uppercase tracking-widest text-text-muted">Stress Test</span>
               <button 
                 onClick={() => setStressTest(!stressTest)}
-                className={`w-10 h-5 rounded-full relative transition-colors ${stressTest ? 'bg-danger/80' : 'bg-white/10'}`}
+                className={`w-10 h-5 rounded-full relative transition-colors ${stressTest ? 'bg-danger/80' : 'bg-text/10'}`}
               >
-                <div className={`absolute top-1 left-1 w-3 h-3 rounded-full bg-white transition-transform ${stressTest ? 'translate-x-5' : ''}`} />
+                <div className={`absolute top-1 left-1 w-3 h-3 rounded-full bg-text transition-transform ${stressTest ? 'translate-x-5' : ''}`} />
               </button>
            </div>
         </div>
         <div className="h-[400px] w-full mt-4">
-           <ResponsiveContainer width="100%" height="100%">
+           <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
              <ComposedChart data={portfolio.equity_curve.map(pt => ({
                 ...pt, 
                 date: new Date(pt.timestamp).toLocaleDateString(),
@@ -247,11 +254,11 @@ export default function PortfolioPage() {
                    <stop offset="95%" stopColor={palette.muted} stopOpacity={0}/>
                  </linearGradient>
                </defs>
-               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+               <CartesianGrid strokeDasharray="3 3" stroke={palette.muted} strokeOpacity={0.1} vertical={false} />
                <XAxis dataKey="date" stroke={palette.muted} fontSize={10} fontFamily="monospace" tickLine={false} axisLine={false} minTickGap={30} />
                <YAxis yAxisId="left" stroke={palette.text} fontSize={10} fontFamily="monospace" tickLine={false} axisLine={false} tickFormatter={(v) => '$' + v.toLocaleString()} domain={['auto', 'auto']} />
                <Tooltip 
-                 contentStyle={{ backgroundColor: "rgba(var(--background), 0.9)", borderColor: "rgba(var(--text), 0.1)", borderRadius: "12px", color: "rgb(var(--text))", backdropFilter: "blur(10px)" }} 
+                 contentStyle={{ backgroundColor: "rgba(var(--background), 0.9)", borderColor: "rgba(var(--text), 0.1)", borderRadius: "12px", color: palette.text, backdropFilter: "blur(10px)" }} 
                  itemStyle={{ fontFamily: 'monospace', fontWeight: 'bold' }} 
                  formatter={(value) => '$' + Number(value).toLocaleString(undefined, {maximumFractionDigits:2})}
                />
@@ -268,7 +275,7 @@ export default function PortfolioPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Holdings */}
         <GlassCard tier={2} shape="none" className="rounded-xl p-0 overflow-hidden lg:col-span-1 flex flex-col h-[600px]">
-          <div className="p-6 border-b border-white/5 bg-surface/30">
+          <div className="p-6 border-b border-text/5 bg-surface/30">
             <h2 className="flex items-center gap-3 text-lg font-black text-text tracking-tight">
               <PieChart size={20} className="text-accent" />
               Current Holdings
@@ -286,7 +293,7 @@ export default function PortfolioPage() {
                 {Object.entries(portfolio.holdings).map(([symbol, data]: [string, any]) => {
                   const avgPrice = data.total_invested / data.qty;
                   return (
-                    <div key={symbol} className="flex items-center justify-between p-4 bg-surface/40 hover:bg-white/5 rounded-sm border border-white/5 transition-colors group">
+                    <div key={symbol} className="flex items-center justify-between p-4 bg-surface/40 hover:bg-text/5 rounded-sm border border-text/5 transition-colors group">
                       <div>
                         <div className="font-black text-lg text-text tracking-tight group-hover:text-accent transition-colors">{symbol}</div>
                         <div className="text-[10px] text-text-muted font-mono mt-1">{data.qty.toFixed(4)} tokens</div>
@@ -305,7 +312,7 @@ export default function PortfolioPage() {
 
         {/* Recent Trades */}
         <GlassCard tier={2} shape="none" className="rounded-xl p-0 overflow-hidden lg:col-span-2 flex flex-col h-[600px]">
-          <div className="p-6 border-b border-white/5 bg-surface/30">
+          <div className="p-6 border-b border-text/5 bg-surface/30">
             <h2 className="flex items-center gap-3 text-lg font-black text-text tracking-tight">
               <ArrowRightLeft size={20} className="text-accent" />
               Recent Trade Execution
@@ -321,7 +328,7 @@ export default function PortfolioPage() {
             ) : (
               <div className="min-w-full">
                 <table className="w-full text-sm text-left">
-                  <thead className="text-[10px] text-text-muted uppercase tracking-widest font-mono border-b border-white/10 bg-surface/50 sticky top-0 z-10 backdrop-blur-md">
+                  <thead className="text-[10px] text-text-muted uppercase tracking-widest font-mono border-b border-text/10 bg-surface/50 sticky top-0 z-10 backdrop-blur-md">
                     <tr>
                       <th className="px-6 py-4 font-bold">Date</th>
                       <th className="px-6 py-4 font-bold">Asset</th>
@@ -336,10 +343,10 @@ export default function PortfolioPage() {
                       <React.Fragment key={trade.id}>
                         <tr 
                           onClick={() => handleExpand(trade)}
-                          className={`border-b border-white/5 last:border-0 hover:bg-white/[0.02] transition-colors cursor-pointer group ${expandedTradeId === trade.id ? 'bg-white/[0.02]' : ''}`}
+                          className={`border-b border-text/5 last:border-0 hover:bg-text/[0.02] transition-colors cursor-pointer group ${expandedTradeId === trade.id ? 'bg-text/[0.02]' : ''}`}
                         >
                           <td className="px-6 py-4 whitespace-nowrap text-text-muted font-mono text-[10px] flex items-center gap-3">
-                            <div className={`p-1 rounded bg-white/5 ${expandedTradeId === trade.id ? 'text-accent' : ''}`}>
+                            <div className={`p-1 rounded bg-text/5 ${expandedTradeId === trade.id ? 'text-accent' : ''}`}>
                                 {expandedTradeId === trade.id ? <ChevronUp size={12} /> : <ChevronDown size={12} className="opacity-50 group-hover:opacity-100" />}
                             </div>
                             {new Date(trade.timestamp).toLocaleDateString()} <span className="opacity-50">{new Date(trade.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
@@ -374,10 +381,10 @@ export default function PortfolioPage() {
                         </tr>
                         
                         {expandedTradeId === trade.id && (
-                          <tr className="bg-surface/20 border-b border-white/10">
+                          <tr className="bg-surface/20 border-b border-text/10">
                             <td colSpan={6} className="p-0">
                                 <div className="p-6 animate-in fade-in slide-in-from-top-2">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 glass-panel bg-black/20 p-6 rounded-sm border border-white/5 shadow-inner">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 glass-panel bg-black/20 p-6 rounded-sm border border-text/5 shadow-inner">
                                         
                                         {/* Debate Transcript */}
                                         <div className="space-y-4">
@@ -387,16 +394,16 @@ export default function PortfolioPage() {
                                         </h4>
                                         {trade.debate ? (
                                             <div className="space-y-4 text-sm font-light tracking-wide">
-                                            <div className="bg-surface/50 p-4 rounded-sm border border-white/5">
-                                                <span className="font-mono text-[10px] text-text-muted block mb-2 uppercase tracking-widest border-b border-white/5 pb-2">Macro Economist</span>
+                                            <div className="bg-surface/50 p-4 rounded-sm border border-text/5">
+                                                <span className="font-mono text-[10px] text-text-muted block mb-2 uppercase tracking-widest border-b border-text/5 pb-2">Macro Economist</span>
                                                 <p className="text-text/90 leading-relaxed text-xs">{trade.debate.macro_analysis}</p>
                                             </div>
-                                            <div className="bg-surface/50 p-4 rounded-sm border border-white/5">
-                                                <span className="font-mono text-[10px] text-text-muted block mb-2 uppercase tracking-widest border-b border-white/5 pb-2">On-Chain Detective</span>
+                                            <div className="bg-surface/50 p-4 rounded-sm border border-text/5">
+                                                <span className="font-mono text-[10px] text-text-muted block mb-2 uppercase tracking-widest border-b border-text/5 pb-2">On-Chain Detective</span>
                                                 <p className="text-text/90 leading-relaxed text-xs">{trade.debate.onchain_analysis}</p>
                                             </div>
-                                            <div className="bg-surface/50 p-4 rounded-sm border border-white/5">
-                                                <span className="font-mono text-[10px] text-text-muted block mb-2 uppercase tracking-widest border-b border-white/5 pb-2">Sentiment Analyst</span>
+                                            <div className="bg-surface/50 p-4 rounded-sm border border-text/5">
+                                                <span className="font-mono text-[10px] text-text-muted block mb-2 uppercase tracking-widest border-b border-text/5 pb-2">Sentiment Analyst</span>
                                                 <p className="text-text/90 leading-relaxed text-xs">{trade.debate.sentiment_analysis}</p>
                                             </div>
                                             <div className="bg-accent/10 p-4 rounded-sm border border-accent/20">
@@ -410,7 +417,7 @@ export default function PortfolioPage() {
                                         </div>
 
                                         {/* Overseer Grading */}
-                                        <div className="md:border-l md:border-white/10 md:pl-8 flex flex-col justify-between">
+                                        <div className="md:border-l md:border-text/10 md:pl-8 flex flex-col justify-between">
                                             <div>
                                                 <h4 className="text-xs font-bold text-yellow-400 mb-2 flex items-center gap-2 tracking-widest uppercase font-mono">
                                                     <Target size={14} />
@@ -423,17 +430,17 @@ export default function PortfolioPage() {
                                                 <div className="space-y-6">
                                                     <div>
                                                     <label className="block text-[10px] font-bold font-mono text-text-muted mb-3 uppercase tracking-widest">Assign Grade</label>
-                                                    <div className="flex items-center gap-3 bg-surface/50 p-3 rounded-sm border border-white/5 w-fit">
+                                                    <div className="flex items-center gap-3 bg-surface/50 p-3 rounded-sm border border-text/5 w-fit">
                                                         {[1, 2, 3, 4, 5].map((star) => (
                                                         <button
                                                             key={star}
                                                             onClick={() => setGrade(star)}
-                                                            className={`transition-all hover:scale-110 ${grade >= star ? "text-yellow-400 drop-shadow-[0_0_8px_rgba(250,204,21,0.5)]" : "text-white/20 hover:text-yellow-400/50"}`}
+                                                            className={`transition-all hover:scale-110 ${grade >= star ? "text-yellow-400 drop-shadow-[0_0_8px_rgba(250,204,21,0.5)]" : "text-text-muted/40 hover:text-yellow-400/50"}`}
                                                         >
                                                             <Star size={28} fill={grade >= star ? "currentColor" : "none"} strokeWidth={1.5} />
                                                         </button>
                                                         ))}
-                                                        <span className="ml-4 text-xs font-bold font-mono text-white bg-black/40 px-3 py-1.5 rounded">
+                                                        <span className="ml-4 text-xs font-bold font-mono text-text bg-black/40 px-3 py-1.5 rounded">
                                                         {grade === 0 ? "Unrated" : grade === 1 ? "1 - Terrible" : grade === 5 ? "5 - Excellent" : `${grade} Stars`}
                                                         </span>
                                                     </div>
@@ -445,7 +452,7 @@ export default function PortfolioPage() {
                                                         value={notes}
                                                         onChange={(e) => setNotes(e.target.value)}
                                                         placeholder="Provide explicit feedback to guide future decisions..."
-                                                        className="w-full h-28 bg-surface/50 border border-white/10 rounded-sm p-4 text-sm text-text focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/50 resize-none font-sans font-light tracking-wide transition-all"
+                                                        className="w-full h-28 bg-surface/50 border border-text/10 rounded-sm p-4 text-sm text-text focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/50 resize-none font-sans font-light tracking-wide transition-all"
                                                     />
                                                     </div>
                                                 </div>

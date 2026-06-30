@@ -1,8 +1,10 @@
-"use client"
-import { useState, useEffect, Suspense } from "react"
+"use client";
+import React, { useState, useEffect, Suspense } from "react";
+
 import { useChartPalette } from "@/lib/useChartPalette";
 import useSWR from "swr"
 import { useSearchParams, useRouter } from "next/navigation"
+import Link from "next/link"
 import {
   ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, ReferenceLine, BarChart, Bar, Cell
@@ -23,7 +25,7 @@ function DirectionBadge({ direction }: { direction: string }) {
   const config: Record<string, {bg: string, text: string, label: string, icon: React.ReactNode, border: string}> = {
     strong_up:   {bg:"bg-success/10",  text:"text-success", label:"STRONG BUY",  icon:<TrendingUp size={14}/>, border:"border-success/30 shadow-success/20"},
     up:          {bg:"bg-success/5",  text:"text-success", label:"BUY",          icon:<TrendingUp size={14}/>, border:"border-success/20 shadow-success/10"},
-    neutral:     {bg:"bg-text-muted/10",   text:"text-text-muted",  label:"NEUTRAL",       icon:<Minus size={14}/>, border:"border-white/10 shadow-black/20"},
+    neutral:     {bg:"bg-text-muted/10",   text:"text-text-muted",  label:"NEUTRAL",       icon:<Minus size={14}/>, border:"border-text/10 shadow-black/20"},
     down:        {bg:"bg-danger/5",    text:"text-danger",   label:"SELL",         icon:<TrendingDown size={14}/>, border:"border-danger/20 shadow-danger/10"},
     strong_down: {bg:"bg-danger/10",    text:"text-danger",   label:"STRONG SELL", icon:<TrendingDown size={14}/>, border:"border-danger/30 shadow-danger/20"},
   }
@@ -105,10 +107,10 @@ function MathModal({ isOpen, onClose, title, formulaSteps }: { isOpen: boolean, 
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in zoom-in-95">
             <style>{`.katex { color: rgb(var(--text)) !important; } .katex-display { color: rgb(var(--accent)) !important; }`}</style>
             <div className="absolute inset-0 bg-background/80 backdrop-blur-md" onClick={onClose} />
-            <div className="glass-3 rounded-xl border border-white/10 w-full max-w-2xl shadow-2xl relative z-10 flex flex-col max-h-[85vh] overflow-hidden">
-                <div className="flex items-center justify-between p-6 border-b border-white/5 bg-surface/30">
+            <div className="glass-3 rounded-xl border border-text/10 w-full max-w-2xl shadow-2xl relative z-10 flex flex-col max-h-[85vh] overflow-hidden">
+                <div className="flex items-center justify-between p-6 border-b border-text/5 bg-surface/30">
                     <h2 className="text-lg font-black text-text tracking-tight uppercase font-sans">{title}</h2>
-                    <button onClick={onClose} className="text-text-muted hover:text-text transition-colors bg-white/5 hover:bg-white/10 p-2 rounded-full">
+                    <button onClick={onClose} className="text-text-muted hover:text-text transition-colors bg-text/5 hover:bg-text/10 p-2 rounded-full">
                         <X size={20} />
                     </button>
                 </div>
@@ -251,6 +253,9 @@ function PredictionStudio() {
                   </div>
                   <h1 className="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-text via-text/80 to-text-muted tracking-tight font-sans">Prediction Studio</h1>
                   <p className="text-text-muted font-light tracking-wide mt-2">Select any asset below to launch full multi-factor analysis pipeline.</p>
+                  <Link href="/explain" className="mt-4 inline-flex items-center gap-2 text-xs font-mono font-bold uppercase tracking-widest text-accent hover:text-accent-2 transition-colors">
+                    <Brain size={14} /> Explain AI Models & Methods
+                  </Link>
                 </div>
                 <div className="flex gap-3 text-xs text-text-muted font-mono font-bold uppercase tracking-widest">
                   <span className="bg-success/10 text-success border border-success/20 px-4 py-2 rounded-sm shadow-[0_0_15px_rgba(34,197,94,0.1)]">
@@ -274,7 +279,7 @@ function PredictionStudio() {
                     <button
                       key={idx}
                       onClick={() => setSelectedSymbol(p.asset_symbol)}
-                      className={`group text-left glass-flat rounded-xl border border-white/5 hover:border-white/20 p-6 transition-all duration-[var(--dur-hover)] ease-glide hover:bg-white/[0.04] hover:shadow-[0_0_30px_rgba(${isUp ? '34,197,94' : isDown ? '239,68,68' : '255,255,255'},0.1)] relative overflow-hidden`}
+                      className={`group text-left glass-flat rounded-xl border border-text/5 hover:border-text/20 p-6 transition-all duration-[var(--dur-hover)] ease-glide hover:bg-text/[0.04] hover:shadow-[0_0_30px_rgba(${isUp ? '34,197,94' : isDown ? '239,68,68' : '255,255,255'},0.1)] relative overflow-hidden`}
                     >
                       
                       {/* VERDICT STAMP */}
@@ -282,7 +287,7 @@ function PredictionStudio() {
                          {isUp ? <TrendingUp size={64} className="text-success" /> : isDown ? <TrendingDown size={64} className="text-danger" /> : <Minus size={64} className="text-text-muted" />}
                       </div>
                       
-                      <div className="absolute top-0 left-0 w-full h-1 bg-white/5 group-hover:h-1.5 transition-all" style={{ backgroundColor: `rgba(${isUp ? '34,197,94' : isDown ? '239,68,68' : '255,255,255'}, 0.2)` }} />
+                      <div className="absolute top-0 left-0 w-full h-1 bg-text/5 group-hover:h-1.5 transition-all" style={{ backgroundColor: `rgba(${isUp ? '34,197,94' : isDown ? '239,68,68' : '255,255,255'}, 0.2)` }} />
                       
                       <div className="flex justify-between items-start mb-4">
                         <div>
@@ -309,7 +314,7 @@ function PredictionStudio() {
 
                       {/* Conformal Prediction Interval Spread */}
                       {p.confidence_interval && (
-                        <div className="mt-4 flex items-center justify-between bg-black/20 p-2 rounded-sm border border-white/5">
+                        <div className="mt-4 flex items-center justify-between bg-black/20 p-2 rounded-sm border border-text/5">
                             <span className="text-[9px] uppercase tracking-widest font-mono text-text-muted">Expected Spread</span>
                             <span className="text-[10px] font-mono font-bold text-text">
                                 [{p.confidence_interval[0].toFixed(1)}% - {p.confidence_interval[1].toFixed(1)}%]
@@ -318,7 +323,7 @@ function PredictionStudio() {
                       )}
 
                       {/* Confidence bar */}
-                      <div className="mt-5 h-1.5 bg-background rounded-full overflow-hidden border border-white/5">
+                      <div className="mt-5 h-1.5 bg-background rounded-full overflow-hidden border border-text/5">
                         <div 
                           className="h-full rounded-full transition-all duration-1000 ease-out shadow-[0_0_10px_currentColor]"
                           style={{ 
@@ -340,7 +345,7 @@ function PredictionStudio() {
                 <Brain size={64} className="opacity-20 text-accent animate-pulse" />
                 <h3 className="text-2xl font-light tracking-wide text-center text-text/80">No predictions available yet.</h3>
                 <p className="text-sm font-mono tracking-widest uppercase text-center max-w-md">Run the inference pipeline to generate predictions.</p>
-                <button onClick={() => router.push('/screener')} className="mt-6 glass bg-white/5 hover:bg-white/10 px-8 py-3 rounded-sm font-bold text-xs uppercase tracking-widest transition-all">Open Screener</button>
+                <button onClick={() => router.push('/screener')} className="mt-6 glass bg-text/5 hover:bg-text/10 px-8 py-3 rounded-sm font-bold text-xs uppercase tracking-widest transition-all">Open Screener</button>
               </div>
             )}
           </div>
@@ -365,19 +370,22 @@ function PredictionStudio() {
           <div className="space-y-8 pb-10 animate-in fade-in slide-in-from-bottom-8 duration-700">
             
             {/* ── HEADER ROW ── */}
-            <div className="flex flex-col md:flex-row justify-between items-end gap-6 glass-2 rounded-xl border border-white/5 p-8 lg:p-10 shadow-2xl relative overflow-hidden group">
+            <div className="flex flex-col md:flex-row justify-between items-end gap-6 glass-2 rounded-xl border border-text/5 p-8 lg:p-10 shadow-2xl relative overflow-hidden group">
               <div className="absolute top-[-50px] right-[-50px] w-64 h-64 bg-accent/10 rounded-full blur-[80px] pointer-events-none group-hover:bg-accent/20 transition-all duration-700" />
               
               <div className="relative z-10 space-y-3">
-                <div className="flex items-center gap-3 mb-2">
+                <div className="flex flex-wrap items-center gap-3 mb-2">
                     <span className="text-[10px] text-accent font-mono font-bold tracking-widest uppercase border border-accent/20 bg-accent/5 px-3 py-1.5 rounded-sm">Multi-Factor Analysis Pipeline</span>
+                    <Link href="/explain" className="text-[10px] text-text-muted hover:text-accent font-mono font-bold tracking-widest uppercase border border-text/10 hover:border-accent/40 bg-surface/30 px-3 py-1.5 rounded-sm transition-all duration-[var(--dur-hover)] flex items-center gap-1">
+                        <Brain size={12} /> Explain AI
+                    </Link>
                 </div>
                 <h1 className="text-5xl md:text-7xl font-black text-text tracking-tight font-sans">
                     {selectedSymbol}<span className="text-text-muted/50 font-light text-4xl">/USD</span>
                 </h1>
                 <div className="text-text/90 text-3xl pt-2 flex items-center gap-4 font-mono font-bold tracking-tight">
                     <span className={`transition-colors duration-300 ${livePrice ? 'text-accent drop-shadow-[0_0_10px_rgba(var(--accent),0.5)]' : 'text-text'}`}>${formatPrice(currentDisplayPrice)}</span>
-                    <span className="text-xs font-sans font-medium uppercase tracking-widest text-text-muted flex items-center gap-2 bg-surface/50 px-3 py-1 rounded-full border border-white/5">
+                    <span className="text-xs font-sans font-medium uppercase tracking-widest text-text-muted flex items-center gap-2 bg-surface/50 px-3 py-1 rounded-full border border-text/5">
                         {livePrice ? <span className="relative flex h-2.5 w-2.5"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-accent"></span></span> : null}
                         Live Price
                     </span>
@@ -385,7 +393,7 @@ function PredictionStudio() {
               </div>
 
               <div className="relative z-10 flex flex-col items-end gap-4 min-w-[280px]">
-                <div className="w-full glass bg-surface/50 border border-white/10 p-6 rounded-sm shadow-xl">
+                <div className="w-full glass bg-surface/50 border border-text/10 p-6 rounded-sm shadow-xl">
                     <div className="flex justify-between items-center mb-5">
                         <span className="text-text-muted text-[10px] font-bold uppercase tracking-widest font-mono">Ultimate Consensus</span>
                         <DirectionBadge direction={forecastData.final_consensus} />
@@ -402,13 +410,13 @@ function PredictionStudio() {
               
               {/* ── CONSENSUS MATRIX (9 METRICS) ── */}
               <div className="xl:col-span-1 space-y-6">
-                  <div className="glass-2 rounded-xl border border-white/5 p-0 shadow-2xl h-full flex flex-col overflow-hidden group">
-                    <div className="p-6 border-b border-white/5 bg-surface/30">
+                  <div className="glass-2 rounded-xl border border-text/5 p-0 shadow-2xl h-full flex flex-col overflow-hidden group">
+                    <div className="p-6 border-b border-text/5 bg-surface/30">
                         <div className="flex items-center justify-between">
                             <h3 className="text-text text-sm uppercase tracking-widest font-black flex items-center gap-2 font-mono">
                                 <Layers size={16} className="text-accent"/> Multi-Factor Matrix
                             </h3>
-                            <span className="text-[9px] text-text-muted font-mono font-bold bg-white/5 px-2 py-1 rounded border border-white/5 uppercase tracking-widest">Click for Math</span>
+                            <span className="text-[9px] text-text-muted font-mono font-bold bg-text/5 px-2 py-1 rounded border border-text/5 uppercase tracking-widest">Click for Math</span>
                         </div>
                     </div>
                     
@@ -422,7 +430,7 @@ function PredictionStudio() {
                                     setModalOpen(true);
                                 }
                             }}
-                            className="group/item flex flex-col p-4 border border-transparent hover:border-white/10 hover:bg-white/5 transition-all rounded-sm cursor-pointer relative"
+                            className="group/item flex flex-col p-4 border border-transparent hover:border-text/10 hover:bg-text/5 transition-all rounded-sm cursor-pointer relative"
                           >
                             <div className="flex justify-between items-center w-full">
                                 <div className="flex items-center gap-3">
@@ -436,7 +444,7 @@ function PredictionStudio() {
                                 <div className="text-[10px] font-mono font-bold text-accent bg-accent/10 px-2.5 py-1 rounded-sm border border-accent/20">
                                     {m.calculation_snippet || "N/A"}
                                 </div>
-                                <div className="text-[9px] font-bold text-text-muted flex items-center gap-1 uppercase tracking-widest bg-white/5 px-2 py-1 rounded-sm">
+                                <div className="text-[9px] font-bold text-text-muted flex items-center gap-1 uppercase tracking-widest bg-text/5 px-2 py-1 rounded-sm">
                                     <Info size={10} /> View Eq
                                 </div>
                             </div>
@@ -448,8 +456,8 @@ function PredictionStudio() {
 
               {/* ── FAN CHART MAIN VISUAL ── */}
               <div className="xl:col-span-2 space-y-6">
-                  <div className="glass-2 rounded-xl border border-white/5 p-0 shadow-2xl flex flex-col h-[500px] lg:h-[600px] overflow-hidden group">
-                    <div className="p-6 border-b border-white/5 bg-surface/30">
+                  <div className="glass-2 rounded-xl border border-text/5 p-0 shadow-2xl flex flex-col h-[500px] lg:h-[600px] overflow-hidden group">
+                    <div className="p-6 border-b border-text/5 bg-surface/30">
                         <div className="flex justify-between items-center">
                             <div>
                                 <h3 className="text-xl font-black tracking-tight text-text font-sans">Probability Cone</h3>
@@ -460,7 +468,7 @@ function PredictionStudio() {
                     </div>
                     
                     <div className="flex-1 w-full relative p-6">
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                         <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
                         <defs>
                             <linearGradient id="colorArea" x1="0" y1="0" x2="0" y2="1">
@@ -468,18 +476,18 @@ function PredictionStudio() {
                             <stop offset="95%" stopColor="rgba(212, 165, 71, 0)"/>
                             </linearGradient>
                         </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#ffffff" strokeOpacity={0.03} vertical={false} />
+                        <CartesianGrid strokeDasharray="3 3" stroke={palette.text} strokeOpacity={0.08} vertical={false} />
                         <XAxis dataKey="date" tick={{fill:"var(--text-muted)", fontSize:10, fontFamily: "var(--font-mono)", fontWeight: "bold"}} tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={40} />
                         <YAxis tick={{fill:"var(--text-muted)", fontSize:10, fontFamily: "var(--font-mono)", fontWeight: "bold"}} tickLine={false} axisLine={false} domain={["auto", "auto"]} 
                                 tickFormatter={(v) => `$${formatPrice(v)}`} width={80} />
                         <Tooltip 
-                            contentStyle={{background:"rgba(var(--surface), 0.8)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:"12px", color:"var(--text)", backdropFilter: "blur(16px)", boxShadow: "0 20px 40px -10px rgba(0, 0, 0, 0.5)"}}
+                            contentStyle={{background:"rgba(var(--surface), 0.8)", border:"1px solid rgba(var(--text), 0.1)", borderRadius:"12px", color:"var(--text)", backdropFilter: "blur(16px)", boxShadow: "0 20px 40px -10px rgba(0, 0, 0, 0.5)"}}
                             itemStyle={{fontFamily: "var(--font-mono)", fontSize: "12px", fontWeight: "bold"}}
                             labelStyle={{color: "var(--text-muted)", marginBottom: "8px", fontSize: "10px", textTransform: "uppercase", fontWeight: "bold", letterSpacing: "0.1em"}}
                         />
                         
                         <Area type="monotone" dataKey="upper" stroke="none" fill="url(#colorArea)" name="Upper Bound" />
-                        <Area type="monotone" dataKey="lower" stroke="none" fill="rgb(20, 20, 30)" fillOpacity={1} name="Lower Bound" />
+                        <Area type="monotone" dataKey="lower" stroke="none" fill={palette.surface} fillOpacity={1} name="Lower Bound" />
                         
                         <Line type="monotone" dataKey="actual" stroke="rgb(240, 237, 232)" strokeWidth={2} dot={false} name="Actual Price" connectNulls />
                         <Line type="monotone" dataKey="ensemble" stroke="rgb(212, 165, 71)" strokeWidth={2} strokeDasharray="4 4" dot={false} name="30D Prediction" connectNulls />
@@ -492,7 +500,7 @@ function PredictionStudio() {
                   </div>
 
                   {/* ── MULTI-HORIZON TARGETS ── */}
-                  <div className="glass-2 rounded-xl border border-white/5 p-6 shadow-2xl">
+                  <div className="glass-2 rounded-xl border border-text/5 p-6 shadow-2xl">
                     <h3 className="text-text text-sm uppercase tracking-widest font-black mb-6 flex items-center gap-2 font-mono">
                         <Clock size={16} className="text-accent"/> Price Targets
                     </h3>
@@ -501,7 +509,7 @@ function PredictionStudio() {
                             if (!data) return null;
                             const isPos = data.change_pct >= 0;
                             return (
-                                <div key={horizon} className="bg-surface/50 border border-white/5 p-5 rounded-sm flex flex-col text-center relative overflow-hidden group hover:border-white/20 transition-all hover:bg-white/5 shadow-inner">
+                                <div key={horizon} className="bg-surface/50 border border-text/5 p-5 rounded-sm flex flex-col text-center relative overflow-hidden group hover:border-text/20 transition-all hover:bg-text/5 shadow-inner">
                                     <div className={`absolute top-0 left-0 w-full h-1 ${isPos ? 'bg-success/50 shadow-[0_0_10px_rgba(34,197,94,0.5)]' : 'bg-danger/50 shadow-[0_0_10px_rgba(239,68,68,0.5)]'}`} />
                                     <span className="text-text-muted text-[9px] font-mono font-bold uppercase tracking-widest mb-3">{horizon} Forecast</span>
                                     <span className="text-text font-black text-lg mb-1 tracking-tight">${formatPrice(data.price)}</span>
@@ -520,7 +528,7 @@ function PredictionStudio() {
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mt-6">
               
               {/* T-SHAP Widget */}
-              <div className="glass-2 rounded-xl border border-white/5 p-8 shadow-2xl overflow-hidden relative group">
+              <div className="glass-2 rounded-xl border border-text/5 p-8 shadow-2xl overflow-hidden relative group">
                 <div className="absolute inset-0 bg-gradient-to-br from-accent/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
                 <div className="relative z-10">
                     <div className="flex items-center justify-between mb-8">
@@ -528,17 +536,22 @@ function PredictionStudio() {
                         <div className="p-2.5 glass bg-accent/10 rounded-sm shadow-inner"><BarChart2 className="text-accent" size={20} /></div>
                         Topological SHAP
                     </h3>
-                    <div className="text-[9px] font-bold text-text-muted uppercase tracking-widest border border-white/10 px-3 py-1.5 rounded-sm bg-surface/50 font-mono shadow-inner">Feature Impact</div>
+                    <div className="flex items-center gap-2">
+                        <div className="text-[9px] font-bold text-text-muted uppercase tracking-widest border border-text/10 px-3 py-1.5 rounded-sm bg-surface/50 font-mono shadow-inner">Feature Impact</div>
+                        <Link href="/explain" className="text-[9px] font-bold text-accent hover:text-accent-2 uppercase tracking-widest border border-accent/20 hover:border-accent px-3 py-1.5 rounded-sm bg-accent/5 font-mono transition-colors flex items-center gap-1">
+                            <Brain size={10} /> Explain SHAP
+                        </Link>
+                    </div>
                     </div>
                     
                     {tShapChartData.length > 0 ? (
                     <div className="h-[280px] w-full">
-                        <ResponsiveContainer width="100%" height="100%">
+                        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                         <BarChart layout="vertical" data={tShapChartData} margin={{ top: 0, right: 20, left: 40, bottom: 0 }}>
                             <XAxis type="number" tick={{fill: "var(--text-muted)", fontSize: 10, fontFamily: "var(--font-mono)", fontWeight: "bold"}} axisLine={false} tickLine={false} />
                             <YAxis dataKey="name" type="category" tick={{fill: "var(--text)", fontSize: 10, fontFamily: "var(--font-mono)", fontWeight: "bold"}} axisLine={false} tickLine={false} width={150} />
-                            <Tooltip cursor={{fill: 'rgba(255,255,255,0.05)'}} contentStyle={{background:"rgba(var(--surface),0.9)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:"12px", backdropFilter: "blur(12px)", color: "var(--text)", fontWeight: "bold", fontFamily: "var(--font-mono)", fontSize: "12px"}} />
-                            <ReferenceLine x={0} stroke="rgba(255,255,255,0.2)" strokeDasharray="3 3" />
+                            <Tooltip cursor={{fill: palette.text, fillOpacity: 0.05}} contentStyle={{background:"rgba(var(--surface),0.9)", border:"1px solid rgba(var(--text),0.1)", borderRadius:"12px", backdropFilter: "blur(12px)", color: "var(--text)", fontWeight: "bold", fontFamily: "var(--font-mono)", fontSize: "12px"}} />
+                            <ReferenceLine x={0} stroke={palette.text} strokeOpacity={0.2} strokeDasharray="3 3" />
                             <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={16}>
                             {tShapChartData.map((entry, index) => (
                                 <Cell key={`cell-${index}`} fill={entry.color} />
@@ -548,7 +561,7 @@ function PredictionStudio() {
                         </ResponsiveContainer>
                     </div>
                     ) : (
-                    <div className="h-[280px] flex items-center justify-center text-text-muted border border-dashed border-white/10 rounded-sm text-xs font-mono font-bold uppercase tracking-widest bg-surface/30">
+                    <div className="h-[280px] flex items-center justify-center text-text-muted border border-dashed border-text/10 rounded-sm text-xs font-mono font-bold uppercase tracking-widest bg-surface/30">
                         Awaiting Exploratory Matrix...
                     </div>
                     )}
@@ -556,9 +569,9 @@ function PredictionStudio() {
               </div>
 
               {/* zkML Verification Widget */}
-              <div className="glass-2 rounded-xl border border-white/5 p-1 shadow-2xl relative overflow-hidden group">
+              <div className="glass-2 rounded-xl border border-text/5 p-1 shadow-2xl relative overflow-hidden group">
                 <div className="absolute inset-0 bg-success/10 blur-[40px] pointer-events-none group-hover:bg-success/20 transition-all duration-1000" />
-                <div className="bg-surface/80 h-full w-full rounded-[31px] p-8 flex flex-col relative z-10 backdrop-blur-2xl border border-white/5">
+                <div className="bg-surface/80 h-full w-full rounded-[31px] p-8 flex flex-col relative z-10 backdrop-blur-2xl border border-text/5">
                     <div className="flex items-center justify-between mb-6">
                         <div className="flex items-center gap-3">
                             <div className="p-2.5 glass bg-success/10 rounded-sm shadow-inner"><Terminal size={20} className="text-success" /></div>
@@ -581,8 +594,8 @@ function PredictionStudio() {
                         </div>
                         </div>
                     ) : (
-                        <div className="mt-auto bg-black/40 p-6 rounded-sm border border-white/5 font-mono text-xs font-bold text-text-muted text-center uppercase tracking-widest flex items-center justify-center gap-3">
-                        <div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                        <div className="mt-auto bg-black/40 p-6 rounded-sm border border-text/5 font-mono text-xs font-bold text-text-muted text-center uppercase tracking-widest flex items-center justify-center gap-3">
+                        <div className="w-3 h-3 border-2 border-text/20 border-t-text rounded-full animate-spin" />
                         Generating Proof...
                         </div>
                     )}
@@ -598,12 +611,16 @@ function PredictionStudio() {
 }
 
 export default function PredictionsPage() {
-  const palette = useChartPalette();
-  
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) return <div className="h-screen w-full flex items-center justify-center text-text-muted font-mono bg-background">Loading chart components...</div>;
+
   return (
     <Suspense fallback={<div className="h-[calc(100vh-8rem)] flex items-center justify-center text-accent font-mono text-xs font-bold tracking-widest uppercase animate-pulse">Initializing ST-GCN Canvas...</div>}>
       <PredictionStudio />
     </Suspense>
   )
 }
-

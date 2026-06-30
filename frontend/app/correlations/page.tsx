@@ -1,6 +1,6 @@
 "use client";
+import React, { useState, useEffect, useMemo, memo } from "react";
 
-import { useState, useMemo, memo } from "react";
 import { useChartPalette } from "@/lib/useChartPalette";
 import useSWR from "swr";
 import { fetcher } from "@/lib/api";
@@ -50,7 +50,7 @@ const HeatmapCell = memo(({
   let classes = "w-full h-full transition-all cursor-crosshair rounded-[2px] ";
   
   if (isSectorMatch) {
-    classes += "ring-1 ring-white/80 z-10 shadow-[0_0_10px_rgba(255,255,255,0.3)] ";
+    classes += "ring-1 ring-accent/80 z-10 shadow-[0_0_10px_rgba(var(--accent),0.3)] ";
   } else if (isSectorInactive) {
     classes += "opacity-20 grayscale blur-[1px] ";
   } else if (isSectorPartial) {
@@ -58,7 +58,7 @@ const HeatmapCell = memo(({
   }
   
   if (isRowActive || isColActive) {
-    classes += "ring-1 ring-white/50 z-20 shadow-[0_0_5px_rgba(255,255,255,0.2)] ";
+    classes += "ring-1 ring-text/50 z-20 shadow-[0_0_5px_rgba(var(--text),0.2)] ";
   }
 
   let cellText = "";
@@ -71,14 +71,14 @@ const HeatmapCell = memo(({
     <div 
       className={classes + " relative group overflow-hidden"}
       style={{ backgroundColor: bgColor }}
-      onMouseEnter={() => onEnter(i, j, value, symA, symB)}
+      onMouseEnter={() => onEnter({ i, j, val: value, symA, symB })}
       onMouseLeave={onLeave}
     >
       <div className="absolute inset-0 flex items-center justify-center opacity-100 group-hover:opacity-0 transition-opacity duration-300">
-         <span className="text-[5px] leading-none font-mono font-bold text-white/40 truncate max-w-full px-[1px]">{cellText}</span>
+         <span className="text-[5px] leading-none font-mono font-bold text-text/40 truncate max-w-full px-[1px]">{cellText}</span>
       </div>
-      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 delay-75 [mask-image:linear-gradient(to_bottom,white,white)]">
-         <span className="text-[7px] leading-none font-mono font-black text-white mix-blend-overlay">{value.toFixed(2)}</span>
+      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 delay-75">
+         <span className="text-[7px] leading-none font-mono font-black text-text">{value.toFixed(2)}</span>
       </div>
     </div>
   );
@@ -86,6 +86,13 @@ const HeatmapCell = memo(({
 HeatmapCell.displayName = "HeatmapCell";
 
 export default function CorrelationsPage() {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) return <div className="h-screen w-full flex items-center justify-center text-text-muted font-mono bg-background">Loading chart components...</div>;
+
   const palette = useChartPalette();
   
   const [days, setDays] = useState(30);
@@ -146,7 +153,7 @@ export default function CorrelationsPage() {
       <div className="absolute bottom-[20%] left-[-100px] w-80 h-80 bg-success/5 rounded-full blur-[100px] pointer-events-none" />
 
       {/* HEADER */}
-      <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-4 border-b border-white/10 pb-6">
+      <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-4 border-b border-text/10 pb-6">
         <div>
           <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-text via-text/80 to-text-muted flex items-center gap-4 tracking-tight">
             <div className="p-3 glass bg-accent/10 rounded-sm shadow-inner shadow-accent/20">
@@ -160,7 +167,7 @@ export default function CorrelationsPage() {
         </div>
         
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-          <div className="flex glass bg-surface/50 rounded-sm border border-white/10 p-1 shadow-inner">
+          <div className="flex glass bg-surface/50 rounded-sm border border-text/10 p-1 shadow-inner">
              {["Price Correlation", "On-Chain Motif Similarity"].map(b => (
                <button
                  key={b}
@@ -168,7 +175,7 @@ export default function CorrelationsPage() {
                  className={`px-4 py-2 rounded-sm text-[10px] font-black uppercase tracking-widest transition-all ${
                    basis === b 
                      ? "bg-accent/20 text-accent border border-accent/30 shadow-[0_0_10px_rgba(var(--accent),0.2)]" 
-                     : "text-text-muted hover:text-text hover:bg-white/5 border border-transparent"
+                     : "text-text-muted hover:text-text hover:bg-text/5 border border-transparent"
                  }`}
                >
                  {b}
@@ -179,7 +186,7 @@ export default function CorrelationsPage() {
             <select 
               value={selectedSector}
               onChange={(e) => setSelectedSector(e.target.value)}
-              className="appearance-none glass bg-surface/50 text-xs text-text font-bold px-4 py-3 pr-10 rounded-sm border border-white/10 focus:outline-none focus:border-accent/50 focus:shadow-[0_0_15px_rgba(var(--accent),0.2)] transition-all cursor-pointer uppercase tracking-widest"
+              className="appearance-none glass bg-surface/50 text-xs text-text font-bold px-4 py-3 pr-10 rounded-sm border border-text/10 focus:outline-none focus:border-accent/50 focus:shadow-[0_0_15px_rgba(var(--accent),0.2)] transition-all cursor-pointer uppercase tracking-widest"
             >
               <option value="all">Global Topology</option>
               {sectorsList.map(s => <option key={s} value={s}>{s}</option>)}
@@ -187,7 +194,7 @@ export default function CorrelationsPage() {
             <Target className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" size={14} />
           </div>
           
-          <div className="flex glass bg-surface/50 rounded-sm border border-white/10 p-1 shadow-inner">
+          <div className="flex glass bg-surface/50 rounded-sm border border-text/10 p-1 shadow-inner">
             {[7, 30, 90, 365].map(d => (
               <button
                 key={d}
@@ -195,7 +202,7 @@ export default function CorrelationsPage() {
                 className={`px-4 py-2 rounded-sm text-[10px] font-black uppercase tracking-widest transition-all ${
                   days === d 
                     ? "bg-accent/20 text-accent border border-accent/30 shadow-[0_0_10px_rgba(var(--accent),0.2)]" 
-                    : "text-text-muted hover:text-text hover:bg-white/5 border border-transparent"
+                    : "text-text-muted hover:text-text hover:bg-text/5 border border-transparent"
                 }`}
               >
                 {d === 365 ? "1Y Vector" : `${d}D`}
@@ -208,8 +215,8 @@ export default function CorrelationsPage() {
       <div className="relative z-10 space-y-8">
         {/* SECTION 1 - Header Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <GlassCard tier={2} shape="none" className="rounded-xl p-6 flex items-center gap-4 group hover:bg-white/[0.02] transition-colors h-32">
-            <div className="p-3 rounded-sm glass bg-white/5 group-hover:bg-white/10 transition-colors shadow-inner shadow-white/5 border border-white/10">
+          <GlassCard tier={2} shape="none" className="rounded-xl p-6 flex items-center gap-4 group hover:bg-text/[0.02] transition-colors h-32">
+            <div className="p-3 rounded-sm glass bg-text/5 group-hover:bg-text/10 transition-colors shadow-inner shadow-text/5 border border-text/10">
                 <GitGraph size={24} className="text-text" />
             </div>
             <div>
@@ -243,13 +250,13 @@ export default function CorrelationsPage() {
         
         {/* SECTION 2 - Correlation Heatmap */}
         <GlassCard tier={2} shape="none" className="rounded-xl p-0 overflow-hidden relative">
-          <div className="p-8 border-b border-white/5 bg-surface/30 flex justify-between items-center flex-wrap gap-4">
+          <div className="p-8 border-b border-text/5 bg-surface/30 flex justify-between items-center flex-wrap gap-4">
             <div>
               <h3 className="text-xl font-black text-text tracking-tight">N-Dimensional Adjacency Matrix</h3>
               <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-1">Visualizing tensor co-movement probabilities</p>
             </div>
             
-            <div className="flex items-center gap-4 bg-black/40 px-4 py-2 rounded-sm border border-white/5">
+            <div className="flex items-center gap-4 bg-black/40 px-4 py-2 rounded-sm border border-text/5">
               <Maximize size={14} className="text-text-muted" />
               <input 
                 type="range" 
@@ -265,7 +272,7 @@ export default function CorrelationsPage() {
           <div className="p-8 bg-black/20 relative">
             {hoveredCell && (
               <div className="absolute top-12 right-12 glass bg-surface/90 border border-accent/50 rounded-sm p-4 shadow-[0_0_30px_rgba(var(--accent),0.2)] z-50 flex flex-col items-center backdrop-blur-xl transition-all pointer-events-none">
-                <div className="flex items-center gap-3 mb-2 bg-black/50 px-3 py-1.5 rounded-sm border border-white/5">
+                <div className="flex items-center gap-3 mb-2 bg-black/50 px-3 py-1.5 rounded-sm border border-text/5">
                   <span className="font-mono font-black text-text text-lg">{hoveredCell.symA}</span>
                   <Network className="text-accent opacity-50" size={14} />
                   <span className="font-mono font-black text-text text-lg">{hoveredCell.symB}</span>
@@ -273,13 +280,13 @@ export default function CorrelationsPage() {
                 <div className={`text-3xl font-black font-mono tracking-tighter ${(hoveredCell.val || 0) > 0 ? "text-success drop-shadow-[0_0_10px_rgba(34,197,94,0.5)]" : (hoveredCell.val || 0) < 0 ? "text-danger drop-shadow-[0_0_10px_rgba(239,68,68,0.5)]" : "text-text-muted"}`}>
                   {(hoveredCell.val || 0) > 0 ? "+" : ""}{(hoveredCell.val || 0).toFixed(4)}
                 </div>
-                <div className="text-[8px] uppercase tracking-widest font-bold text-text-muted mt-2 border-t border-white/10 pt-2 w-full text-center">
+                <div className="text-[8px] uppercase tracking-widest font-bold text-text-muted mt-2 border-t border-text/10 pt-2 w-full text-center">
                     Pearson Co-eff
                 </div>
               </div>
             )}
             
-            <div className="overflow-auto custom-scrollbar border border-white/5 bg-black/40 p-6 rounded-sm shadow-inner relative max-h-[800px]">
+            <div className="overflow-auto custom-scrollbar border border-text/5 bg-black/40 p-6 rounded-sm shadow-inner relative max-h-[800px]">
               <div 
                 style={{ 
                   display: 'grid', 
@@ -339,9 +346,9 @@ export default function CorrelationsPage() {
               </div>
             </div>
             
-            <div className="mt-6 flex flex-wrap items-center justify-center gap-8 text-[10px] uppercase font-bold tracking-widest text-text-muted bg-surface/50 glass py-3 px-6 rounded-sm border border-white/5 inline-flex mx-auto">
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-8 text-[10px] uppercase font-bold tracking-widest text-text-muted bg-surface/50 glass py-3 px-6 rounded-sm border border-text/5 inline-flex mx-auto">
               <div className="flex items-center gap-3"><div className="w-4 h-4 bg-danger rounded-sm shadow-[0_0_10px_rgba(239,68,68,0.5)]"></div> Inverse (-1.0)</div>
-              <div className="flex items-center gap-3"><div className="w-4 h-4 bg-black/40 border border-white/20 rounded-sm"></div> Orthogonal (0.0)</div>
+              <div className="flex items-center gap-3"><div className="w-4 h-4 bg-black/40 border border-text/20 rounded-sm"></div> Orthogonal (0.0)</div>
               <div className="flex items-center gap-3"><div className="w-4 h-4 bg-success rounded-sm shadow-[0_0_10px_rgba(34,197,94,0.5)]"></div> Isomorphic (+1.0)</div>
             </div>
           </div>
@@ -352,7 +359,7 @@ export default function CorrelationsPage() {
           
           {/* LEFT: Top Correlated Pairs */}
           <GlassCard tier={2} shape="none" className="rounded-xl p-0 overflow-hidden">
-            <div className="p-8 border-b border-white/5 bg-surface/30">
+            <div className="p-8 border-b border-text/5 bg-surface/30">
               <h3 className="text-xl font-black text-text tracking-tight flex items-center gap-3">
                   <div className="w-8 h-8 rounded-full glass bg-success/10 border border-success/20 flex items-center justify-center">
                       <Zap className="text-success" size={16} />
@@ -365,7 +372,7 @@ export default function CorrelationsPage() {
             <div className="p-4">
               <div className="overflow-x-auto custom-scrollbar">
                 <table className="w-full text-sm text-left">
-                  <thead className="text-[9px] text-text-muted uppercase tracking-widest border-b border-white/5">
+                  <thead className="text-[9px] text-text-muted uppercase tracking-widest border-b border-text/5">
                     <tr>
                       <th className="px-4 py-3 font-bold">Vector</th>
                       <th className="px-4 py-3 font-bold">Node Alpha</th>
@@ -378,7 +385,7 @@ export default function CorrelationsPage() {
                     {top_pairs.map((p: any, idx: number) => {
                       const sameSector = p.sector_a === p.sector_b;
                       return (
-                        <tr key={idx} className={`border-b border-white/5 hover:bg-white/[0.02] transition-colors group ${sameSector ? "bg-success/5" : ""}`}>
+                        <tr key={idx} className={`border-b border-text/5 hover:bg-text/[0.02] transition-colors group ${sameSector ? "bg-success/5" : ""}`}>
                           <td className="px-4 py-4 font-mono text-[10px] text-text-muted font-bold">#{String(idx + 1).padStart(2, '0')}</td>
                           <td className="px-4 py-4 font-mono font-black text-text">
                             <Link href={`/graph?asset=${p.symbol_a}`} className="hover:text-accent transition-colors flex items-center gap-2">
@@ -410,7 +417,7 @@ export default function CorrelationsPage() {
           
           {/* RIGHT: Sector Correlation Summary */}
           <GlassCard tier={2} shape="none" className="rounded-xl p-0 flex flex-col overflow-hidden">
-            <div className="p-8 border-b border-white/5 bg-surface/30">
+            <div className="p-8 border-b border-text/5 bg-surface/30">
               <h3 className="text-xl font-black text-text tracking-tight flex items-center gap-3">
                   <div className="w-8 h-8 rounded-full glass bg-accent/10 border border-accent/20 flex items-center justify-center">
                       <BarChart3 className="text-accent" size={16} />
@@ -421,17 +428,17 @@ export default function CorrelationsPage() {
             </div>
             
             <div className="h-[350px] w-full p-8 pb-0">
-              <ResponsiveContainer width="100%" height={350}>
+              <ResponsiveContainer width="100%" height={350} minWidth={0} minHeight={0}>
                 <BarChart data={sectorBars} layout="vertical" margin={{ left: 20 }}>
-                  <XAxis type="number" domain={[0, 1]} stroke="rgba(255,255,255,0.2)" fontSize={10} fontFamily="monospace" tickLine={false} axisLine={false} />
-                  <YAxis dataKey="name" type="category" stroke="rgba(255,255,255,0.5)" fontSize={10} fontFamily="monospace" tickLine={false} axisLine={false} tickFormatter={(val) => typeof val === 'string' ? val.toUpperCase() : val} />
+                  <XAxis type="number" domain={[0, 1]} stroke={palette.muted} fontSize={10} fontFamily="monospace" tickLine={false} axisLine={false} />
+                  <YAxis dataKey="name" type="category" stroke={palette.text} fontSize={10} fontFamily="monospace" tickLine={false} axisLine={false} tickFormatter={(val) => typeof val === 'string' ? val.toUpperCase() : val} />
                   <Tooltip 
-                    cursor={{fill: 'rgba(255,255,255,0.05)'}} 
-                    contentStyle={{ backgroundColor: "rgba(var(--background), 0.9)", borderColor: "rgba(var(--text), 0.1)", borderRadius: "12px", color: "rgb(var(--text))", backdropFilter: "blur(10px)" }} 
+                    cursor={{fill: palette.text === '#ECE7DD' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'}} 
+                    contentStyle={{ backgroundColor: "rgba(var(--background), 0.9)", borderColor: "rgba(var(--text), 0.1)", borderRadius: "12px", color: palette.text, backdropFilter: "blur(10px)" }} 
                     itemStyle={{ fontFamily: 'monospace', fontWeight: 'bold' }}
                     formatter={(value: any) => [Number(value).toFixed(4), 'Affinity Score']}
                   />
-                  <ReferenceLine x={0} stroke="rgba(255,255,255,0.1)" />
+                  <ReferenceLine x={0} stroke={palette.muted} />
                   <Bar 
                     dataKey="value" 
                     radius={[0, 4, 4, 0]}

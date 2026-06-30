@@ -1,5 +1,4 @@
 "use client";
-
 import useSWR from "swr";
 import { fetcher, GraphResponse } from "@/lib/api";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -9,8 +8,10 @@ import { useMemo, useRef, useState, useEffect, useCallback } from "react";
 import { useChartPalette } from "@/lib/useChartPalette";
 import { useTheme } from "next-themes";
 import * as d3 from "d3-force";
+import * as THREE from "three";
+import { useRouter } from "next/navigation";
 
-const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
+const ForceGraph3D = dynamic(() => import("react-force-graph-3d"), {
   ssr: false,
   loading: () => <Skeleton className="w-full h-[600px] shape-squircle" />,
 });
@@ -65,8 +66,9 @@ function hexToRgb(hex: string): string {
 }
 
 export default function GraphPage() {
-const palette = useChartPalette();
-const { resolvedTheme } = useTheme();
+  const palette = useChartPalette();
+  const { resolvedTheme } = useTheme();
+  const router = useRouter();
   
   const { data, error, isLoading, mutate } = useSWR<GraphResponse>("/api/graph/latest", fetcher, {
     revalidateOnFocus: false, dedupingInterval: 30000,
@@ -165,24 +167,63 @@ const { resolvedTheme } = useTheme();
     return { nodes, links };
   }, [data]);
 
-  const nodeCanvasObject = useCallback((node: any, ctx: CanvasRenderingContext2D) => {
-  const r = node.radius || 7;
-  const color = node.color || "#64748b";
-  // Circle fill
-  ctx.beginPath();
-  ctx.arc(node.x, node.y, r, 0, 2 * Math.PI);
-  ctx.fillStyle = color;
-  ctx.fill();
-  // Border (halo effect)
-  ctx.strokeStyle = resolvedTheme === "dark" ? "#0b0d12" : "#f6f1e7";
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  // Label below
-  ctx.font = "bold 9px monospace";
-  ctx.textAlign = "center";
-  ctx.fillStyle = palette.text;
-  ctx.fillText(node.symbol, node.x, node.y + r + 12);
-  }, [palette.text, resolvedTheme]);
+  const nodeThreeObject = useCallback((node: any) => {
+    const radius = node.radius || 7;
+    
+    // 1. Create sphere geometry
+    const sphereGeom = new THREE.SphereGeometry(radius, 24, 24);
+    
+    // 2. Create radial gradient canvas texture
+    const sphereCanvas = document.createElement('canvas');
+    sphereCanvas.width = 128;
+    sphereCanvas.height = 128;
+    const sCtx = sphereCanvas.getContext('2d');
+    if (sCtx) {
+      const gradient = sCtx.createRadialGradient(64, 64, 0, 64, 64, 64);
+      gradient.addColorStop(0, '#ffffff'); // bright highlight center
+      gradient.addColorStop(0.3, node.color || '#64748b'); // main sector color
+      gradient.addColorStop(0.8, node.color || '#64748b');
+      gradient.addColorStop(1, '#020305'); // dark border edge
+      sCtx.fillStyle = gradient;
+      sCtx.fillRect(0, 0, 128, 128);
+    }
+    const sphereTex = new THREE.CanvasTexture(sphereCanvas);
+    const sphereMat = new THREE.MeshBasicMaterial({ 
+      map: sphereTex, 
+      transparent: true, 
+      opacity: 0.9 
+    });
+    const sphereMesh = new THREE.Mesh(sphereGeom, sphereMat);
+    
+    // 3. Create Sprite for symbol text (always faces camera)
+    const textCanvas = document.createElement('canvas');
+    textCanvas.width = 128;
+    textCanvas.height = 128;
+    const tCtx = textCanvas.getContext('2d');
+    if (tCtx) {
+      tCtx.clearRect(0, 0, 128, 128);
+      tCtx.font = 'bold 36px monospace';
+      tCtx.fillStyle = '#ffffff'; // White text for maximum contrast on color background
+      tCtx.textAlign = 'center';
+      tCtx.textBaseline = 'middle';
+      tCtx.fillText(node.symbol, 64, 64);
+    }
+    const textTex = new THREE.CanvasTexture(textCanvas);
+    const spriteMat = new THREE.SpriteMaterial({ 
+      map: textTex, 
+      transparent: true,
+      depthTest: false 
+    });
+    const sprite = new THREE.Sprite(spriteMat);
+    sprite.scale.set(radius * 1.5, radius * 1.5, 1);
+    
+    // 4. Combine into group
+    const group = new THREE.Group();
+    group.add(sphereMesh);
+    group.add(sprite);
+    
+    return group;
+  }, []);
 
   const linkColor = useCallback((link: any) => {
     const style = EDGE_STYLES[link.edge_type] || DEFAULT_EDGE;
@@ -218,29 +259,24 @@ const { resolvedTheme } = useTheme();
         {isLoading || !data ? (
           <Skeleton className="w-full h-full" />
         ) : (
-          <ForceGraph2D
-          key={resolvedTheme || 'dark'}
-          ref={graphRef}
+          <ForceGraph3D
+            key={resolvedTheme || 'dark'}
+            ref={graphRef}
             width={dimensions.width}
             height={dimensions.height}
             graphData={graphData}
             nodeId="symbol"
-            nodeCanvasObject={nodeCanvasObject}
-            nodePointerAreaPaint={(node: any, color: string, ctx: CanvasRenderingContext2D) => {
-              ctx.beginPath();
-              ctx.arc(node.x, node.y, node.radius || 7, 0, 2 * Math.PI);
-              ctx.fillStyle = color;
-              ctx.fill();
-            }}
+            nodeThreeObject={nodeThreeObject}
             linkColor={linkColor}
             linkWidth={linkWidth}
+            linkResolution={6}
             linkDirectionalParticleColor={(link: any) => {
               const ms = link.motif_similarity || 0;
               return ms > 0.4 ? "rgba(34, 197, 94, 0.9)" : ms < -0.4 ? "rgba(239, 68, 68, 0.9)" : "rgba(212, 165, 71, 0.8)";
             }}
             linkDirectionalParticleWidth={(link: any) => Math.max(2, (Math.abs(link.motif_similarity || 0.5) * 4))}
             linkDirectionalParticleSpeed={(link: any) => 0.01 + (Math.abs(link.motif_similarity || 0.1) * 0.025)}
-            backgroundColor="transparent"
+            backgroundColor="rgba(0,0,0,0)"
             d3AlphaDecay={0.06}
             d3VelocityDecay={0.4}
             cooldownTime={4000}
@@ -251,17 +287,8 @@ const { resolvedTheme } = useTheme();
               }
             }}
             onNodeClick={(node: any) => {
-              setSelectedNode(node);
-              const nodeLinks = graphData.links.filter(
-                (l: any) => 
-                  l.source === node || 
-                  l.target === node || 
-                  l.source?.symbol === node.symbol || 
-                  l.target?.symbol === node.symbol
-              );
-              nodeLinks.forEach((link: any) => {
-                graphRef.current?.emitParticle(link);
-              });
+              // Click redirects user to the coin's specific detail route /coin/[symbol]
+              router.push(`/coin/${node.symbol}`);
             }}
           />
         )}
@@ -334,7 +361,7 @@ const { resolvedTheme } = useTheme();
                 {selectedNode.confidence != null && (
                   <div className="flex flex-col gap-0.5">
                     <span className="text-[10px] text-text-muted uppercase tracking-widest font-mono">Confidence Matrix</span>
-                    <span className="text-xl font-mono font-black text-text">{(selectedNode.confidence * 100).toFixed(1)}%</span>
+                    <span className="text-xl font-mono font-black text-text">{(selectedNode.confidence).toFixed(1)}%</span>
                   </div>
                 )}
             </div>

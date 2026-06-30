@@ -52,6 +52,12 @@ fi
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
+# Copy env files if missing
+if [ ! -f "${DIR}/backend/.env" ] && [ -f "${DIR}/backend/.env.example" ]; then
+    echo "    Creating backend .env file from .env.example..."
+    cp "${DIR}/backend/.env.example" "${DIR}/backend/.env"
+fi
+
 # ─── 2. Backend Setup ────────────────────────────────────────
 echo "[*] Setting up Backend..."
 cd "${DIR}/backend"
@@ -66,11 +72,17 @@ if [ -f "requirements-optional.txt" ]; then
 fi
 deactivate
 
+# Copy frontend env file if missing
+if [ ! -f "${DIR}/frontend/.env.local" ] && [ -f "${DIR}/frontend/.env.example" ]; then
+    echo "    Creating frontend .env.local file from .env.example..."
+    cp "${DIR}/frontend/.env.example" "${DIR}/frontend/.env.local"
+fi
+
 # ─── 3. Frontend Setup & Build ───────────────────────────────
 echo "[*] Setting up Frontend..."
 cd "${DIR}/frontend"
 if [ ! -d "node_modules" ]; then
-    npm install
+    npm install --quiet
 fi
 
 # Build for production to avoid RAM/SWC issues in dev mode
@@ -90,8 +102,8 @@ python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 &
 BACKEND_PID=$!
 
 cd "${DIR}/frontend"
-# Start the production server
-npm run start -H 0.0.0.0 -p 3000 &
+# Start the production server with proper parameter forwarding
+npm run start -- -H 0.0.0.0 -p 3000 &
 FRONTEND_PID=$!
 
 echo "[*] Waiting for servers to initialize..."

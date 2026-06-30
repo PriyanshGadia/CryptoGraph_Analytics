@@ -174,7 +174,7 @@ export default function SettingsPage() {
           <select
             value={currency}
             onChange={(e) => setCurrency(e.target.value as Currency)}
-            className="bg-surface/50 border border-white/10 text-text text-sm rounded-sm focus:ring-accent focus:border-accent block p-3.5 w-full md:w-64 font-mono font-bold transition-colors hover:bg-surface/80 outline-none"
+            className="bg-surface/50 border border-text/10 text-text text-sm rounded-sm focus:ring-accent focus:border-accent block p-3.5 w-full md:w-64 font-mono font-bold transition-colors hover:bg-surface/80 outline-none"
           >
             {Object.keys(CURRENCY_SYMBOLS).map((c) => (
               <option key={c} value={c}>
@@ -196,7 +196,7 @@ export default function SettingsPage() {
             <p className="text-text-muted text-sm font-light">Toggle Lite mode to disable glass blur effects and improve battery life on mobile devices.</p>
           </div>
           
-          <div className="flex bg-surface/50 rounded-sm border border-white/10 p-1 w-full md:w-auto">
+          <div className="flex bg-surface/50 rounded-sm border border-text/10 p-1 w-full md:w-auto">
             <button
               onClick={() => setPerfMode("full")}
               className={`flex-1 md:flex-none px-6 py-2.5 text-xs font-bold uppercase tracking-widest transition-all rounded-sm ${
@@ -247,7 +247,7 @@ export default function SettingsPage() {
           </button>
         </div>
         {refreshResult && (
-          <div className="mt-6 p-4 glass bg-black/20 border border-white/10 rounded-sm text-sm text-text-muted font-mono border-l-2 border-l-warning">
+          <div className="mt-6 p-4 glass bg-black/20 border border-text/10 rounded-sm text-sm text-text-muted font-mono border-l-2 border-l-warning">
             {refreshResult}
           </div>
         )}
@@ -255,7 +255,7 @@ export default function SettingsPage() {
 
       {/* API Keys Section */}
       <GlassCard tier={2} shape="none" className="rounded-xl p-0 relative z-10 overflow-hidden">
-        <div className="p-8 border-b border-white/5 bg-surface/30">
+        <div className="p-8 border-b border-text/5 bg-surface/30">
             <h2 className="text-xl font-black text-text flex items-center gap-3 tracking-tight">
             <Key className="text-accent" size={24} /> Integration Keys
             </h2>
@@ -263,7 +263,7 @@ export default function SettingsPage() {
 
         <div className="p-8 space-y-8 bg-surface/10">
             {fields.map(field => (
-            <div key={field.id} className="grid grid-cols-1 lg:grid-cols-3 gap-6 border-b border-white/5 pb-8 last:border-0 last:pb-0 group">
+            <div key={field.id} className="grid grid-cols-1 lg:grid-cols-3 gap-6 border-b border-text/5 pb-8 last:border-0 last:pb-0 group">
                 <div className="lg:col-span-1">
                 <div className="flex items-center gap-3 mb-2">
                     <label htmlFor={field.id} className="block text-xs font-bold text-text uppercase tracking-widest">
@@ -286,7 +286,7 @@ export default function SettingsPage() {
                 <input
                     id={field.id}
                     type={field.sensitive ? "password" : "text"}
-                    className="w-full bg-surface/50 border border-white/10 text-text text-sm rounded-sm focus:ring-accent focus:border-accent block pl-12 p-3.5 transition-all font-mono hover:bg-surface/80 outline-none focus:shadow-[0_0_15px_rgba(var(--accent),0.1)]"
+                    className="w-full bg-surface/50 border border-text/10 text-text text-sm rounded-sm focus:ring-accent focus:border-accent block pl-12 p-3.5 transition-all font-mono hover:bg-surface/80 outline-none focus:shadow-[0_0_15px_rgba(var(--accent),0.1)]"
                     placeholder={configured[field.id] ? "••••••••  (leave blank to keep current)" : "Enter key hash"}
                     value={formValues[field.id] || ""}
                     onChange={(e) => handleChange(field.id, e.target.value)}
@@ -295,14 +295,14 @@ export default function SettingsPage() {
             </div>
             ))}
 
-            <div className="pt-6 mt-4 flex flex-col md:flex-row items-center justify-between gap-6 border-t border-white/5">
+            <div className="pt-6 mt-4 flex flex-col md:flex-row items-center justify-between gap-6 border-t border-text/5">
             {status ? (
                 <div className={`flex items-center gap-3 text-sm font-black tracking-widest uppercase px-4 py-2 rounded-sm ${status.type === 'success' ? 'bg-success/10 text-success border border-success/20' : 'bg-danger/10 text-danger border border-danger/20'}`}>
                 {status.type === 'success' ? <CheckCircle size={18} /> : <AlertCircle size={18} />}
                 {status.message}
                 </div>
             ) : (
-                <div className="text-[10px] font-bold uppercase tracking-widest text-text-muted bg-white/5 px-3 py-1.5 rounded-sm border border-white/10">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-text-muted bg-text/5 px-3 py-1.5 rounded-sm border border-text/10">
                 {dirtyFields.size > 0 ? `${dirtyFields.size} pending modifications` : "System parameters locked"}
                 </div>
             )}

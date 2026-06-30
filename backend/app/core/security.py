@@ -13,7 +13,12 @@ from app.core.config import settings
 KEY_PATH = Path(__file__).parent.parent.parent / "master.key"
 
 def _get_or_create_master_key() -> bytes:
-    """Gets the master key from disk, or generates a new one if it doesn't exist."""
+    """Gets the master key from environment variables or disk, or generates a new one if it doesn't exist."""
+    env_key = os.getenv("ENCRYPTION_KEY") or os.getenv("MASTER_KEY")
+    if env_key:
+        # If it's a raw string, we strip whitespace and encode it
+        return env_key.strip().encode("utf-8")
+
     if KEY_PATH.exists():
         with open(KEY_PATH, "rb") as f:
             return f.read().strip()

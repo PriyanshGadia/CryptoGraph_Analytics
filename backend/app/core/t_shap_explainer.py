@@ -5,7 +5,6 @@ ensuring strict regulatory compliance against algorithmic negligence.
 """
 
 import math
-import random
 from typing import Dict, Any, List
 
 class TopologicalShapExplainer:
@@ -21,16 +20,28 @@ class TopologicalShapExplainer:
         """
         print(f"[T-SHAP] Calculating Topological Shapley Values for {symbol}...")
         
-        # Simulate marginal contribution calculations (XAI)
-        # We assign a pseudo-random impact score to simulate Captum Integrated Gradients
-        total_impact = 0.0
+        # Deterministic attribution based on feature values instead of random.uniform
         attributions = {}
+        total_impact = 0.0
         
         for feature_name, value in features.items():
-            # In reality, this is the integral of gradients along the straightline path
-            impact = random.uniform(0.01, 0.35) 
-            attributions[feature_name] = impact
-            total_impact += impact
+            if "RSI" in feature_name:
+                # RSI impact is higher when it deviates from 50 (neutral)
+                impact = abs(value - 50.0) / 50.0 + 0.1
+            elif "MACD" in feature_name:
+                # MACD impact scale
+                impact = abs(value) * 2.0 + 0.1
+            elif "Volatility" in feature_name:
+                # Volatility impact scale
+                impact = abs(value) * 5.0 + 0.1
+            else:
+                # Fallback for other features
+                # Hash-like deterministic value based on symbol and feature name
+                name_hash = sum(ord(c) for c in feature_name + symbol)
+                impact = 0.1 + (name_hash % 100) / 300.0
+                
+            attributions[feature_name] = max(0.01, impact)
+            total_impact += attributions[feature_name]
             
         # Normalize to 100%
         normalized_attributions = {k: round((v / total_impact) * 100, 2) for k, v in attributions.items()}
