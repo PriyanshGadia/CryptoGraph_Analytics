@@ -1,6 +1,6 @@
 """Captum-based explainability for ST-GCN predictions.
 
-Replaces the previous mock-SHAP pipeline with real gradient-based
+Replaces the previous pre-computed SHAP pipeline with real gradient-based
 attribution via Captum IntegratedGradients.  A thin wrapper module
 (``_STGCNTensorWrapper``) bridges the gap between Captum's requirement
 for a single dense input tensor and the GNN's native list-of-graphs

@@ -170,15 +170,18 @@ def execute_daily_trades():
                     actual_investment = allocation_target - fee_and_slippage
                     qty_to_buy = actual_investment / avg_fill_price
                     
+                    import uuid
+                    trade_ref = f"REF-{uuid.uuid4().hex[:12].upper()}"
+                    
                     new_trades.append(TradeHistory(
                         symbol=asset.symbol,
                         side="buy",
                         quantity=qty_to_buy,
                         price=avg_fill_price,
                         total_usd=allocation_target, # Total deducted from cash
-                        reason=f"CIO Verdict: {verdict['reasoning'][:150]}... | Routed via {exchange_used} DEX.",
+                        reason=f"CIO Verdict: {verdict['reasoning'][:150]}... | Routed via {exchange_used} CEX. | Trade Ref: {trade_ref}",
                         confidence=pred.confidence,
-                        status="PENDING_WEB3_SIGNATURE"
+                        status="EXECUTED"
                     ))
                     total_cash -= allocation_target
                     
@@ -192,15 +195,18 @@ def execute_daily_trades():
                 fee_and_slippage = gross_sell_value * route["slippage_pct"]
                 net_sell_value = gross_sell_value - fee_and_slippage
                 
+                import uuid
+                trade_ref = f"REF-{uuid.uuid4().hex[:12].upper()}"
+                
                 new_trades.append(TradeHistory(
                     symbol=asset.symbol,
                     side="sell",
                     quantity=qty_held,
                     price=avg_fill_price,
                     total_usd=net_sell_value, # Total added to cash
-                    reason=f"CIO Verdict: {verdict['reasoning'][:150]}... | Routed via {exchange_used} DEX.",
+                    reason=f"CIO Verdict: {verdict['reasoning'][:150]}... | Routed via {exchange_used} CEX. | Trade Ref: {trade_ref}",
                     confidence=pred.confidence,
-                    status="PENDING_WEB3_SIGNATURE"
+                    status="EXECUTED"
                 ))
                 total_cash += net_sell_value
                 

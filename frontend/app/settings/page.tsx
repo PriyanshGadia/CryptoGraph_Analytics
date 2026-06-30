@@ -114,6 +114,12 @@ export default function SettingsPage() {
       sensitive: true,
     },
     {
+      id: "ethereum_rpc_url",
+      label: "Ethereum RPC URL",
+      desc: "Optional. Custom Ethereum JSON-RPC provider (e.g. Infura/Alchemy) to query gas price. Defaults to public Cloudflare RPC.",
+      sensitive: false,
+    },
+    {
       id: "supabase_url",
       label: "Supabase URL",
       desc: "Optional. Cloud sync destination.",

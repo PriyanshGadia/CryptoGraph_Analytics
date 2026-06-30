@@ -12,7 +12,7 @@ from ml.graph.graph_builder import DynamicGraphBuilder
 from ml.models.stgcn import STGCNModel
 from ml.training.trainer import STGCNTrainer
 
-def objective(trial: optuna.Trial, features: dict, available_symbols: list) -> float:
+def objective(trial: optuna.Trial, all_graphs: list, graph_dates: list, proc_features: dict, available_symbols: list) -> float:
     """
     Search space:
       hidden_dim:         trial.suggest_categorical("hidden_dim", [64, 128, 256])
@@ -42,38 +42,77 @@ def objective(trial: optuna.Trial, features: dict, available_symbols: list) -> f
         "early_stopping_patience": 3
     }
     
-    # We mock the train/val graph sequences for Optuna to save time in this skeleton.
-    # A real optuna loop would build the sequences just once outside the objective.
-    seq_len = lookback_window
-    
     model = STGCNModel(
         in_features=24,
         hidden_dim=hidden_dim,
-        num_nodes=N,
         dropout=dropout
     )
     
-    # Create fake labels to pass through trainer
-    train_dir_labels = torch.randint(0, 5, (N,))
-    train_vol_labels = torch.randint(0, 4, (N,))
-    train_returns = torch.randn(N)
+    import pandas as pd
+    def classify_direction(ret):
+        if pd.isna(ret):
+            return 2  # neutral
+        if ret > 0.03:
+            return 4  # strong_up
+        elif 0.00 < ret <= 0.03:
+            return 3  # up
+        elif -0.01 < ret <= 0.00:
+            return 2  # neutral
+        elif -0.03 < ret <= -0.01:
+            return 1  # down
+        else:
+            return 0  # strong_down
+
+    def classify_volatility(vol):
+        if pd.isna(vol) or vol < 0.025:
+            return 0  # low
+        elif vol > 0.065:
+            return 3  # extreme
+        elif vol > 0.040:
+            return 2  # high
+        else:
+            return 1  # medium
+
+    def build_sliding_windows(start_idx, end_idx):
+        dataset = []
+        for idx in range(start_idx, end_idx):
+            input_seq = all_graphs[idx - lookback_window + 1 : idx + 1]
+            target_date = graph_dates[idx + 1]
+            
+            dir_labels_list = []
+            vol_labels_list = []
+            returns_list = []
+            
+            for sym in available_symbols:
+                df = proc_features[sym]
+                if target_date in df.index:
+                    ret = df.loc[target_date, "returns_1d"]
+                    vol = df.loc[target_date, "volatility_7d"]
+                else:
+                    ret = 0.0
+                    vol = 0.0
+                
+                dir_labels_list.append(classify_direction(ret))
+                vol_labels_list.append(classify_volatility(vol))
+                returns_list.append(ret if not pd.isna(ret) else 0.0)
+                
+            dir_tensor = torch.tensor(dir_labels_list, dtype=torch.long)
+            vol_tensor = torch.tensor(vol_labels_list, dtype=torch.long)
+            ret_tensor = torch.tensor(returns_list, dtype=torch.float32)
+            
+            dataset.append((input_seq, dir_tensor, vol_tensor, ret_tensor))
+        return dataset
+
+    split_idx = int(len(all_graphs) * 0.8)
+    # Subset to keep Optuna hyperparameter trials fast
+    train_graphs = build_sliding_windows(max(lookback_window - 1, split_idx - 45), split_idx - 1)
+    val_graphs = build_sliding_windows(max(lookback_window - 1, split_idx - 1), min(len(all_graphs) - 1, split_idx + 10))
     
-    val_dir_labels = torch.randint(0, 5, (N,))
-    val_vol_labels = torch.randint(0, 4, (N,))
-    val_returns = torch.randn(N)
-    
-    # To run a real forward pass we need real Graph sequences
-    # We build a very short sequence of length 1 to quickly test the forward pass 
-    # without spending 10 minutes building graphs per trial
-    from torch_geometric.data import Data
-    dummy_x = torch.randn(N, 24)
-    dummy_ei = torch.empty((2, 0), dtype=torch.long)
-    dummy_ea = torch.empty((0, 1), dtype=torch.float32)
-    dummy_seq = [Data(x=dummy_x, edge_index=dummy_ei, edge_attr=dummy_ea, num_nodes=N)]
-    
-    train_graphs = [(dummy_seq, train_dir_labels, train_vol_labels, train_returns)]
-    val_graphs = [(dummy_seq, val_dir_labels, val_vol_labels, val_returns)]
-    
+    if not train_graphs or not val_graphs:
+        # Fallback to random targets if not enough slices can be formed
+        print("Warning: not enough slices for Optuna search. Using subset bounds fallback.")
+        return 0.0
+
     trainer = STGCNTrainer(model, train_graphs, val_graphs, config)
     
     best_val_f1 = 0.0
@@ -105,6 +144,53 @@ def run_hyperopt(features: dict = None, available_symbols: list = None) -> dict:
             "lookback_window": 30
         }
 
+    # Pre-build daily graphs once to optimize speed
+    builder = DynamicGraphBuilder(supabase_client=None, asset_symbols=available_symbols, feature_dim=24)
+    
+    proc_features = {}
+    for sym in available_symbols:
+        df = features[sym].copy()
+        if "timestamp" in df.columns:
+            df = df.set_index("timestamp")
+        if df.index.tz is None:
+            df.index = df.index.tz_localize("UTC")
+        else:
+            df.index = df.index.tz_convert("UTC")
+        df.index = df.index.floor('D')
+        df = df[~df.index.duplicated(keep='last')]
+        proc_features[sym] = df
+
+    from datetime import datetime, timezone, timedelta
+    now = datetime.now(timezone.utc)
+    start_dt = (now - timedelta(days=730)).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
+    end_dt = now.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
+    
+    all_graphs = []
+    graph_dates = []
+    current_date = start_dt
+    while current_date <= end_dt:
+        missing_count = 0
+        for sym in available_symbols:
+            if sym not in proc_features or current_date not in proc_features[sym].index:
+                missing_count += 1
+        if missing_count / len(available_symbols) <= 0.1:
+            g = builder.build_graph(current_date, proc_features)
+            all_graphs.append(g)
+            graph_dates.append(current_date)
+        current_date += timedelta(days=1)
+
+    if len(all_graphs) < 35:
+        # Fallback if too little data
+        print("Not enough daily graphs for Optuna optimization.")
+        return {
+            "hidden_dim": 128,
+            "gat_heads_1": 4,
+            "transformer_layers": 2,
+            "dropout": 0.2,
+            "learning_rate": 0.001,
+            "lookback_window": 30
+        }
+
     study = optuna.create_study(
         direction="maximize",
         pruner=MedianPruner(n_startup_trials=5)
@@ -112,7 +198,7 @@ def run_hyperopt(features: dict = None, available_symbols: list = None) -> dict:
     
     # Run only 2 trials for fast testing unless overridden
     n_trials = int(os.environ.get("OPTUNA_TRIALS", 2))
-    study.optimize(lambda t: objective(t, features, available_symbols), n_trials=n_trials)
+    study.optimize(lambda t: objective(t, all_graphs, graph_dates, proc_features, available_symbols), n_trials=n_trials)
 
     best_params = study.best_params
     print(f"Best params: {best_params}")
@@ -127,3 +213,4 @@ if __name__ == "__main__":
     os.environ["OPTUNA_TRIALS"] = "2" 
     best = run_hyperopt(None, None)
     print(f"Hyperopt finished successfully.")
+

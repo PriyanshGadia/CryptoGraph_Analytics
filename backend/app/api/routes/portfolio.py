@@ -156,13 +156,13 @@ class ConfirmTradeRequest(BaseModel):
 
 @router.post("/trades/{trade_id}/confirm")
 def confirm_web3_trade(trade_id: int, payload: ConfirmTradeRequest, db: Session = Depends(get_db)):
-    """Confirm a PENDING_WEB3_SIGNATURE trade has been executed on-chain."""
+    """Confirm a PENDING trade has been executed via simulated routing."""
     trade = db.query(TradeHistory).filter(TradeHistory.id == trade_id).first()
     if not trade:
         raise HTTPException(status_code=404, detail="Trade not found")
         
     trade.status = "EXECUTED"
-    trade.reason = trade.reason + f" | On-Chain TX: {payload.tx_hash}"
+    trade.reason = trade.reason + f" | Simulated Tx ID: {payload.tx_hash}"
     db.commit()
     return {"status": "success"}
 

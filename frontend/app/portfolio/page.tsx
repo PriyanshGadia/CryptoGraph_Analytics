@@ -361,7 +361,7 @@ export default function PortfolioPage() {
                           <td className="px-6 py-4 text-text font-mono text-xs">${trade.price.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
                           <td className="px-6 py-4 text-right">
                             <div className="font-bold text-text font-mono flex items-center justify-end gap-3">
-                              {trade.status === "PENDING_WEB3_SIGNATURE" ? (
+                              {trade.status === "PENDING_WEB3_SIGNATURE" || trade.status === "PENDING" ? (
                                 <span className="inline-block px-2 py-0.5 rounded text-[8px] bg-warning/10 text-warning border border-warning/20 uppercase tracking-widest font-bold animate-pulse">
                                   Action Req
                                 </span>
@@ -473,7 +473,7 @@ export default function PortfolioPage() {
                                         </div>
 
                                         {/* Paper Trade Simulation Panel (if pending) */}
-                                        {trade.status === "PENDING_WEB3_SIGNATURE" && (
+                                        {(trade.status === "PENDING_WEB3_SIGNATURE" || trade.status === "PENDING") && (
                                         <div className="md:col-span-2 mt-2 p-6 glass-panel bg-warning/5 border border-warning/20 rounded-sm flex flex-col md:flex-row items-center justify-between gap-6 shadow-[0_0_30px_rgba(245,158,11,0.05)] relative overflow-hidden">
                                             <div className="absolute top-0 right-0 w-32 h-32 bg-warning/10 blur-[40px]" />
                                             <div className="relative z-10">

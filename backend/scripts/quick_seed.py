@@ -6,7 +6,6 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timezone, timedelta
 import sys
-import os
 
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, base_dir)
@@ -63,34 +62,64 @@ def main():
                 c.execute("INSERT INTO ohlcv (asset_id, timestamp, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)",
                           (asset_id, ts, row[1], row[2], row[3], row[4], row[5]))
                 
-            # Insert fake technical features with variance to prevent NaN correlation tensors
-            # Using actual returns from OHLCV
-            prev_close = None
-            for row in ohlcv:
+            # Calculate technical features using pandas from real fetched daily OHLCV rows
+            df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
+            
+            df["returns_1d"] = df["close"].pct_change().fillna(0.0)
+            df["returns_7d"] = df["close"].pct_change(7).fillna(0.0)
+            df["volatility_7d"] = df["returns_1d"].rolling(window=7).std().fillna(0.05)
+            
+            delta = df["close"].diff()
+            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean().fillna(0.0)
+            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean().fillna(0.0)
+            rs = gain / (loss + 1e-9)
+            df["rsi_14"] = (100 - (100 / (1 + rs))).fillna(50.0)
+            
+            exp1 = df["close"].ewm(span=12, adjust=False).mean()
+            exp2 = df["close"].ewm(span=26, adjust=False).mean()
+            df["macd"] = exp1 - exp2
+            df["macd_signal"] = df["macd"].ewm(span=9, adjust=False).mean()
+            
+            high_low = df["high"] - df["low"]
+            high_close = (df["high"] - df["close"].shift()).abs()
+            low_close = (df["low"] - df["close"].shift()).abs()
+            ranges = pd.concat([high_low, high_close, low_close], axis=1)
+            true_range = ranges.max(axis=1)
+            df["atr_14"] = true_range.rolling(14).mean().fillna(true_range.fillna(0.0))
+            
+            sma = df["close"].rolling(20).mean()
+            rstd = df["close"].rolling(20).std()
+            upper_band = sma + 2 * rstd
+            lower_band = sma - 2 * rstd
+            df["bb_width"] = ((upper_band - lower_band) / (sma + 1e-9)).fillna(0.1)
+
+            # Insert calculated technical features
+            for i, row in enumerate(ohlcv):
                 ts = datetime.fromtimestamp(row[0]/1000, tz=timezone.utc).isoformat()
-                close = row[4]
-                returns_1d = (close - prev_close) / prev_close if prev_close else 0.0
-                prev_close = close
                 c.execute("""INSERT INTO technical_features 
                           (asset_id, timestamp, rsi_14, returns_1d, returns_7d, volatility_7d, macd, macd_signal, atr_14, bb_width) 
-                          VALUES (?, ?, 50.0, ?, 0.0, 0.05, 0.0, 0.0, 10.0, 0.1)""",
-                          (asset_id, ts, returns_1d))
-                          
-            # Insert fake prediction
-            confidence = 85.5
-            conformal_spread = 5.0
-            lower = confidence - conformal_spread
-            upper = min(100.0, confidence + conformal_spread)
-            
-            c.execute("INSERT INTO predictions (asset_id, timestamp, predicted_at, direction, confidence, confidence_interval_lower, confidence_interval_upper, volatility_regime) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                      (asset_id, ts, datetime.now(timezone.utc).isoformat(), "strong_up", confidence, lower, upper, "medium"))
+                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                          (asset_id, ts, float(df.loc[i, "rsi_14"]), float(df.loc[i, "returns_1d"]), 
+                           float(df.loc[i, "returns_7d"]), float(df.loc[i, "volatility_7d"]), 
+                           float(df.loc[i, "macd"]), float(df.loc[i, "macd_signal"]), 
+                           float(df.loc[i, "atr_14"]), float(df.loc[i, "bb_width"])))
 
         except Exception as e:
             print(f"Failed to fetch {sym}: {e}")
 
     conn.commit()
     conn.close()
-    print("Rapid seed complete. Frontend will now have data!")
+    
+    # Run the real ML inference pipeline to populate the predictions table with true GCN-predicted outputs
+    print("Ingestion complete. Executing real inference pipeline to populate predictions...")
+    try:
+        from ml.pipelines.inference_pipeline import run_inference
+        res = run_inference()
+        print(f"Real predictions populated successfully: {res}")
+    except Exception as e:
+        print(f"Failed to run real prediction pipeline: {e}")
+
+    print("Rapid seed complete. Frontend has true, live data!")
 
 if __name__ == "__main__":
     main()

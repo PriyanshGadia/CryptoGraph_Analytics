@@ -52,12 +52,13 @@ def main():
     best_params = run_hyperopt(features, available_symbols)
     
     print("\n▶ Step 3: Loading best hyperparameters...")
+    best_params["max_epochs"] = 10
     print(f"Best Params: {best_params}")
     
     print("\n▶ Step 4: Training STGCNModel with best hyperparameters...")
     
     # Build full graph sequence for training
-    print("Building full temporal graph sequence...")
+    print("Building daily graphs and dates...")
     builder = DynamicGraphBuilder(supabase_client=None, asset_symbols=available_symbols, feature_dim=27)
     
     proc_features = {}
@@ -67,55 +68,113 @@ def main():
             df = df.set_index("timestamp")
         if df.index.tz is None:
             df.index = df.index.tz_localize("UTC")
+        else:
+            df.index = df.index.tz_convert("UTC")
+        
+        # Floor dates to Day boundary for daily matching
+        df.index = df.index.floor('D')
+        df = df[~df.index.duplicated(keep='last')]
         proc_features[sym] = df
 
-    # Prepare sequences for trainer
-    # This is a simplified split for the pipeline script
-    split_idx = int(len(proc_features[available_symbols[0]]) * 0.8)
-    if split_idx < 30:
-        print("Not enough data to train. Need at least 30 days.")
+    # Find the range of days
+    start_dt = (now - timedelta(days=730)).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
+    end_dt = now.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
+    
+    all_graphs = []
+    graph_dates = []
+    current_date = start_dt
+    while current_date <= end_dt:
+        missing_count = 0
+        for sym in available_symbols:
+            if sym not in proc_features or current_date not in proc_features[sym].index:
+                missing_count += 1
+                
+        # If at least 90% of assets have data for this day, build graph
+        if missing_count / len(available_symbols) <= 0.1:
+            g = builder.build_graph(current_date, proc_features)
+            all_graphs.append(g)
+            graph_dates.append(current_date)
+            
+        current_date += timedelta(days=1)
+        
+    print(f"Built {len(all_graphs)} daily graphs.")
+    
+    lookback_window = best_params.get("lookback_window", 30)
+    
+    # Chronological split at 80% mark
+    split_idx = int(len(all_graphs) * 0.8)
+    
+    # Ensure we have enough data
+    if len(all_graphs) < lookback_window + 5:
+        print("Not enough graphs built to form sliding windows.")
         return
         
-    split_date = proc_features[available_symbols[0]].index[split_idx].to_pydatetime()
+    print(f"Building sliding window datasets (lookback={lookback_window})...")
     
-    # In a real scenario we'd create target labels here using FeatureStore.
-    # For this skeleton to run, we mock the tuple building
-    print("Splitting train/val and building sequences (mocked targets for now)...")
+    def classify_direction(ret):
+        if pd.isna(ret):
+            return 2  # neutral
+        if ret > 0.03:
+            return 4  # strong_up
+        elif 0.00 < ret <= 0.03:
+            return 3  # up
+        elif -0.01 < ret <= 0.00:
+            return 2  # neutral
+        elif -0.03 < ret <= -0.01:
+            return 1  # down
+        else:
+            return 0  # strong_down
+
+    def classify_volatility(vol):
+        if pd.isna(vol) or vol < 0.025:
+            return 0  # low
+        elif vol > 0.065:
+            return 3  # extreme
+        elif vol > 0.040:
+            return 2  # high
+        else:
+            return 1  # medium
+
+    def build_sliding_windows(start_idx, end_idx):
+        dataset = []
+        for idx in range(start_idx, end_idx):
+            # The input sequence is lookback_window graphs ending at idx
+            input_seq = all_graphs[idx - lookback_window + 1 : idx + 1]
+            target_date = graph_dates[idx + 1] # Target is the next day's label
+            
+            dir_labels_list = []
+            vol_labels_list = []
+            returns_list = []
+            
+            for sym in available_symbols:
+                df = proc_features[sym]
+                if target_date in df.index:
+                    ret = df.loc[target_date, "returns_1d"]
+                    vol = df.loc[target_date, "volatility_7d"]
+                else:
+                    ret = 0.0
+                    vol = 0.0
+                
+                dir_labels_list.append(classify_direction(ret))
+                vol_labels_list.append(classify_volatility(vol))
+                returns_list.append(ret if not pd.isna(ret) else 0.0)
+                
+            dir_tensor = torch.tensor(dir_labels_list, dtype=torch.long)
+            vol_tensor = torch.tensor(vol_labels_list, dtype=torch.long)
+            ret_tensor = torch.tensor(returns_list, dtype=torch.float32)
+            
+            dataset.append((input_seq, dir_tensor, vol_tensor, ret_tensor))
+        return dataset
+
+    train_graphs = build_sliding_windows(max(lookback_window - 1, split_idx - 60), split_idx - 1)
+    val_graphs = build_sliding_windows(max(lookback_window - 1, split_idx - 1), min(len(all_graphs) - 1, split_idx + 15))
     
-    # Create a small dummy train/val set so the trainer can run
-    train_seq = builder.build_temporal_graph_sequence(
-        start_date=now - timedelta(days=730),
-        end_date=split_date,
-        features=proc_features,
-        lookback_window=best_params.get("lookback_window", 30)
-    )
-    
-    val_seq = builder.build_temporal_graph_sequence(
-        start_date=split_date,
-        end_date=now,
-        features=proc_features,
-        lookback_window=best_params.get("lookback_window", 30)
-    )
+    print(f"Dataset summary: {len(train_graphs)} train samples, {len(val_graphs)} val samples.")
     
     N = len(available_symbols)
-    
-    # We create fake labels just to pass through the trainer in this pipeline setup.
-    # In production, these come from store.get_target_labels()
-    train_dir_labels = torch.randint(0, 5, (N,))
-    train_vol_labels = torch.randint(0, 4, (N,))
-    train_returns = torch.randn(N)
-    
-    val_dir_labels = torch.randint(0, 5, (N,))
-    val_vol_labels = torch.randint(0, 4, (N,))
-    val_returns = torch.randn(N)
-    
-    train_graphs = [(train_seq, train_dir_labels, train_vol_labels, train_returns)]
-    val_graphs = [(val_seq, val_dir_labels, val_vol_labels, val_returns)]
-    
     model = STGCNModel(
         in_features=27,
         hidden_dim=best_params.get("hidden_dim", 128),
-        num_nodes=N,
         dropout=best_params.get("dropout", 0.2)
     )
     
@@ -132,14 +191,15 @@ def main():
         "fed_rate", "cpi", "inflation", "vix",
         "tvl", "revenue", "active_users"
     ]
-    graph_sequences_dict = {sym: val_seq for sym in available_symbols}
+    graph_sequences_dict = {sym: val_graphs[-1][0] for sym in available_symbols}
     explain_all_assets(model, graph_sequences_dict, feature_names, db_session=None)
 
     print("\n▶ Step 6: Registering model in SQLite...")
-    # Just save the artifact for now
-    torch.save({"state_dict": model.state_dict(), "config": best_params}, "ml/artifacts/best_model.pt")
+    # Save the model using model.save so config is saved correctly
+    model.save("ml/artifacts/best_model.pt")
 
     print("\n🎉 Training pipeline complete")
 
 if __name__ == "__main__":
     main()
+

@@ -575,22 +575,22 @@ function PredictionStudio() {
                     <div className="flex items-center justify-between mb-6">
                         <div className="flex items-center gap-3">
                             <div className="p-2.5 glass bg-success/10 rounded-sm shadow-inner"><Terminal size={20} className="text-success" /></div>
-                            <h3 className="text-text font-black text-xl tracking-tight">zkML Verification</h3>
+                            <h3 className="text-text font-black text-xl tracking-tight">Inference Attestation</h3>
                         </div>
                         <Lock size={20} className="text-success/50 drop-shadow-[0_0_8px_rgba(34,197,94,0.5)]" />
                     </div>
                     
                     <p className="text-sm text-text/80 mb-8 leading-relaxed font-light tracking-wide flex-1">
-                        Cryptographic zero-knowledge proof ensuring inference execution matches the audited ST-GCN weights securely without revealing model architecture.
+                        Cryptographic attestation hash binding inputs and outputs directly to the audited ST-GCN model weights securely.
                     </p>
                     
                     {zkProof ? (
                         <div className="mt-auto bg-black/60 p-5 rounded-sm border border-success/30 font-mono text-[10px] sm:text-xs break-all relative overflow-hidden shadow-[0_0_20px_rgba(34,197,94,0.1)]">
                         <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10" />
-                        <div className="text-success/70 mb-3 uppercase tracking-widest text-[9px] font-bold">{'// SNARK Hash'}</div>
+                        <div className="text-success/70 mb-3 uppercase tracking-widest text-[9px] font-bold">{'// Attestation Hash'}</div>
                         <div className="text-text/90 leading-relaxed font-bold tracking-tight">{zkProof}</div>
                         <div className="mt-5 flex items-center gap-2 text-success tracking-widest uppercase text-[10px] font-black drop-shadow-[0_0_5px_rgba(34,197,94,0.5)] bg-success/10 w-fit px-3 py-1.5 rounded-sm border border-success/20">
-                            <CheckCircle size={14} /> ON-CHAIN VERIFIED
+                            <CheckCircle size={14} /> ATTESTATION VALID
                         </div>
                         </div>
                     ) : (

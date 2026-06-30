@@ -103,11 +103,11 @@ export default function Dashboard() {
                         <h3 className="text-3xl font-black text-text tracking-tight font-sans mb-3 flex items-center gap-3">
                             Autonomous Portfolio
                             <div className="flex items-center gap-1 text-[10px] bg-success/10 text-success border border-success/20 px-2 py-1 rounded-sm uppercase tracking-widest font-mono">
-                                <CheckCircle size={10} /> Verified
+                                <CheckCircle size={10} /> Active
                             </div>
                         </h3>
                         <p className="text-sm font-light text-text/80 leading-relaxed mb-6">
-                            This platform operates an autonomous trading swarm. Our neural networks and MoA agents execute real capital on-chain based on the predictions you see above. This ledger proves our calibration models perform in production.
+                            This platform operates an autonomous trading swarm. Our neural networks and MoA agents execute simulated paper-trading portfolios on live market data based on the predictions you see above. This ledger proves our calibration models perform in production.
                         </p>
                     </div>
                     

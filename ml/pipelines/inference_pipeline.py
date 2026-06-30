@@ -90,6 +90,10 @@ def run_inference() -> dict:
       7. Return summary dict.
     """
     print("Running inference pipeline …")
+    # CPU usage constraints for Intel i3 compatibility
+    torch.set_num_threads(1)
+    torch.set_num_interop_threads(1)
+    
     now = datetime.now(timezone.utc)
     end_date = now.strftime("%Y-%m-%d")
     start_date = (now - timedelta(days=30)).strftime("%Y-%m-%d")
@@ -151,27 +155,9 @@ def run_inference() -> dict:
     with torch.no_grad():
         dir_logits, vol_logits = model(graph_sequence)  # (N,5), (N,4)
 
-    # Temperature scaling to sharpen probabilities
-    temperature = 0.05
-    dir_probs_raw = F.softmax(dir_logits / temperature, dim=1)   # (N, 5)
-    vol_probs = F.softmax(vol_logits / temperature, dim=1)    # (N, 4)
-    
-    # Scale dir_probs so the max value (confidence) is artificially bounded between 60% and 99% for UI consistency
-    max_vals, _ = dir_probs_raw.max(dim=1, keepdim=True)
-    # min_val in max_vals is roughly 0.40, max is 0.99. We shift the baseline so the lowest is 0.60
-    shifted_max = 0.60 + ((max_vals - 0.40) / (0.99 - 0.40)) * (0.99 - 0.60)
-    shifted_max = torch.clamp(shifted_max, min=0.60, max=0.99)
-    # Re-normalize the non-max probabilities
-    dir_probs = dir_probs_raw.clone()
-    for i in range(dir_probs.shape[0]):
-        idx = dir_probs[i].argmax()
-        rem = 1.0 - shifted_max[i].item()
-        old_rem = 1.0 - max_vals[i].item()
-        if old_rem > 0:
-            for j in range(5):
-                if j != idx:
-                    dir_probs[i, j] = dir_probs[i, j] * (rem / old_rem)
-        dir_probs[i, idx] = shifted_max[i]
+    # Use standard softmax to get true model-predicted probabilities
+    dir_probs = F.softmax(dir_logits, dim=1)   # (N, 5)
+    vol_probs = F.softmax(vol_logits, dim=1)   # (N, 4)
 
     # ── 5. Decode predictions & Generate XAI / zkML Proofs ────────
     predictions = []
@@ -183,21 +169,15 @@ def run_inference() -> dict:
     for idx, symbol in enumerate(available_symbols):
         latest_features = features[symbol].iloc[-1] if symbol in features else None
         
-        direction = "neutral"
-        confidence = 50.0
-        vol_regime = "medium"
-        
-        if latest_features is not None:
-            vol = latest_features.get("volatility_7d", 0.0)
-            if vol < 0.025: vol_regime = "low"
-            elif vol > 0.065: vol_regime = "extreme"
-            elif vol > 0.040: vol_regime = "high"
-            
-        # Extract direction and confidence from the model's forward pass
+        # Decode direction and confidence from the model's forward pass
         dir_idx = int(dir_probs[idx].argmax().item())
         confidence = float(dir_probs[idx][dir_idx].item()) * 100.0
         direction = DIRECTION_CLASSES[dir_idx]
             
+        # Decode volatility regime from the model's volatility head
+        vol_idx = int(vol_probs[idx].argmax().item())
+        vol_regime = VOLATILITY_CLASSES[vol_idx]
+
         real_xai_features = {}
         if latest_features is not None:
             real_xai_features = {
@@ -208,8 +188,15 @@ def run_inference() -> dict:
         else:
             real_xai_features = {"BTC-ETH Correlation": 0.88, "On-Chain Volume": 1.2, "Order Book Imbalance": -0.5}
         
-        # Generate T-SHAP Explainer values
-        xai_result = t_shap.explain_prediction(symbol, real_xai_features)
+        # Generate T-SHAP Explainer values using real GCN model gradients
+        xai_result = t_shap.explain_prediction(
+            symbol=symbol,
+            features=real_xai_features,
+            model=model,
+            graph_sequence=graph_sequence,
+            asset_idx=idx,
+            feature_names=FEATURE_NAMES
+        )
         
         # Generate Cryptographic Inference Proof
         zk_result = zk_prover.generate_inference_proof(model_version, real_xai_features, direction)
@@ -252,15 +239,17 @@ def run_inference() -> dict:
             pred["confidence"],         # confidence
             pred["volatility_regime"],  # volatility_regime
             json.dumps({"t_shap": pred["t_shap_attributions"], "zk_proof": pred["zk_snark_proof"]}), # shap_values
-            pred["model_version"]       # model_version
+            pred["model_version"],      # model_version
+            pred["t_shap_attributions"],# t_shap_attributions
+            pred["zk_snark_proof"]      # zk_snark_proof
         ))
 
     if records:
         cursor.executemany("""
             INSERT INTO predictions
                 (asset_id, timestamp, predicted_at, direction,
-                 confidence, volatility_regime, shap_values, model_version)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 confidence, volatility_regime, shap_values, model_version, t_shap_attributions, zk_snark_proof)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, [r[1:] for r in records])  # Skip ID so it autoincrements
         conn.commit()
 

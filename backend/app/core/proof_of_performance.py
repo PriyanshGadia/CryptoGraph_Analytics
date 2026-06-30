@@ -1,5 +1,5 @@
 """
-Cryptographic Proof of Performance.
+Cryptographic Attestation Ledger.
 Hashes the daily portfolio state and trade history to create an immutable
 track record for institutional compliance and trust.
 """
@@ -12,16 +12,13 @@ from app.db.models_sqla import PortfolioState, TradeHistory, ProofOfPerformance
 
 def generate_daily_proof(db: Session, portfolio_id: int) -> str:
     """
-    Generates a SHA-256 hash of the portfolio state and the day's trades.
-    Saves it to the ProofOfPerformance table.
+    Generates a chained SHA-256 hash of the portfolio state and the day's trades.
+    Each proof includes the hash of the previous day's proof, forming a Merkle chain.
     """
     portfolio = db.query(PortfolioState).filter(PortfolioState.id == portfolio_id).first()
     if not portfolio:
         return ""
         
-    # Get trades from the last 24 hours
-    # For a true daily proof, we'd filter by timestamp > start_of_day
-    # Here we just grab the latest 10 trades to hash the recent state
     recent_trades = db.query(TradeHistory).order_by(TradeHistory.timestamp.desc()).limit(10).all()
     
     trade_data = [
@@ -35,7 +32,10 @@ def generate_daily_proof(db: Session, portfolio_id: int) -> str:
         } for t in recent_trades
     ]
     
-    # Create deterministic JSON string
+    # Query previous proof hash to chain them together (Merkle Chain)
+    prev_proof = db.query(ProofOfPerformance).order_by(ProofOfPerformance.timestamp.desc()).first()
+    prev_hash = prev_proof.state_hash if prev_proof else "0x0000000000000000000000000000000000000000000000000000000000000000"
+    
     payload = {
         "portfolio_id": portfolio.id,
         "cash_balance": portfolio.cash_balance,
@@ -43,20 +43,21 @@ def generate_daily_proof(db: Session, portfolio_id: int) -> str:
         "total_value": portfolio.total_value,
         "btc_benchmark": portfolio.btc_benchmark_value,
         "timestamp": portfolio.timestamp.isoformat() if portfolio.timestamp else datetime.utcnow().isoformat(),
-        "recent_trades": trade_data
+        "recent_trades": trade_data,
+        "previous_hash": prev_hash
     }
     
     payload_str = json.dumps(payload, sort_keys=True)
     state_hash = hashlib.sha256(payload_str.encode("utf-8")).hexdigest()
     
-    # Save the proof
+    # Save the proof with no-op/empty IPFS column (no fake syncing claimed)
     proof = ProofOfPerformance(
         portfolio_state_id=portfolio.id,
         state_hash=state_hash,
-        published_to_ipfs="pending_ipfs_sync" # Placeholder for actual IPFS integration
+        published_to_ipfs=None
     )
     db.add(proof)
     db.commit()
     
-    print(f"[ProofOfPerformance] Generated immutable hash: {state_hash}")
+    print(f"[ProofOfPerformance] Generated chained attestation hash: {state_hash}")
     return state_hash

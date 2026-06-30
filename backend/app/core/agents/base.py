@@ -44,21 +44,31 @@ class BaseAgent:
         """
         Phase 8: Decentralized LLM Fallback Mesh.
         If the primary provider (Groq) is down, this re-routes to a local Ollama instance
-        or Anthropic fallback to ensure 100% intelligence uptime.
+        to ensure 100% intelligence uptime.
         """
         try:
-            # Simulate routing to a local Ollama endpoint (e.g. localhost:11434)
-            print(f"[{self.name}] Rerouting to local Ollama LLaMA-3 fallback...")
-            
-            # In production, we'd use httpx to hit the local Ollama API
-            # For this execution, if local fails, we return a graceful degradation response
-            # rather than crashing the portfolio.
-            
-            # Mock fallback response
-            return "FALLBACK_MESH_ACTIVATED: Analysis deferred due to network instability. Suggesting HOLD."
-            
+            import httpx
+            print(f"[{self.name}] Rerouting to local Ollama LLaMA-3 fallback at localhost:11434...")
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                response = await client.post(
+                    "http://127.0.0.1:11434/v1/chat/completions",
+                    json={
+                        "model": "llama3",
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": prompt}
+                        ],
+                        "temperature": 0.3
+                    }
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    return data["choices"][0]["message"]["content"]
+                else:
+                    print(f"[{self.name}] Local Ollama returned status {response.status_code}")
+                    return None
         except Exception as fallback_err:
-            print(f"[{self.name}] CRITICAL: Fallback Mesh Failed. System Offline. {fallback_err}")
+            print(f"[{self.name}] Fallback Mesh: Local Ollama check failed: {fallback_err}")
             return None
 
     async def analyze(self, *args, **kwargs) -> str:

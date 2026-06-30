@@ -3,7 +3,7 @@ Scheduled data refresh for ST-GCN platform.
 Refresh intervals:
   OHLCV prices:    every 5 minutes  (Binance API)
   Technical feats: every 6 hours    (computed from OHLCV)
-  Predictions:     every 24 hours   (mock inference)
+  Predictions:     every 24 hours   (real GCN inference)
   Enrich assets:   every 24 hours   (sector + market cap from CoinGecko)
 """
 import time
