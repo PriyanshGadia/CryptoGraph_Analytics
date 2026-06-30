@@ -20,6 +20,8 @@ class DynamicGraphBuilder:
         self.symbols = asset_symbols
         self.symbol_to_idx = {s: i for i, s in enumerate(asset_symbols)}
         self.feature_dim = feature_dim
+        self.rolling_min_cache = {}
+        self.rolling_max_cache = {}
 
     def build_graph(
         self,
@@ -56,15 +58,36 @@ class DynamicGraphBuilder:
         if self.feature_dim == 27:
             feature_cols.extend(["tvl", "revenue", "active_users"])
         
-        # STEP 1: Node Features
+        # STEP 1: Node Features with Rolling 30-day scaling per-asset (cached for speed)
         x_list = []
         for sym in self.symbols:
             if sym in proc_features:
                 df = proc_features[sym]
+                if sym not in self.rolling_min_cache:
+                    cols_to_scale = ["open", "high", "low", "close", "volume", "market_cap_usd"]
+                    if self.feature_dim == 27:
+                        cols_to_scale.extend(["tvl", "revenue", "active_users"])
+                    cols_present = [c for c in cols_to_scale if c in df.columns]
+                    self.rolling_min_cache[sym] = df[cols_present].rolling(window=30, min_periods=1).min()
+                    self.rolling_max_cache[sym] = df[cols_present].rolling(window=30, min_periods=1).max()
+                
+                df_min = self.rolling_min_cache[sym]
+                df_max = self.rolling_max_cache[sym]
                 try:
                     row = df.loc[target_date]
-                    vals = row[feature_cols].values.astype(np.float32)
-                except KeyError:
+                    row_min = df_min.loc[target_date]
+                    row_max = df_max.loc[target_date]
+                    vals = []
+                    for col in feature_cols:
+                        val = row[col]
+                        if col in row_min.index:
+                            col_min = row_min[col]
+                            col_max = row_max[col]
+                            col_range = col_max - col_min if col_max > col_min else 1.0
+                            val = (val - col_min) / col_range
+                        vals.append(float(val) if not pd.isna(val) else 0.0)
+                    vals = np.array(vals, dtype=np.float32)
+                except Exception:
                     vals = np.zeros(len(feature_cols), dtype=np.float32)
             else:
                 vals = np.zeros(len(feature_cols), dtype=np.float32)
@@ -168,14 +191,25 @@ class DynamicGraphBuilder:
         if self.feature_dim == 27:
             feature_cols.extend(["tvl", "revenue", "active_users"])
             
-        # STEP 1: Node Features
+        # STEP 1: Node Features with min-max scaling normalized per-asset
         x_list = []
         for sym in self.symbols:
             if sym in features and not features[sym].empty:
                 df = features[sym]
-                # Grab the last row
-                row = df.iloc[-1]
-                vals = row[feature_cols].values.astype(np.float32)
+                try:
+                    row = df.iloc[-1]
+                    vals = []
+                    for col in feature_cols:
+                        val = row[col]
+                        if col in ["open", "high", "low", "close", "volume", "market_cap_usd"]:
+                            col_min = df[col].min()
+                            col_max = df[col].max()
+                            col_range = col_max - col_min if col_max > col_min else 1.0
+                            val = (val - col_min) / col_range
+                        vals.append(float(val) if not pd.isna(val) else 0.0)
+                    vals = np.array(vals, dtype=np.float32)
+                except Exception:
+                    vals = np.zeros(len(feature_cols), dtype=np.float32)
             else:
                 vals = np.zeros(len(feature_cols), dtype=np.float32)
             x_list.append(vals)

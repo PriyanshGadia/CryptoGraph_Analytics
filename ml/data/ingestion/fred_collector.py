@@ -8,9 +8,6 @@ from typing import Dict, Optional
 import pandas as pd
 import yfinance as yf
 from fredapi import Fred
-
-ssl._create_default_https_context = ssl._create_unverified_context
-
 # Database path
 DB_PATH = Path(__file__).parent.parent.parent.parent / "backend" / "cryptograph.db"
 if not DB_PATH.exists():

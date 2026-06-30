@@ -18,27 +18,36 @@ else:
         db_path = base_dir / "cryptograph.db"
         SQLALCHEMY_DATABASE_URL = f"sqlite:///{db_path}"
 
-# Setting check_same_thread=False is needed for SQLite in FastAPI/multi-thread envs
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, 
-    connect_args={
+# Configure connection arguments and engine events dynamically depending on active database dialect
+is_sqlite = SQLALCHEMY_DATABASE_URL.startswith("sqlite")
+
+connect_args = {}
+if is_sqlite:
+    # Setting check_same_thread=False is needed for SQLite in FastAPI/multi-thread envs
+    connect_args = {
         "check_same_thread": False,
         "timeout": 30.0  # 30 seconds busy timeout for massive concurrent writes
     }
+
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL, 
+    connect_args=connect_args
 )
 
-from sqlalchemy import event
+if is_sqlite:
+    from sqlalchemy import event
 
-@event.listens_for(engine, "connect")
-def set_sqlite_pragma(dbapi_connection, connection_record):
-    cursor = dbapi_connection.cursor()
-    # Enable WAL mode for high-concurrency writes without locking reads
-    cursor.execute("PRAGMA journal_mode=WAL")
-    # Set synchronous to NORMAL for faster WAL writes (safe enough for most uses)
-    cursor.execute("PRAGMA synchronous=NORMAL")
-    # Increase cache size for 20k assets
-    cursor.execute("PRAGMA cache_size=-64000") 
-    cursor.close()
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        # Enable WAL mode for high-concurrency writes without locking reads
+        cursor.execute("PRAGMA journal_mode=WAL")
+        # Set synchronous to NORMAL for faster WAL writes (safe enough for most uses)
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        # Increase cache size for 20k assets
+        cursor.execute("PRAGMA cache_size=-64000") 
+        cursor.close()
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()

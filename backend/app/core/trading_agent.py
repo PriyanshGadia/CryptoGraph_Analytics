@@ -61,7 +61,7 @@ async def _run_swarm_evaluations(db: Session, signals: list):
         
     return results
 
-def execute_daily_trades():
+async def execute_daily_trades():
     """
     Cron-job function:
     1. Fetches the latest ST-GCN predictions.
@@ -129,7 +129,7 @@ def execute_daily_trades():
                 signals_to_evaluate.append((asset, pred))
 
         # Run Swarm
-        swarm_decisions = asyncio.run(_run_swarm_evaluations(db, signals_to_evaluate))
+        swarm_decisions = await _run_swarm_evaluations(db, signals_to_evaluate)
 
         risk_manager = RiskManagerCore(db)
         sor = SmartOrderRouter()
@@ -282,4 +282,4 @@ def execute_daily_trades():
         db.close()
 
 if __name__ == "__main__":
-    execute_daily_trades()
+    asyncio.run(execute_daily_trades())

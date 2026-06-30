@@ -90,9 +90,7 @@ async def stream_predictions(websocket: WebSocket):
         connected_clients.remove(websocket)
 
 async def prediction_broadcast_loop():
-    """Background task to broadcast predictions."""
-    model_version = "heuristic-v1"
-    
+    """Background task to broadcast predictions directly from SQLite database."""
     global FORCE_PREDICTION_BROADCAST
     
     while True:
@@ -105,28 +103,41 @@ async def prediction_broadcast_loop():
         if not connected_clients:
             continue
             
-        state = get_global_market_state()
-        if not state:
-            continue
-            
         try:
+            from app.db.database import SessionLocal
+            from app.db.models_sqla import Prediction as SQLAPrediction, Asset
+            from sqlalchemy import desc
+            
+            db = SessionLocal()
+            res = db.query(SQLAPrediction, Asset).join(Asset).order_by(desc(SQLAPrediction.predicted_at)).all()
+            
+            latest_preds = {}
+            for pred, asset in res:
+                if asset.symbol not in latest_preds:
+                    latest_preds[asset.symbol] = pred
+            db.close()
+            
             predictions = []
-            for symbol, data in state.items():
-                predictions.append({
-                    "symbol": symbol,
-                    "direction": data.get("predicted_direction", "neutral"),
-                    "confidence": data.get("confidence", 50.0),
-                    "volatility_regime": data.get("volatility_regime", "low"),
-                    "model_version": model_version,
-                })
+            for symbol in SYMBOLS:
+                pred = latest_preds.get(symbol)
+                if pred:
+                    predictions.append({
+                        "symbol": symbol,
+                        "direction": pred.direction or "neutral",
+                        "confidence": round(pred.confidence, 2) if pred.confidence else 50.0,
+                        "volatility_regime": pred.volatility_regime or "medium",
+                        "model_version": pred.model_version or "stgcn-v1.0",
+                        "attestation_hash": pred.attestation_hash
+                    })
                 
-            payload = json.dumps({"type": "LIVE_PREDICTIONS", "data": predictions})
-            for client in connected_clients:
-                try:
-                    await client.send_text(payload)
-                except:
-                    pass
-                    
+            if predictions:
+                payload = json.dumps({"type": "LIVE_PREDICTIONS", "data": predictions})
+                for client in connected_clients:
+                    try:
+                        await client.send_text(payload)
+                    except Exception:
+                        pass
+                        
         except Exception as e:
             print(f"[Stream] Error broadcasting live predictions: {e}")
 
@@ -164,5 +175,5 @@ async def screener_broadcast_loop():
             for client in screener_clients:
                 try:
                     await client.send_text(payload)
-                except:
+                except Exception:
                     pass

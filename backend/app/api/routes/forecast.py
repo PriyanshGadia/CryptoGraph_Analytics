@@ -11,13 +11,14 @@ import asyncio
 from app.api.deps import get_db
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
-from app.db.models_sqla import Asset, OHLCV, Prediction as SQLAPrediction
+from app.db.models_sqla import Asset, OHLCV, Prediction as SQLAPrediction, Forecast as SQLAForecast
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from cachetools import TTLCache
+import json
 
 limiter = Limiter(key_func=get_remote_address)
-# 1-hour TTL cache for ML forecast models to eliminate criminal wait times
+# 1-hour TTL cache for ML forecast models to eliminate wait times
 ml_forecast_cache = TTLCache(maxsize=100, ttl=3600)
 
 router = APIRouter(prefix="/forecast", tags=["forecast"])
@@ -28,7 +29,6 @@ async def get_forecast(request: Request, symbol: str, db: Session = Depends(get_
     """
     Runs deep learning forecast for a symbol using last 60 days of data.
     Returns historical prices + 30-day forecast + Classical TA Consensus.
-    Uses TTLCache to return instantly after first run.
     """
     
     # 1. Get asset_id
@@ -74,20 +74,51 @@ async def get_forecast(request: Request, symbol: str, db: Session = Depends(get_
     dates  = df["timestamp"]
     last_price = float(prices.iloc[-1])
     
-    # 3. Cache-aware ML forecast (30 days)
+    # 3. Cache-aware Forecast fetch or Autoregressive fallback
     cache_key = f"{symbol}_{dates.iloc[-1].strftime('%Y-%m-%d')}"
     if cache_key in ml_forecast_cache:
         forecast = ml_forecast_cache[cache_key]
     else:
-        import importlib.util, os
-        ml_path = os.path.join(os.path.dirname(__file__), "../../../../ml/models/forecast_model.py")
-        spec = importlib.util.spec_from_file_location("forecast_model", ml_path)
-        fm   = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(fm)
-        
-        # Async execution offloads CPU-heavy logic from FastAPI event loop
-        forecast = await asyncio.to_thread(fm.run_ensemble_forecast, prices, dates, 30)
-        ml_forecast_cache[cache_key] = forecast
+        # Check pre-calculated Forecast database table first
+        db_forecast = db.query(SQLAForecast).filter(SQLAForecast.asset_id == asset_id).order_by(desc(SQLAForecast.timestamp)).first()
+        if db_forecast:
+            forecast = {
+                "forecast_prices": json.loads(db_forecast.forecast_prices),
+                "lower_bound": json.loads(db_forecast.lower_bound),
+                "upper_bound": json.loads(db_forecast.upper_bound),
+                "lstm_forecast": json.loads(db_forecast.lstm_forecast) if db_forecast.lstm_forecast else json.loads(db_forecast.forecast_prices),
+                "prophet_forecast": json.loads(db_forecast.prophet_forecast) if db_forecast.prophet_forecast else json.loads(db_forecast.forecast_prices),
+                "model_used": "Pre-calculated LSTM+Prophet Ensemble",
+                "ensemble": True
+            }
+            ml_forecast_cache[cache_key] = forecast
+        else:
+            # Cache miss: Fallback to fast, non-blocking autoregressive Gaussian drift projection
+            returns = prices.pct_change().dropna()
+            mean_return = float(returns.mean()) if not returns.empty else 0.0005
+            std_return = float(returns.std()) if not returns.empty else 0.02
+            
+            f_prices = []
+            l_bound = []
+            u_bound = []
+            curr_p = last_price
+            for d_idx in range(1, 31):
+                curr_p = curr_p * (1 + mean_return)
+                f_prices.append(curr_p)
+                vol_scale = std_return * (d_idx ** 0.5)
+                l_bound.append(curr_p * (1 - 1.96 * vol_scale))
+                u_bound.append(curr_p * (1 + 1.96 * vol_scale))
+                
+            forecast = {
+                "forecast_prices": f_prices,
+                "lower_bound": l_bound,
+                "upper_bound": u_bound,
+                "lstm_forecast": f_prices,
+                "prophet_forecast": f_prices,
+                "model_used": "Fast Autoregressive Drift Fallback",
+                "ensemble": False
+            }
+            ml_forecast_cache[cache_key] = forecast
         
     # 4. Get ST-GCN model prediction
     pred = db.query(SQLAPrediction).filter(SQLAPrediction.asset_id == asset_id).order_by(desc(SQLAPrediction.predicted_at)).first()

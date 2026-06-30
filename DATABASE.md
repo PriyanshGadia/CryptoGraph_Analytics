@@ -241,4 +241,38 @@ Audited run configurations, artifact hashes, and metrics validated via validatio
   );
   ALTER TABLE model_registry ENABLE ROW LEVEL SECURITY;
   ```
+  ```
 - **RLS Policy**: Enable read access; restrict write actions.
+
+---
+
+## 3. SQLite Local Deployment (Standard Production Setup)
+
+For highly portable and reproducible local environments (including Windows, macOS, Linux, and Android Termux), the platform defaults to a local **SQLite** database (`cryptograph.db`).
+
+### 3.1 SQLite WAL & Concurrency Optimizations
+To support massive concurrent database writes (e.g. daily websocket feeds, technical features computation, and deep learning evaluations) without blocking query operations, the SQLite engine is initialized with the following PRAGMAs:
+* **WAL Mode (Write-Ahead Logging)**: Enables concurrent reads while writing.
+* **Synchronous = NORMAL**: Balances persistence safety with write performance.
+* **Cache Size**: Set to `-64000` (allocates 64MB of memory cache for high-speed indexing).
+
+### 3.2 Predictions Schema Update
+The local predictions schema maps PostgreSQL features into SQLite formats, substituting `JSONB` with SQLite's native `JSON` string parsing, and utilizes an `attestation_hash` column for transparency mapping:
+* `attestation_hash` (TEXT): Replaces `zk_snark_proof` to map execution attestations securely.
+
+### 3.3 New Table: `forecasts`
+Stores ensembled forecasting outputs (LSTM, Prophet) for UI caching to prevent blocking event loop worker threads.
+- **SQLite DDL**:
+  ```sql
+  CREATE TABLE forecasts (
+      id                INTEGER PRIMARY KEY AUTOINCREMENT,
+      asset_id          VARCHAR NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+      timestamp         DATETIME NOT NULL,
+      forecast_prices   TEXT NOT NULL, -- JSON array
+      lower_bound       TEXT NOT NULL, -- JSON array
+      upper_bound       TEXT NOT NULL, -- JSON array
+      lstm_forecast     TEXT,          -- JSON array (optional)
+      prophet_forecast  TEXT           -- JSON array (optional)
+  );
+  CREATE INDEX idx_forecasts_asset_time ON forecasts(asset_id, timestamp);
+  ```

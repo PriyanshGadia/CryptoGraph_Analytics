@@ -21,9 +21,11 @@ from ml.graph.graph_builder import DynamicGraphBuilder
 from ml.models.stgcn import STGCNModel
 import json
 
-# Phase 9: XAI & zkML Integration
+# Phase 9: XAI & Inference Attestation Integration
 from backend.app.core.t_shap_explainer import TopologicalShapExplainer
-from backend.app.core.zkml_prover import ZkmlProver
+from backend.app.core.inference_attester import InferenceAttester
+from ml.models.forecast_model import run_ensemble_forecast
+import pandas as pd
 
 # ── Constants ────────────────────────────────────────────────────────
 MODEL_PATH = Path(__file__).resolve().parent.parent / "artifacts" / "best_model.pt"
@@ -151,28 +153,65 @@ def run_inference() -> dict:
     model_version = _get_model_version(MODEL_PATH)
     print(f"Model loaded: {MODEL_PATH.name} (version={model_version})")
 
-    # ── 4. Forward pass ──────────────────────────────────────────────
+    # ── 4. Forward pass & Probability Calibration (Temperature Scaling) ──────
     with torch.no_grad():
         dir_logits, vol_logits = model(graph_sequence)  # (N,5), (N,4)
 
-    # Use standard softmax to get true model-predicted probabilities
-    dir_probs = F.softmax(dir_logits, dim=1)   # (N, 5)
+    # Retrieve calibrated temperature scaling factor from model config (default: 1.5)
+    temperature = getattr(model, 'config', {}).get("temperature", 1.5)
+    print(f"Applying Calibrated Temperature Scaling (T = {temperature:.2f}) to model logits...")
+
+    # Use calibrated softmax to get true model-predicted probabilities
+    dir_probs = F.softmax(dir_logits / temperature, dim=1)   # (N, 5)
     vol_probs = F.softmax(vol_logits, dim=1)   # (N, 4)
 
-    # ── 5. Decode predictions & Generate XAI / zkML Proofs ────────
+    # ── 5. Decode predictions & Generate XAI / Inference Attestations ────────
     predictions = []
     timestamp_now = now.isoformat()
     
     t_shap = TopologicalShapExplainer()
-    zk_prover = ZkmlProver()
+    attester = InferenceAttester()
+
+    # Model Quality Gate check based on validation metrics
+    gate_passed = True
+    gate_reason = ""
+    try:
+        metrics_path = Path(__file__).resolve().parent.parent / "artifacts" / "validation_metrics.json"
+        if not metrics_path.exists():
+            metrics_path = Path("ml/artifacts/validation_metrics.json")
+        if not metrics_path.exists():
+            metrics_path = Path("../ml/artifacts/validation_metrics.json")
+            
+        if metrics_path.exists():
+            with open(metrics_path, "r") as f:
+                metrics = json.load(f)
+            f1 = metrics.get("f1_macro", 0.0)
+            sharpe = metrics.get("sharpe_ratio", 0.0)
+            if f1 < 0.35 or sharpe < 0.0:
+                gate_passed = False
+                gate_reason = f"F1={f1:.4f} (< 0.35) or Sharpe={sharpe:.4f} (< 0.0)"
+        else:
+            gate_passed = False
+            gate_reason = "No validation metrics file found."
+    except Exception as e:
+        print(f"Error checking model quality gate: {e}")
+        gate_passed = False
+        gate_reason = f"Exception - {e}"
+
+    if not gate_passed:
+        print(f"⚠️ MODEL QUALITY GATE REJECTED: {gate_reason}. Serving 'recalibrating' predictions to UI.")
 
     for idx, symbol in enumerate(available_symbols):
         latest_features = features[symbol].iloc[-1] if symbol in features else None
         
         # Decode direction and confidence from the model's forward pass
-        dir_idx = int(dir_probs[idx].argmax().item())
-        confidence = float(dir_probs[idx][dir_idx].item()) * 100.0
-        direction = DIRECTION_CLASSES[dir_idx]
+        if gate_passed:
+            dir_idx = int(dir_probs[idx].argmax().item())
+            confidence = float(dir_probs[idx][dir_idx].item()) * 100.0
+            direction = DIRECTION_CLASSES[dir_idx]
+        else:
+            direction = "recalibrating"
+            confidence = 0.0
             
         # Decode volatility regime from the model's volatility head
         vol_idx = int(vol_probs[idx].argmax().item())
@@ -198,8 +237,8 @@ def run_inference() -> dict:
             feature_names=FEATURE_NAMES
         )
         
-        # Generate Cryptographic Inference Proof
-        zk_result = zk_prover.generate_inference_proof(model_version, real_xai_features, direction)
+        # Generate Cryptographic Inference Attestation
+        attestation_result = attester.generate_inference_attestation(model_version, real_xai_features, direction)
 
         predictions.append({
             "symbol": symbol,
@@ -209,7 +248,7 @@ def run_inference() -> dict:
             "predicted_at": timestamp_now,
             "model_version": model_version,
             "t_shap_attributions": json.dumps(xai_result),
-            "zk_snark_proof": zk_result["snark_proof"]
+            "attestation_hash": attestation_result["attestation_hash"]
         })
 
     # ── 6. Batch-upsert into SQLite ──────────────────────────────────
@@ -231,31 +270,73 @@ def run_inference() -> dict:
         if not asset_id:
             continue
         records.append((
-            str(uuid.uuid4()),          # id  (TEXT PK in SQLite, wait, it's INTEGER in schema? Let's check below. The schema has INTEGER PRIMARY KEY AUTOINCREMENT but I'll let SQLite handle it or change it)
             asset_id,                   # asset_id
             timestamp_now,              # timestamp
             pred["predicted_at"],       # predicted_at
             pred["direction"],          # direction
             pred["confidence"],         # confidence
             pred["volatility_regime"],  # volatility_regime
-            json.dumps({"t_shap": pred["t_shap_attributions"], "zk_proof": pred["zk_snark_proof"]}), # shap_values
+            json.dumps({"t_shap": pred["t_shap_attributions"], "attestation_hash": pred["attestation_hash"]}), # shap_values
             pred["model_version"],      # model_version
             pred["t_shap_attributions"],# t_shap_attributions
-            pred["zk_snark_proof"]      # zk_snark_proof
+            pred["attestation_hash"]    # attestation_hash
         ))
 
     if records:
         cursor.executemany("""
             INSERT INTO predictions
                 (asset_id, timestamp, predicted_at, direction,
-                 confidence, volatility_regime, shap_values, model_version, t_shap_attributions, zk_snark_proof)
+                 confidence, volatility_regime, shap_values, model_version, t_shap_attributions, attestation_hash)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, [r[1:] for r in records])  # Skip ID so it autoincrements
+        """, records)
         conn.commit()
 
-    conn.close()
-    print(f"Inference complete: {len(records)} predictions stored (model {model_version})")
+    # ── 7. Generate daily LSTM+Prophet forecasts and cache them in Forecasts table ──
+    try:
+        cursor.execute("DELETE FROM forecasts")
+        conn.commit()
+    except Exception as e:
+        print(f"Error clearing forecasts table: {e}")
 
+    for idx, symbol in enumerate(available_symbols):
+        asset_id = sym_to_id.get(symbol)
+        if not asset_id or symbol not in features:
+            continue
+
+        df = features[symbol].copy()
+        if "timestamp" in df.columns:
+            df = df.sort_values("timestamp")
+            prices_series = df["close"]
+            dates_series = df["timestamp"]
+        else:
+            df = df.sort_index()
+            prices_series = df["close"]
+            dates_series = pd.Series(df.index)
+
+        try:
+            print(f"Generating daily LSTM+Prophet forecast for {symbol}...")
+            # Generate 30 days daily forecast
+            f_res = run_ensemble_forecast(prices_series, dates_series, 30)
+
+            cursor.execute("""
+                INSERT INTO forecasts 
+                (asset_id, timestamp, forecast_prices, lower_bound, upper_bound, lstm_forecast, prophet_forecast)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                asset_id,
+                timestamp_now,
+                json.dumps(f_res["forecast_prices"]),
+                json.dumps(f_res["lower_bound"]),
+                json.dumps(f_res["upper_bound"]),
+                json.dumps(f_res.get("lstm_forecast", f_res["forecast_prices"])),
+                json.dumps(f_res.get("prophet_forecast", f_res["forecast_prices"]))
+            ))
+        except Exception as fe:
+            print(f"Forecast generation failed for {symbol}: {fe}")
+
+    conn.commit()
+    conn.close()
+    print(f"Inference complete: {len(records)} predictions stored (model {model_version}) and daily forecasts cached.")
     return {
         "predictions_stored": len(records),
         "model_version": model_version,

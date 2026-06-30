@@ -12,9 +12,6 @@ import ccxt
 import sentry_sdk
 from dotenv import load_dotenv
 import yfinance as yf
-
-ssl._create_default_https_context = ssl._create_unverified_context
-
 # Database path
 DB_PATH = Path(__file__).parent.parent.parent.parent / "backend" / "cryptograph.db"
 

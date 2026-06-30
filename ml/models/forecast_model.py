@@ -11,140 +11,100 @@ def run_lstm_forecast(
     forecast_days: int = 30
 ) -> dict:
     """
-    Runs a simple but effective LSTM forecast.
-    Uses PyTorch — already installed in the ML environment.
-    
-    Returns dict with:
-      forecast_prices: list of 7 predicted prices
-      lower_bound:     list of 7 lower confidence prices (95%)
-      upper_bound:     list of 7 upper confidence prices (95%)
-      model_used:      "LSTM"
+    Runs LSTM forecast using a pre-trained global model.
     """
-    # Normalize prices
     price_array = prices.values.astype(np.float32)
     price_min   = price_array.min()
     price_max   = price_array.max()
-    price_range = price_max - price_min
-    if price_range == 0:
-        price_range = 1.0
+    price_range = price_max - price_min if price_max > price_min else 1.0
     normalized  = (price_array - price_min) / price_range
     
     try:
         import torch
         import torch.nn as nn
-        
-        # Hardware Optimizations for CPU Training Speed
         import os
-        num_cores = os.cpu_count() or 4
-        torch.set_num_threads(num_cores)
-        if hasattr(torch.backends, 'mkldnn') and torch.backends.mkldnn.is_available():
-            torch.backends.mkldnn.enabled = True
-    except ModuleNotFoundError:
-        # Fallback if torch is not installed in the FastAPI environment
-        last_price = price_array[-1]
-        trend = (price_array[-1] - price_array[-7]) / 7 if len(price_array) >= 7 else 0
-        forecast = [last_price + trend * i for i in range(1, forecast_days + 1)]
-        spread = np.std(np.diff(price_array)) * 2 if len(price_array) > 1 else price_range * 0.05
-        return {
-            "forecast_prices": [round(float(p), 6) for p in forecast],
-            "lower_bound":     [round(float(p - spread), 6) for p in forecast],
-            "upper_bound":     [round(float(p + spread), 6) for p in forecast],
-            "model_used":      "naive_trend (torch missing)"
-        }
-    
-    # Prepare sequences: lookback=14 days to predict next 1 day
-    LOOKBACK = 14
-    X, y = [], []
-    for i in range(LOOKBACK, len(normalized)):
-        X.append(normalized[i-LOOKBACK:i])
-        y.append(normalized[i])
-    
-    if len(X) < 10:
-        # Not enough data — return naive forecast
-        last_price = price_array[-1]
-        trend = (price_array[-1] - price_array[-7]) / 7
-        forecast = [last_price + trend * i for i in range(1, forecast_days + 1)]
-        spread = np.std(np.diff(price_array)) * 2
-        return {
-            "forecast_prices": [round(float(p), 6) for p in forecast],
-            "lower_bound":     [round(float(p - spread), 6) for p in forecast],
-            "upper_bound":     [round(float(p + spread), 6) for p in forecast],
-            "model_used":      "naive_trend"
-        }
-    
-    X_t = torch.from_numpy(np.array(X, dtype=np.float32)).unsqueeze(-1)
-    y_t = torch.from_numpy(np.array(y, dtype=np.float32))
-    
-    # Define LSTM model
-    class LSTMForecaster(nn.Module):
-        def __init__(self):
-            super().__init__()
-            self.lstm = nn.LSTM(
-                input_size=1, hidden_size=64,
-                num_layers=2, batch_first=True, dropout=0.1
-            )
-            self.fc = nn.Sequential(
-                nn.Linear(64, 32),
-                nn.ReLU(),
-                nn.Linear(32, 1)
-            )
+        from pathlib import Path
         
-        def forward(self, x):
-            out, _ = self.lstm(x)
-            return self.fc(out[:, -1, :]).squeeze(-1)
-    
-    model = LSTMForecaster()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-    criterion = nn.MSELoss()
-    
-    # Train for 150 epochs (fast on CPU for 60-day window)
-    model.train()
-    for epoch in range(150):
-        optimizer.zero_grad()
-        pred = model(X_t)
-        loss = criterion(pred, y_t)
-        loss.backward()
-        optimizer.step()
-    
-    # Generate 7-day forecast iteratively
-    model.eval()
-    forecast_norm = []
-    window = list(normalized[-LOOKBACK:])
-    
-    with torch.no_grad():
-        for _ in range(forecast_days):
-            x_in = torch.tensor(window[-LOOKBACK:],
-                dtype=torch.float32).unsqueeze(0).unsqueeze(-1)
-            next_val = model(x_in).item()
-            forecast_norm.append(next_val)
-            window.append(next_val)
-    
-    # Denormalize
-    forecast_prices = [p * price_range + price_min for p in forecast_norm]
-    
-    # Confidence intervals: use historical prediction error as spread
-    residuals = []
-    with torch.no_grad():
-        preds_train = model(X_t).numpy()
-    for i, p in enumerate(preds_train):
-        actual = y[i] * price_range + price_min
-        predicted = p * price_range + price_min
-        residuals.append(abs(actual - predicted))
-    
-    spread_1sigma = np.std(residuals) if residuals else price_range * 0.02
-    spread_95 = spread_1sigma * 1.96
-    
-    # Uncertainty grows with forecast horizon
-    uncertainty = [spread_95 * (1 + i * 0.15) for i in range(forecast_days)]
-    
-    return {
-        "forecast_prices": [round(float(p), 8) for p in forecast_prices],
-        "lower_bound":     [round(float(p - u), 8) 
-                           for p, u in zip(forecast_prices, uncertainty)],
-        "upper_bound":     [round(float(p + u), 8) 
-                           for p, u in zip(forecast_prices, uncertainty)],
-        "model_used":      "LSTM-2layer-64hidden"
-    }
+        class LSTMForecaster(nn.Module):
+            def __init__(self, hidden_size=64, num_layers=2, dropout=0.1):
+                super().__init__()
+                self.lstm = nn.LSTM(
+                    input_size=1,
+                    hidden_size=hidden_size,
+                    num_layers=num_layers,
+                    batch_first=True,
+                    dropout=dropout if num_layers > 1 else 0.0
+                )
+                self.fc = nn.Sequential(
+                    nn.Linear(hidden_size, 32),
+                    nn.ReLU(),
+                    nn.Linear(32, 1)
+                )
+            
+            def forward(self, x):
+                out, _ = self.lstm(x)
+                return self.fc(out[:, -1, :]).squeeze(-1)
+                
+        # Search for pre-trained model checkpoint
+        ckpt_path = None
+        possible_paths = [
+            Path(__file__).resolve().parent.parent.parent / "ml" / "artifacts" / "best_lstm.pt",
+            Path(__file__).resolve().parent / "best_lstm.pt",
+            Path("ml/artifacts/best_lstm.pt"),
+            Path("../ml/artifacts/best_lstm.pt")
+        ]
+        for p in possible_paths:
+            if p.exists() and p.is_file():
+                ckpt_path = p
+                break
+                
+        if ckpt_path is None:
+            raise FileNotFoundError("Pre-trained LSTM model checkpoint not found.")
+            
+        checkpoint = torch.load(str(ckpt_path), map_location="cpu")
+        model = LSTMForecaster()
+        model.load_state_dict(checkpoint["model_state_dict"])
+        model.eval()
+        
+        LOOKBACK = checkpoint.get("lookback", 14)
+        
+        forecast_norm = []
+        window = list(normalized[-LOOKBACK:])
+        
+        with torch.no_grad():
+            for _ in range(forecast_days):
+                x_in = torch.tensor(window[-LOOKBACK:], dtype=torch.float32).unsqueeze(0).unsqueeze(-1)
+                next_val = model(x_in).item()
+                forecast_norm.append(next_val)
+                window.append(next_val)
+                
+        forecast_prices = [p * price_range + price_min for p in forecast_norm]
+        
+        # Calibration of confidence interval based on historical daily volatility of this specific asset
+        std_returns = np.std(np.diff(price_array)) if len(price_array) > 1 else price_range * 0.02
+        uncertainty = [std_returns * 1.96 * (i ** 0.5) for i in range(1, forecast_days + 1)]
+        
+        return {
+            "forecast_prices": [round(float(p), 8) for p in forecast_prices],
+            "lower_bound":     [round(float(p - u), 8) for p, u in zip(forecast_prices, uncertainty)],
+            "upper_bound":     [round(float(p + u), 8) for p, u in zip(forecast_prices, uncertainty)],
+            "model_used":      "Pre-trained Global LSTM Forecaster"
+        }
+        
+    except Exception as e:
+        # Fallback to naive drift projection if torch fails or model is missing
+        print(f"[LSTM Forecast] Fallback to naive trend due to: {e}")
+        last_price = price_array[-1]
+        trend = (price_array[-1] - price_array[-7]) / 7 if len(price_array) >= 7 else 0.0
+        forecast = [last_price + trend * i for i in range(1, forecast_days + 1)]
+        spread = np.std(np.diff(price_array)) * 1.96 * np.sqrt(np.arange(1, forecast_days + 1)) if len(price_array) > 1 else price_range * 0.05
+        
+        return {
+            "forecast_prices": [round(float(p), 8) for p in forecast],
+            "lower_bound":     [round(float(p - s), 8) for p, s in zip(forecast, spread)],
+            "upper_bound":     [round(float(p + s), 8) for p, s in zip(forecast, spread)],
+            "model_used":      "Naive Drift Fallback"
+        }
 
 
 def run_prophet_forecast(

@@ -213,7 +213,7 @@ def refresh_live_technicals(db: Session = Depends(get_db)):
             if not data or len(data) < 24: return sym, None
             df = pd.DataFrame(data, columns=["timestamp", "open", "high", "low", "close", "volume"])
             return sym, df
-        except:
+        except Exception:
             return sym, None
 
     timestamp_now = datetime.utcnow().isoformat()
@@ -244,7 +244,7 @@ def refresh_live_technicals(db: Session = Depends(get_db)):
             macd_val, macd_sig = calculate_macd_live(closes)
             if np.isnan(macd_val): macd_val = 0.0
             if np.isnan(macd_sig): macd_sig = 0.0
-        except:
+        except Exception:
             macd_val = 0.0
             macd_sig = 0.0
         

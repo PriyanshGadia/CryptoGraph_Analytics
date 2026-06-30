@@ -6,6 +6,7 @@ from app.db.database import get_db
 from app.db.models_sqla import PortfolioState, TradeHistory, Asset, TradeDebate
 from pydantic import BaseModel, Field
 from app.core.trading_agent import execute_daily_trades
+from app.core.auth import get_api_key
 from typing import Dict, Any, List
 
 router = APIRouter(prefix="/portfolio", tags=["portfolio"])
@@ -140,7 +141,7 @@ class GradeTradeRequest(BaseModel):
     notes: str = ""
 
 @router.post("/trades/{trade_id}/grade")
-def grade_trade(trade_id: int, payload: GradeTradeRequest, db: Session = Depends(get_db)):
+def grade_trade(trade_id: int, payload: GradeTradeRequest, db: Session = Depends(get_db), api_key: str = Depends(get_api_key)):
     """Assign an RLHF grade to a trade."""
     trade = db.query(TradeHistory).filter(TradeHistory.id == trade_id).first()
     if not trade:
@@ -155,7 +156,7 @@ class ConfirmTradeRequest(BaseModel):
     tx_hash: str
 
 @router.post("/trades/{trade_id}/confirm")
-def confirm_web3_trade(trade_id: int, payload: ConfirmTradeRequest, db: Session = Depends(get_db)):
+def confirm_web3_trade(trade_id: int, payload: ConfirmTradeRequest, db: Session = Depends(get_db), api_key: str = Depends(get_api_key)):
     """Confirm a PENDING trade has been executed via simulated routing."""
     trade = db.query(TradeHistory).filter(TradeHistory.id == trade_id).first()
     if not trade:
@@ -167,7 +168,7 @@ def confirm_web3_trade(trade_id: int, payload: ConfirmTradeRequest, db: Session 
     return {"status": "success"}
 
 @router.post("/execute")
-def trigger_agent_execution():
+async def trigger_agent_execution(api_key: str = Depends(get_api_key)):
     """Manually trigger the trading agent execution (for testing/demo)."""
-    execute_daily_trades()
+    await execute_daily_trades()
     return {"status": "success", "message": "Agent execution completed"}

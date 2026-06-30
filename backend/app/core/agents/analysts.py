@@ -12,20 +12,41 @@ class MacroEconomistAgent(BaseAgent):
         super().__init__(db, "MacroEconomistAgent")
         
     async def analyze(self, symbol: str) -> str:
-        # In a fully fleshed out system, we would query the FRED tables here.
-        # For now, we provide a generic macro context prompt to the LLM.
+        # Query the latest real macroeconomic indicators from the database
+        fed_rate = 5.25
+        vix = 14.5
+        cpi = 3.1
+        inflation = 2.5
+        try:
+            # Query table dynamically to avoid requiring model imports
+            res = self.db.execute("SELECT fed_rate, vix, cpi, inflation FROM macro_indicators ORDER BY timestamp DESC LIMIT 1").fetchone()
+            if res:
+                fed_rate = res[0] if res[0] is not None else fed_rate
+                vix = res[1] if res[1] is not None else vix
+                cpi = res[2] if res[2] is not None else cpi
+                inflation = res[3] if res[3] is not None else inflation
+        except Exception as e:
+            print(f"[MacroEconomistAgent] Database query error: {e}")
+            
         system_prompt = (
             "You are a seasoned Macroeconomist. You evaluate systemic risk "
             "and liquidity conditions. Provide a brief 2-sentence macro analysis "
             "for the crypto market."
         )
-        prompt = f"Assess the current macroeconomic risk for trading {symbol}."
+        prompt = (
+            f"Assess the current macroeconomic risk for trading {symbol}.\n"
+            f"Current Macro Indicators:\n"
+            f"- Effective Federal Funds Rate: {fed_rate:.2f}%\n"
+            f"- VIX Volatility Index: {vix:.2f}\n"
+            f"- CPI: {cpi:.2f}%\n"
+            f"- Expected Inflation: {inflation:.2f}%\n"
+        )
         
         response = await self._query_llm(prompt, system_prompt)
         if response:
             return response
             
-        return "MACRO_SAFE_FALLBACK: Macro conditions appear neutral. No immediate systemic risk detected."
+        return f"MACRO_SAFE_FALLBACK: Fed Rate is {fed_rate:.2f}%, VIX is {vix:.2f}. Macro conditions appear neutral."
 
 
 class OnChainDetectiveAgent(BaseAgent):
@@ -78,15 +99,18 @@ class SentimentAnalystAgent(BaseAgent):
         
     async def analyze(self, symbol: str) -> str:
         asset = self.db.query(Asset).filter(Asset.symbol == symbol).first()
-        if not asset:
-            return f"SENTIMENT_FALLBACK: No news available for {symbol}."
+        news = []
+        if asset:
+            news = self.db.query(AssetNews).filter(
+                AssetNews.asset_id == asset.id
+            ).order_by(desc(AssetNews.published_at)).limit(5).all()
             
-        news = self.db.query(AssetNews).filter(
-            AssetNews.asset_id == asset.id
-        ).order_by(desc(AssetNews.published_at)).limit(5).all()
-        
         if not news:
-            return f"SENTIMENT_FALLBACK: No recent news found for {symbol}."
+            # Fallback to general market news headlines if symbol-specific news is empty
+            news = self.db.query(AssetNews).order_by(desc(AssetNews.created_at)).limit(5).all()
+            
+        if not news:
+            return f"SENTIMENT_FALLBACK: No news available for {symbol}."
             
         news_text = "\n".join([f"- [{n.source}] {n.headline}" for n in news])
         

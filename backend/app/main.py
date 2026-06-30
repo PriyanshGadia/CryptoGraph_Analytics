@@ -44,6 +44,19 @@ try:
 except Exception as e:
     print(f"Error ensuring technical_features table: {e}")
 
+# SQLite migration: rename zk_snark_proof to attestation_hash if needed
+try:
+    with engine.begin() as conn:
+        table_exists = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='predictions'")).fetchone()
+        if table_exists:
+            columns = conn.execute(text("PRAGMA table_info(predictions)")).fetchall()
+            column_names = [col[1] for col in columns]
+            if "zk_snark_proof" in column_names and "attestation_hash" not in column_names:
+                print("[Migration] Renaming predictions.zk_snark_proof to attestation_hash...")
+                conn.execute(text("ALTER TABLE predictions RENAME COLUMN zk_snark_proof TO attestation_hash"))
+except Exception as e:
+    print(f"Error checking/renaming predictions column: {e}")
+
 # Initialize Database
 Base.metadata.create_all(bind=engine)
 
@@ -68,10 +81,81 @@ if getattr(settings, 'langchain_api_key', None):
     os.environ["LANGCHAIN_API_KEY"] = settings.langchain_api_key
 os.environ["LANGCHAIN_PROJECT"]     = settings.langchain_project
 
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    import os
+    import asyncio
+    from app.api.routes.stream import SYMBOLS, prediction_broadcast_loop, screener_broadcast_loop
+    from app.core.streams.binance_ws import binance_ws_loop, populate_static_features
+    
+    # Populate static cache using our synchronous DB session setup
+    try:
+        db = SessionLocal()
+        populate_static_features(db, SYMBOLS)
+        db.close()
+    except Exception as e:
+        print(f"Error populating static features: {e}")
+        
+    if os.getenv("TESTING") == "True":
+        print("[Lifespan] WebSocket background tasks bypassed in testing mode.")
+        yield
+        return
+        
+    async def auto_refresh_loop():
+        """Background task to run the scheduler automatically every hour."""
+        while True:
+            await asyncio.sleep(3600)  # Sleep for 1 hour
+            print("[Scheduler] Auto-running hourly full data refresh...")
+            try:
+                db = SessionLocal()
+                # 1. Refresh live technicals
+                try:
+                    from app.api.routes.screener import refresh_live_technicals
+                    refresh_live_technicals(db=db)
+                except Exception as e:
+                    print(f"[Scheduler] Technicals error: {e}")
+                
+                # 2. Clear response cache
+                try:
+                    from app.core.cache import _cache
+                    _cache.clear()
+                except Exception as e:
+                    print(f"[Scheduler] Cache error: {e}")
+                    
+                # 3. Trigger prediction broadcast
+                try:
+                    from app.api.routes.stream import FORCE_PREDICTION_BROADCAST
+                    import app.api.routes.stream as stream_module
+                    stream_module.FORCE_PREDICTION_BROADCAST = True
+                except Exception as e:
+                    print(f"[Scheduler] Broadcast error: {e}")
+            except Exception as e:
+                print(f"[Scheduler] Database session error: {e}")
+            finally:
+                db.close()
+                
+    # Start tasks
+    binance_task = asyncio.create_task(binance_ws_loop(SYMBOLS))
+    prediction_task = asyncio.create_task(prediction_broadcast_loop())
+    screener_task = asyncio.create_task(screener_broadcast_loop())
+    refresh_task = asyncio.create_task(auto_refresh_loop())
+    
+    yield
+    
+    # Clean shutdown
+    binance_task.cancel()
+    prediction_task.cancel()
+    screener_task.cancel()
+    refresh_task.cancel()
+    await asyncio.gather(binance_task, prediction_task, screener_task, refresh_task, return_exceptions=True)
+
 app = FastAPI(
     title="ST-GCN Crypto Forecasting API",
     description="Spatio-Temporal Graph Neural Network financial forecasting platform",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # CORS
@@ -112,58 +196,7 @@ app.include_router(app_settings_route.router, prefix="/api")
 app.include_router(portfolio.router, prefix="/api")
 app.include_router(stream.router, prefix="/api")
 
-@app.on_event("startup")
-async def startup_event():
-    import asyncio
-    from app.api.routes.stream import SYMBOLS, prediction_broadcast_loop, screener_broadcast_loop
-    from app.core.streams.binance_ws import binance_ws_loop, populate_static_features
-    
-    # Populate static cache using our synchronous DB session setup
-    try:
-        db = SessionLocal()
-        populate_static_features(db, SYMBOLS)
-        db.close()
-    except Exception as e:
-        print(f"Error populating static features: {e}")
-        
-    async def auto_refresh_loop():
-        """Background task to run the scheduler automatically every hour."""
-        while True:
-            await asyncio.sleep(3600)  # Sleep for 1 hour
-            print("[Scheduler] Auto-running hourly full data refresh...")
-            try:
-                db = SessionLocal()
-                # 1. Refresh live technicals
-                try:
-                    from app.api.routes.screener import refresh_live_technicals
-                    refresh_live_technicals(db=db)
-                except Exception as e:
-                    print(f"[Scheduler] Technicals error: {e}")
-                
-                # 2. Clear response cache
-                try:
-                    from app.core.cache import _cache
-                    _cache.clear()
-                except Exception as e:
-                    print(f"[Scheduler] Cache error: {e}")
-                    
-                # 3. Trigger prediction broadcast
-                try:
-                    from app.api.routes.stream import FORCE_PREDICTION_BROADCAST
-                    import app.api.routes.stream as stream_module
-                    stream_module.FORCE_PREDICTION_BROADCAST = True
-                except Exception as e:
-                    print(f"[Scheduler] Broadcast error: {e}")
-            except Exception as e:
-                print(f"[Scheduler] Database session error: {e}")
-            finally:
-                db.close()
-        
-    # Start the async background loops
-    asyncio.create_task(binance_ws_loop(SYMBOLS))
-    asyncio.create_task(prediction_broadcast_loop())
-    asyncio.create_task(screener_broadcast_loop())
-    asyncio.create_task(auto_refresh_loop())
+# Lifespan context manager runs tasks automatically. No on_event('startup') needed.
 
 @app.get("/health")
 async def health():

@@ -28,6 +28,7 @@ function DirectionBadge({ direction }: { direction: string }) {
     neutral:     {bg:"bg-text-muted/10",   text:"text-text-muted",  label:"NEUTRAL",       icon:<Minus size={14}/>, border:"border-text/10 shadow-black/20"},
     down:        {bg:"bg-danger/5",    text:"text-danger",   label:"SELL",         icon:<TrendingDown size={14}/>, border:"border-danger/20 shadow-danger/10"},
     strong_down: {bg:"bg-danger/10",    text:"text-danger",   label:"STRONG SELL", icon:<TrendingDown size={14}/>, border:"border-danger/30 shadow-danger/20"},
+    recalibrating: {bg:"bg-warning/10",  text:"text-warning", label:"RECALIBRATING",  icon:<Activity size={14}/>, border:"border-warning/30 shadow-warning/20"},
   }
   const c = config[direction] || config["neutral"]
   return (
@@ -194,7 +195,11 @@ function PredictionStudio() {
       if (sv.t_shap) {
         tShapData = typeof sv.t_shap === "string" ? JSON.parse(sv.t_shap) : sv.t_shap;
       }
-      if (sv.zk_proof) zkProof = sv.zk_proof;
+      if (sv.attestation_hash) {
+        zkProof = sv.attestation_hash;
+      } else if (sv.zk_proof) {
+        zkProof = sv.zk_proof;
+      }
     } catch (e) {}
   }
 

@@ -170,10 +170,21 @@ def main():
             dataset.append((input_seq, dir_tensor, vol_tensor, ret_tensor))
         return dataset
 
-    train_graphs = build_sliding_windows(max(lookback_window - 1, split_idx - 60), split_idx - 1)
-    val_graphs = build_sliding_windows(max(lookback_window - 1, split_idx - 1), min(len(all_graphs) - 1, split_idx + 15))
+    train_graphs = build_sliding_windows(lookback_window, split_idx - 1)
+    val_graphs = build_sliding_windows(split_idx, len(all_graphs) - 2)
     
     print(f"Dataset summary: {len(train_graphs)} train samples, {len(val_graphs)} val samples.")
+    
+    # Calculate direction class counts in train dataset for inverse frequency weights
+    dir_counts = [0] * 5
+    for _, dir_labels, _, _ in train_graphs:
+        for val in dir_labels.tolist():
+            if 0 <= val < 5:
+                dir_counts[val] += 1
+    if any(c == 0 for c in dir_counts):
+        dir_counts = [max(1, c) for c in dir_counts]
+    best_params["direction_class_counts"] = dir_counts
+    print(f"Computed training set class distribution: {dir_counts}")
     
     N = len(available_symbols)
     model = STGCNModel(
@@ -184,6 +195,35 @@ def main():
     
     trainer = STGCNTrainer(model, train_graphs, val_graphs, best_params)
     trainer.fit()
+    
+    print("\n▶ Step 4.5: Calibrating model probabilities using Temperature Scaling...")
+    # Temperature scaling grid search to minimize validation set cross-entropy (NLL)
+    best_temp = 1.0
+    best_nll = float('inf')
+    model.eval()
+    
+    all_logits = []
+    all_targets = []
+    with torch.no_grad():
+        for graph_seq, dir_labels, _, _ in val_graphs:
+            graph_seq = [g.to(trainer.device) for g in graph_seq]
+            dir_logits, _ = model(graph_seq)
+            all_logits.append(dir_logits.cpu())
+            all_targets.append(dir_labels.cpu())
+            
+    if all_logits:
+        val_logits = torch.cat(all_logits, dim=0)
+        val_targets = torch.cat(all_targets, dim=0)
+        
+        for t_candidate in np.arange(0.1, 3.0, 0.05):
+            scaled_logits = val_logits / t_candidate
+            nll = torch.nn.functional.cross_entropy(scaled_logits, val_targets).item()
+            if nll < best_nll:
+                best_nll = nll
+                best_temp = float(t_candidate)
+                
+    print(f"Optimal probability calibration temperature: {best_temp:.2f} (Val NLL: {best_nll:.4f})")
+    model.config["temperature"] = best_temp
     
     print("\n▶ Step 5: Computing Captum explainability...")
     feature_names = [

@@ -22,14 +22,16 @@ class SpatioTemporalGAT(nn.Module):
             out_channels=hidden_dim // heads_1,
             heads=heads_1,
             concat=True,
-            dropout=dropout
+            dropout=dropout,
+            edge_dim=1
         )
         self.gat2 = GATv2Conv(
             in_channels=hidden_dim,
             out_channels=hidden_dim,
             heads=heads_2,
             concat=False,
-            dropout=dropout
+            dropout=dropout,
+            edge_dim=1
         )
         self.elu = nn.ELU()
         self.dropout = nn.Dropout(dropout)
@@ -37,18 +39,17 @@ class SpatioTemporalGAT(nn.Module):
     def forward(self, graph_sequence: list) -> Tensor:
         """
         For each Data object in graph_sequence:
-          h = gat1(x, edge_index) -> ELU -> dropout
-          h = gat2(h, edge_index) -> ELU -> dropout
+          h = gat1(x, edge_index, edge_attr) -> ELU -> dropout
+          h = gat2(h, edge_index, edge_attr) -> ELU -> dropout
         Stack all T outputs -> (N, T, hidden_dim)
         """
         embeddings = []
         for graph in graph_sequence:
-            # We assume edge_weight/edge_attr is implicitly handled if passed, 
-            # but per instructions, we just pass edge_index.
             edge_index = graph.edge_index
-            h = self.elu(self.gat1(graph.x, edge_index))
+            edge_attr = graph.edge_attr
+            h = self.elu(self.gat1(graph.x, edge_index, edge_attr=edge_attr))
             h = self.dropout(h)
-            h = self.elu(self.gat2(h, edge_index))
+            h = self.elu(self.gat2(h, edge_index, edge_attr=edge_attr))
             h = self.dropout(h)
             embeddings.append(h)  # (N, hidden_dim)
         return torch.stack(embeddings, dim=1)  # (N, T, hidden_dim)

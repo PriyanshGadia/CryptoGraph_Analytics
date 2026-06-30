@@ -33,6 +33,7 @@ INTERVALS = {
     "features":      21600,   # 6 hours
     "predictions":   86400,   # 24 hours
     "enrich_assets": 86400,   # 24 hours - refreshes market cap daily
+    "trading":       86400,   # 24 hours - runs MoA trading daily
 }
 
 SCRIPTS = {
@@ -40,6 +41,7 @@ SCRIPTS = {
     "features":      "data/feature_engineering/technical_indicators.py",
     "predictions":   "pipelines/inference_pipeline.py",
     "enrich_assets": "data/ingestion/enrich_assets.py",
+    "trading":       "../backend/app/core/trading_agent.py",
 }
 
 last_run = {k: 0.0 for k in SCRIPTS}
@@ -104,6 +106,7 @@ def main() -> None:
         "ohlcv",          # now safe — sectors already exist
         "features",
         "predictions",
+        "trading",
     ]
 
     for name in STARTUP_ORDER:

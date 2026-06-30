@@ -100,9 +100,9 @@ class Prediction(Base):
     shap_values = Column(JSON)  # Legacy SHAP
     model_version = Column(String)
     
-    # Phase 9: Algorithmic Transparency Ledger (XAI & zkML)
+    # Phase 9: Algorithmic Transparency Ledger (XAI & Inference Attestation)
     t_shap_attributions = Column(JSON, nullable=True) # Topological Shapley feature importance
-    zk_snark_proof = Column(String, nullable=True) # Cryptographic proof of unmodified inference
+    attestation_hash = Column(String, nullable=True) # Cryptographic attestation of unmodified inference
 
     asset = relationship("Asset", back_populates="predictions")
 
@@ -156,4 +156,20 @@ class ProofOfPerformance(Base):
     portfolio_state_id = Column(Integer, ForeignKey("portfolio_state.id", ondelete="CASCADE"), nullable=False)
     state_hash = Column(String, nullable=False, index=True)
     published_to_ipfs = Column(String, nullable=True) # E.g., IPFS CID if published
+
+
+class Forecast(Base):
+    """Stores daily ensembled forecasting outputs (LSTM, Prophet) for UI caching."""
+    __tablename__ = "forecasts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    asset_id = Column(String, ForeignKey("assets.id", ondelete="CASCADE"), nullable=False, index=True)
+    timestamp = Column(DateTime(timezone=True), nullable=False, index=True)
+    forecast_prices = Column(JSON, nullable=False)
+    lower_bound = Column(JSON, nullable=False)
+    upper_bound = Column(JSON, nullable=False)
+    lstm_forecast = Column(JSON, nullable=True)
+    prophet_forecast = Column(JSON, nullable=True)
+
+    asset = relationship("Asset")
 
