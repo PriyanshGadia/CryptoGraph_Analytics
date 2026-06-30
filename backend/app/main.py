@@ -49,11 +49,18 @@ Base.metadata.create_all(bind=engine)
 
 # Initialize Sentry safely
 if getattr(settings, 'sentry_dsn', None):
-    sentry_sdk.init(
-        dsn=settings.sentry_dsn,
-        integrations=[FastApiIntegration()],
-        traces_sample_rate=0.1
-    )
+    dsn_str = settings.sentry_dsn.strip()
+    if dsn_str and "project_id" not in dsn_str and "your_sentry_dsn" not in dsn_str:
+        try:
+            sentry_sdk.init(
+                dsn=dsn_str,
+                integrations=[FastApiIntegration()],
+                traces_sample_rate=0.1
+            )
+        except Exception as e:
+            print(f"Warning: Sentry initialization failed: {e}")
+    else:
+        print("Sentry initialization skipped (DSN is placeholder or empty).")
 
 # Initialize LangSmith tracing
 os.environ["LANGCHAIN_TRACING_V2"]  = settings.langchain_tracing_v2
