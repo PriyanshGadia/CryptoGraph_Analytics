@@ -22,6 +22,7 @@ class Prediction(BaseModel):
     predicted_at: str
     model_version: str
     shap_values: Optional[dict] = None
+    is_fallback: bool = False
 
 class PredictionHistory(BaseModel):
     symbol: str
@@ -46,6 +47,9 @@ class GraphEdge(BaseModel):
 class GraphResponse(BaseModel):
     nodes: List[GraphNode]
     edges: List[GraphEdge]
+    betti_0: Optional[int] = None
+    average_clustering: Optional[float] = None
+    euler_characteristic: Optional[int] = None
 
 class RiskData(BaseModel):
     market_regime: str
@@ -64,6 +68,7 @@ class ExplainResponse(BaseModel):
     bull_case: Optional[str] = None
     bear_case: Optional[str] = None
     risk_case: Optional[str] = None
+    is_fallback: bool = False
 
 class TradeRecord(BaseModel):
     id: int

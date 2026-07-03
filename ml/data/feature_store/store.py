@@ -22,8 +22,9 @@ class FeatureStore:
 
     def _conn(self) -> sqlite3.Connection:
         """Return a new SQLite connection with dict-row factory."""
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
         return conn
 
     def load_node_features(
@@ -42,83 +43,84 @@ class FeatureStore:
         conn = self._conn()
         out: Dict[str, pd.DataFrame] = {}
 
-        # ----- 1. Load assets (batched) -----
-        placeholders = ",".join("?" for _ in assets)
-        asset_rows = conn.execute(
-            f"SELECT id, symbol, market_cap_usd FROM assets WHERE symbol IN ({placeholders})",
-            assets,
-        ).fetchall()
-        if not asset_rows:
+        try:
+            # ----- 1. Load assets (batched) -----
+            placeholders = ",".join("?" for _ in assets)
+            asset_rows = conn.execute(
+                f"SELECT id, symbol, market_cap_usd FROM assets WHERE symbol IN ({placeholders})",
+                assets,
+            ).fetchall()
+            if not asset_rows:
+                return out
+
+            asset_map = {r["symbol"]: r["id"] for r in asset_rows}
+            mcap_map = {r["symbol"]: (r["market_cap_usd"] or 0) for r in asset_rows}
+            asset_ids = list(asset_map.values())
+            id_ph = ",".join("?" for _ in asset_ids)
+
+            # ----- 2. Macro indicators (global, one query) -----
+            try:
+                macro_rows = conn.execute(
+                    "SELECT timestamp, fed_rate, cpi, inflation, vix "
+                    "FROM macro_indicators WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp",
+                    (start_date, end_date),
+                ).fetchall()
+                macro_df = pd.DataFrame([dict(r) for r in macro_rows])
+                if not macro_df.empty:
+                    macro_df["timestamp"] = pd.to_datetime(macro_df["timestamp"], format='mixed', utc=True)
+                    macro_df = macro_df.set_index("timestamp").sort_index()
+            except sqlite3.OperationalError:
+                macro_df = pd.DataFrame()
+
+            # ----- 3. OHLCV (batched) -----
+            ohlcv_rows = conn.execute(
+                f"SELECT asset_id, timestamp, open, high, low, close, volume "
+                f"FROM ohlcv WHERE asset_id IN ({id_ph}) AND timestamp >= ? AND timestamp <= ? "
+                f"ORDER BY timestamp",
+                (*asset_ids, start_date, end_date),
+            ).fetchall()
+            ohlcv_df = pd.DataFrame([dict(r) for r in ohlcv_rows])
+
+            # ----- 4. Technical features (batched) -----
+            try:
+                tech_rows = conn.execute(
+                    f"SELECT asset_id, timestamp, rsi_14, macd, macd_signal, atr_14, "
+                    f"bb_width, returns_1d, returns_7d, volatility_7d "
+                    f"FROM technical_features WHERE asset_id IN ({id_ph}) AND timestamp >= ? AND timestamp <= ? "
+                    f"ORDER BY timestamp",
+                    (*asset_ids, start_date, end_date),
+                ).fetchall()
+                tech_df = pd.DataFrame([dict(r) for r in tech_rows])
+            except sqlite3.OperationalError:
+                tech_df = pd.DataFrame()
+
+            # ----- 5. Sentiment (batched, now includes the two missing cols) -----
+            try:
+                sent_rows = conn.execute(
+                    f"SELECT asset_id, timestamp, sentiment_score, fear_greed_norm, "
+                    f"community_score, public_interest, sentiment_rolling_3d, sentiment_momentum "
+                    f"FROM sentiment WHERE asset_id IN ({id_ph}) AND timestamp >= ? AND timestamp <= ? "
+                    f"ORDER BY timestamp",
+                    (*asset_ids, start_date, end_date),
+                ).fetchall()
+                sent_df = pd.DataFrame([dict(r) for r in sent_rows])
+            except sqlite3.OperationalError:
+                sent_df = pd.DataFrame()
+
+            # ----- 5.5. On-Chain Metrics (batched) -----
+            try:
+                onchain_rows = conn.execute(
+                    f"SELECT asset_id, timestamp, tvl, revenue, active_users "
+                    f"FROM onchain_metrics WHERE asset_id IN ({id_ph}) AND timestamp >= ? AND timestamp <= ? "
+                    f"ORDER BY timestamp",
+                    (*asset_ids, start_date, end_date),
+                ).fetchall()
+                onchain_df = pd.DataFrame([dict(r) for r in onchain_rows])
+            except sqlite3.OperationalError:
+                onchain_df = pd.DataFrame()
+
+        finally:
             conn.close()
-            return out
-
-        asset_map = {r["symbol"]: r["id"] for r in asset_rows}
-        mcap_map = {r["symbol"]: (r["market_cap_usd"] or 0) for r in asset_rows}
-        asset_ids = list(asset_map.values())
-        id_ph = ",".join("?" for _ in asset_ids)
-
-        # ----- 2. Macro indicators (global, one query) -----
-        try:
-            macro_rows = conn.execute(
-                "SELECT timestamp, fed_rate, cpi, inflation, vix "
-                "FROM macro_indicators WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp",
-                (start_date, end_date),
-            ).fetchall()
-            macro_df = pd.DataFrame([dict(r) for r in macro_rows])
-            if not macro_df.empty:
-                macro_df["timestamp"] = pd.to_datetime(macro_df["timestamp"], format='mixed', utc=True)
-                macro_df = macro_df.set_index("timestamp").sort_index()
-        except sqlite3.OperationalError:
-            macro_df = pd.DataFrame()
-
-        # ----- 3. OHLCV (batched) -----
-        ohlcv_rows = conn.execute(
-            f"SELECT asset_id, timestamp, open, high, low, close, volume "
-            f"FROM ohlcv WHERE asset_id IN ({id_ph}) AND timestamp >= ? AND timestamp <= ? "
-            f"ORDER BY timestamp",
-            (*asset_ids, start_date, end_date),
-        ).fetchall()
-        ohlcv_df = pd.DataFrame([dict(r) for r in ohlcv_rows])
-
-        # ----- 4. Technical features (batched) -----
-        try:
-            tech_rows = conn.execute(
-                f"SELECT asset_id, timestamp, rsi_14, macd, macd_signal, atr_14, "
-                f"bb_width, returns_1d, returns_7d, volatility_7d "
-                f"FROM technical_features WHERE asset_id IN ({id_ph}) AND timestamp >= ? AND timestamp <= ? "
-                f"ORDER BY timestamp",
-                (*asset_ids, start_date, end_date),
-            ).fetchall()
-            tech_df = pd.DataFrame([dict(r) for r in tech_rows])
-        except sqlite3.OperationalError:
-            tech_df = pd.DataFrame()
-
-        # ----- 5. Sentiment (batched, now includes the two missing cols) -----
-        try:
-            sent_rows = conn.execute(
-                f"SELECT asset_id, timestamp, sentiment_score, fear_greed_norm, "
-                f"community_score, public_interest, sentiment_rolling_3d, sentiment_momentum "
-                f"FROM sentiment WHERE asset_id IN ({id_ph}) AND timestamp >= ? AND timestamp <= ? "
-                f"ORDER BY timestamp",
-                (*asset_ids, start_date, end_date),
-            ).fetchall()
-            sent_df = pd.DataFrame([dict(r) for r in sent_rows])
-        except sqlite3.OperationalError:
-            sent_df = pd.DataFrame()
-
-        # ----- 5.5. On-Chain Metrics (batched) -----
-        try:
-            onchain_rows = conn.execute(
-                f"SELECT asset_id, timestamp, tvl, revenue, active_users "
-                f"FROM onchain_metrics WHERE asset_id IN ({id_ph}) AND timestamp >= ? AND timestamp <= ? "
-                f"ORDER BY timestamp",
-                (*asset_ids, start_date, end_date),
-            ).fetchall()
-            onchain_df = pd.DataFrame([dict(r) for r in onchain_rows])
-        except sqlite3.OperationalError:
-            onchain_df = pd.DataFrame()
-
-        conn.close()
 
         # ----- 6. Assemble per-asset DataFrames -----
         for symbol in assets:
@@ -170,7 +172,27 @@ class FeatureStore:
 
             df["market_cap_usd"] = mcap
             df = df.astype(float)
-            df = df.ffill().fillna(0.0)
+            
+            # Standard neutral values to avoid artificial signal leakage
+            fill_values = {
+                "rsi_14": 50.0,
+                "fear_greed_norm": 0.5,
+                "sentiment_score": 0.0,
+                "sentiment_rolling_3d": 0.0,
+                "sentiment_momentum": 0.0,
+                "fed_rate": 5.25,
+                "cpi": 3.0,
+                "inflation": 2.5,
+                "vix": 15.0,
+                "returns_1d": 0.0,
+                "returns_7d": 0.0,
+                "volatility_7d": 0.0
+            }
+            df = df.ffill()
+            for col, val in fill_values.items():
+                if col in df.columns:
+                    df[col] = df[col].fillna(val)
+            df = df.fillna(0.0)
 
             expected_cols = [
                 "open", "high", "low", "close", "volume",

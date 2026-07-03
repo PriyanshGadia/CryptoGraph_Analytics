@@ -1,5 +1,4 @@
 "use client";
-
 import { useEffect, useState } from "react";
 import useSWR from "swr";
 import { fetcher } from "@/lib/api";
@@ -7,6 +6,7 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import { PredictionCard } from "@/components/PredictionCard";
 import { Network, Activity, TrendingUp, TrendingDown, Cpu, BookOpen, CheckCircle } from "lucide-react";
 import Link from "next/link";
+import { BlockchainLoader } from "@/components/BlockchainLoader";
 
 export default function Dashboard() {
   const { data: statusData } = useSWR("/api/status", fetcher);
@@ -21,7 +21,9 @@ export default function Dashboard() {
 
   const topAssets = assets?.filter((a: any) => a.confidence).sort((a: any, b: any) => b.confidence - a.confidence).slice(0, 4) || [];
 
-  if (!mounted) return null;
+  if (!mounted) {
+    return null;
+  }
 
   return (
     <div className="relative min-h-[calc(100vh-8rem)] w-full flex flex-col gap-8 glass-2 rounded-2xl p-6 overflow-hidden">
@@ -80,22 +82,44 @@ export default function Dashboard() {
                     <span className="text-lg font-mono font-bold text-text">{(riskData?.global_confidence || 0).toFixed(1)}%</span>
                     <span className="text-[7px] uppercase tracking-widest font-mono text-text-muted">Conf</span>
                 </div>
-                <div className="flex flex-col justify-center gap-3 glass-3 border border-success/30 p-4 rounded-xl w-36 shadow-[0_0_20px_rgba(34,197,94,0.05)]">
+                <div className={`flex flex-col justify-center gap-3 glass-3 border ${validationMetrics ? 'border-success/30' : 'border-text/10'} p-4 rounded-xl w-36 shadow-[0_0_20px_rgba(34,197,94,0.05)]`}>
                     <div className="flex items-center gap-1.5">
-                        <CheckCircle size={12} className="text-success" />
-                        <span className="text-[9px] uppercase tracking-widest font-mono text-text-muted font-black">Audited</span>
+                        <CheckCircle size={12} className={validationMetrics ? "text-success" : "text-text-muted"} />
+                        <span className="text-[9px] uppercase tracking-widest font-mono text-text-muted font-black">
+                            {validationMetrics ? "Audited" : "Unaudited"}
+                        </span>
                     </div>
                     <div className="flex flex-col gap-1.5">
                         <div>
                             <span className="text-[8px] text-text-muted block uppercase font-mono tracking-widest">F1 Validation</span>
-                            <span className="text-xs font-mono font-bold text-success">
-                                {validationMetrics ? validationMetrics.f1_macro.toFixed(4) : "0.3950"}
+                            <span className={`text-xs font-mono font-bold ${validationMetrics ? "text-success" : "text-text-muted"}`}>
+                                {validationMetrics ? validationMetrics.f1_macro.toFixed(4) : "—"}
                             </span>
                         </div>
                         <div>
                             <span className="text-[8px] text-text-muted block uppercase font-mono tracking-widest">Sharpe Ratio</span>
-                            <span className="text-xs font-mono font-bold text-accent-2">
-                                {validationMetrics ? validationMetrics.sharpe_ratio.toFixed(2) : "1.48"}
+                            <span className={`text-xs font-mono font-bold ${validationMetrics ? "text-accent-2" : "text-text-muted"}`}>
+                                {validationMetrics ? validationMetrics.sharpe_ratio.toFixed(2) : "—"}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <div className="flex flex-col justify-center gap-3 glass-3 border border-accent-1/30 p-4 rounded-xl w-36 shadow-[0_0_20px_rgba(var(--accent-1),0.05)]">
+                    <div className="flex items-center gap-1.5">
+                        <Network size={12} className="text-accent-1" />
+                        <span className="text-[9px] uppercase tracking-widest font-mono text-text-muted font-black">Topology</span>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                        <div>
+                            <span className="text-[8px] text-text-muted block uppercase font-mono tracking-widest">Betti-0 (Comp)</span>
+                            <span className="text-xs font-mono font-bold text-text">
+                                {graphData?.betti_0 !== undefined ? graphData.betti_0 : "—"}
+                            </span>
+                        </div>
+                        <div>
+                            <span className="text-[8px] text-text-muted block uppercase font-mono tracking-widest">Euler Char (χ)</span>
+                            <span className="text-xs font-mono font-bold text-text">
+                                {graphData?.euler_characteristic !== undefined ? graphData.euler_characteristic : "—"}
                             </span>
                         </div>
                     </div>
@@ -126,14 +150,17 @@ export default function Dashboard() {
                 <div className="flex flex-col md:flex-row gap-8 justify-between">
                     <div className="max-w-md">
                         <h3 className="text-3xl font-black text-text tracking-tight font-sans mb-3 flex items-center gap-3">
-                            Autonomous Portfolio
-                            <div className="flex items-center gap-1 text-[10px] bg-success/10 text-success border border-success/20 px-2 py-1 rounded-sm uppercase tracking-widest font-mono">
-                                <CheckCircle size={10} /> Active
+                            Simulated Swarm Portfolio
+                            <div className="flex items-center gap-1 text-[10px] bg-warning/10 text-warning border border-warning/20 px-2 py-1 rounded-sm uppercase tracking-widest font-mono">
+                                <CheckCircle size={10} /> Backtest Simulation
                             </div>
                         </h3>
-                        <p className="text-sm font-light text-text/80 leading-relaxed mb-6">
-                            This platform operates an autonomous trading swarm. Our neural networks and MoA agents execute simulated paper-trading portfolios on live market data based on the predictions you see above. This ledger proves our calibration models perform in production.
+                        <p className="text-sm font-light text-text/80 leading-relaxed mb-4">
+                            This ledger displays backtested simulation metrics and paper-trading runs executed against historical and live data streams. No real assets are traded or managed.
                         </p>
+                        <span className="text-[10px] text-text-muted/80 block font-mono italic">
+                            *Disclaimer: Past performance is not indicative of future results. All figures are simulated.
+                        </span>
                     </div>
                     
                     <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-4">

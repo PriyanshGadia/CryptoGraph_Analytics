@@ -87,29 +87,33 @@ async def execute_daily_trades():
 
         assets = db.query(Asset).all()
         
-        # Calculate current active holdings (sum of buys - sells)
-        # For simplicity in this v1, we just calculate open positions by aggregating TradeHistory
+        # Calculate current active holdings via SQL aggregation
+        from sqlalchemy import func
         holdings = {}
-        all_trades = db.query(TradeHistory).all()
-        for t in all_trades:
-            if t.symbol not in holdings:
-                holdings[t.symbol] = {"qty": 0.0, "avg_price": 0.0, "total_invested": 0.0}
-            
-            if t.side == "buy":
-                holdings[t.symbol]["qty"] += t.quantity
-                holdings[t.symbol]["total_invested"] += t.total_usd
-                if holdings[t.symbol]["qty"] > 0:
-                    holdings[t.symbol]["avg_price"] = holdings[t.symbol]["total_invested"] / holdings[t.symbol]["qty"]
-            elif t.side == "sell":
-                # Average cost basis calculation
-                fraction_sold = t.quantity / holdings[t.symbol]["qty"] if holdings[t.symbol]["qty"] > 0 else 1.0
-                holdings[t.symbol]["qty"] -= t.quantity
-                holdings[t.symbol]["total_invested"] -= (holdings[t.symbol]["total_invested"] * fraction_sold)
-                
-                # Update realized PnL on the trade record
-                cost_basis = t.quantity * holdings[t.symbol]["avg_price"]
-                pnl = t.total_usd - cost_basis
-                t.pnl = pnl
+        trade_summary = db.query(
+            TradeHistory.symbol,
+            TradeHistory.side,
+            func.sum(TradeHistory.quantity).label("total_qty"),
+            func.sum(TradeHistory.total_usd).label("total_usd")
+        ).group_by(TradeHistory.symbol, TradeHistory.side).all()
+
+        for symbol, side, qty, usd in trade_summary:
+            if symbol not in holdings:
+                holdings[symbol] = {"qty": 0.0, "avg_price": 0.0, "total_invested": 0.0}
+            if side == "buy":
+                holdings[symbol]["qty"] += (qty or 0.0)
+                holdings[symbol]["total_invested"] += (usd or 0.0)
+            elif side == "sell":
+                holdings[symbol]["qty"] -= (qty or 0.0)
+                holdings[symbol]["total_invested"] -= (usd or 0.0)
+
+        for sym, data in holdings.items():
+            if data["qty"] > 1e-8:
+                data["avg_price"] = max(0.0, data["total_invested"] / data["qty"])
+            else:
+                data["qty"] = 0.0
+                data["avg_price"] = 0.0
+                data["total_invested"] = 0.0
 
         # Process new signals
         total_cash = portfolio.cash_balance

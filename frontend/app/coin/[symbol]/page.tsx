@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect, useRef, use } from "react";
+import { BlockchainLoader } from "@/components/BlockchainLoader";
 
 import { useChartPalette } from "@/lib/useChartPalette";
 import { createChart, ColorType, IChartApi } from "lightweight-charts";
@@ -88,8 +89,6 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
     setMounted(true);
   }, []);
 
-  if (!mounted) return <div className="h-screen w-full flex items-center justify-center text-text-muted font-mono bg-background">Loading chart components...</div>;
-
   const palette = useChartPalette();
   
   const resolvedParams = use(params);
@@ -146,35 +145,44 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
 
   // Live Ticker WebSocket
   useEffect(() => {
+    if (!ohlcv || ohlcv.length === 0) return;
     const ws = new WebSocket(`${WS_BASE}/api/stream/ticker/${symbol}`);
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      if (seriesRef.current) {
-        seriesRef.current.update({
-          time: data.time,
-          open: data.open,
-          high: data.high,
-          low: data.low,
-          close: data.close,
-          value: data.close,
-        });
-      }
-      if (volumeSeriesRef.current && data.volume) {
-        // Here data.volume from WS might be total 24h vol, but the chart expects interval volume. 
-        // For simplicity, we just leave it or use close/open color.
-        volumeSeriesRef.current.update({
-          time: data.time,
-          value: data.volume,
-          color: data.close >= data.open ? "rgba(34,197,94,0.2)" : "rgba(239,68,68,0.2)",
-        });
-      }
-      setLivePrice(data.close);
+      const tickPrice = data.close;
+
+      setLivePrice(tickPrice);
       if (data.volume) setLiveVolume24h(data.volume);
       if (data.market_cap_usd) setLiveMarketCap(data.market_cap_usd);
       if (data.price_change_24h_pct !== undefined) setLivePriceChangePct(data.price_change_24h_pct);
+
+      if (seriesRef.current && ohlcv && ohlcv.length > 0) {
+        const lastBar = ohlcv[ohlcv.length - 1];
+        if (lastBar) {
+          const updatedHigh = Math.max(lastBar.high, tickPrice);
+          const updatedLow = Math.min(lastBar.low, tickPrice);
+          
+          seriesRef.current.update({
+            time: lastBar.time,
+            open: lastBar.open,
+            high: updatedHigh,
+            low: updatedLow,
+            close: tickPrice,
+            value: tickPrice,
+          });
+
+          if (volumeSeriesRef.current) {
+            volumeSeriesRef.current.update({
+              time: lastBar.time,
+              value: lastBar.volume,
+              color: tickPrice >= lastBar.open ? "rgba(34,197,94,0.2)" : "rgba(239,68,68,0.2)",
+            });
+          }
+        }
+      }
     };
     return () => ws.close();
-  }, [symbol]);
+  }, [symbol, ohlcv]);
   
   // Lightweight charts initialization
   useEffect(() => {
@@ -329,7 +337,10 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
       });
     }
   }, [period, ohlcv]);
-  
+  if (!mounted) {
+    return null;
+  }
+
   if (!ohlcv || !history) return (
     <div className="h-[50vh] flex flex-col items-center justify-center space-y-6">
       <div className="text-text bg-surface/30 p-6 rounded-sm border border-text/10 font-mono text-center flex flex-col items-center gap-4 shadow-inner">

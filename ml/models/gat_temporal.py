@@ -1,55 +1,67 @@
 import torch
 import torch.nn as nn
 from torch import Tensor
-from torch_geometric.nn import GATv2Conv
+from torch_geometric.data import Batch
+from ml.models.ast_gnn import AdaptiveRelationalGNN
 
 class SpatioTemporalGAT(nn.Module):
     """
-    Applies GATv2Conv to each timestep independently, then stacks embeddings.
-    Input:  list of T Data objects, each with x shape (N, hidden_dim)
+    Applies relation-aware GNN with learned adaptive relationships to each timestep
+    independently in a single vectorized forward pass, then reshapes embeddings.
+
+    Input:  list of T Data objects or a pre-compiled PyG Batch object.
     Output: tensor shape (N, T, hidden_dim)
     """
     def __init__(
         self,
         hidden_dim: int = 128,
-        heads_1: int = 8,
-        heads_2: int = 4,
+        heads_1: int = 4,
+        heads_2: int = 2,
         dropout: float = 0.1
     ):
         super().__init__()
-        self.gat1 = GATv2Conv(
-            in_channels=hidden_dim,
-            out_channels=hidden_dim // heads_1,
+        # 3 physical relations (Sector=0, Cap=1, Correlation=2)
+        self.rgat1 = AdaptiveRelationalGNN(
+            hidden_dim=hidden_dim,
+            num_relations=3,
             heads=heads_1,
-            concat=True,
-            dropout=dropout,
-            edge_dim=1
+            dropout=dropout
         )
-        self.gat2 = GATv2Conv(
-            in_channels=hidden_dim,
-            out_channels=hidden_dim,
+        self.rgat2 = AdaptiveRelationalGNN(
+            hidden_dim=hidden_dim,
+            num_relations=3,
             heads=heads_2,
-            concat=False,
-            dropout=dropout,
-            edge_dim=1
+            dropout=dropout
         )
-        self.elu = nn.ELU()
-        self.dropout = nn.Dropout(dropout)
 
-    def forward(self, graph_sequence: list) -> Tensor:
+    def forward(self, graph_sequence) -> Tensor:
         """
-        For each Data object in graph_sequence:
-          h = gat1(x, edge_index, edge_attr) -> ELU -> dropout
-          h = gat2(h, edge_index, edge_attr) -> ELU -> dropout
-        Stack all T outputs -> (N, T, hidden_dim)
+        Batch all T graph snapshots and pass through rgat1 and rgat2 in one single call.
         """
-        embeddings = []
-        for graph in graph_sequence:
-            edge_index = graph.edge_index
-            edge_attr = graph.edge_attr
-            h = self.elu(self.gat1(graph.x, edge_index, edge_attr=edge_attr))
-            h = self.dropout(h)
-            h = self.elu(self.gat2(h, edge_index, edge_attr=edge_attr))
-            h = self.dropout(h)
-            embeddings.append(h)  # (N, hidden_dim)
-        return torch.stack(embeddings, dim=1)  # (N, T, hidden_dim)
+        if isinstance(graph_sequence, list):
+            T = len(graph_sequence)
+            if T == 0:
+                return torch.empty((0, 0, self.rgat1.hidden_dim))
+                
+            N = graph_sequence[0].num_nodes
+            
+            # Batch snapshots into a single disjoint multi-relation graph
+            for graph in graph_sequence:
+                if not hasattr(graph, "edge_type") or graph.edge_type is None:
+                    graph.edge_type = torch.zeros(graph.edge_index.shape[1], dtype=torch.long, device=graph.edge_index.device)
+            
+            batched_graph = Batch.from_data_list(graph_sequence)
+        else:
+            # Pre-batched PyG Batch input
+            batched_graph = graph_sequence
+            T = batched_graph.num_graphs
+            N = batched_graph.x.shape[0] // T
+            
+        # Perform multi-relational spatial convolutions in a single call (no python loop!)
+        h = batched_graph.x
+        h = self.rgat1(h, batched_graph.edge_index, batched_graph.edge_type, edge_attr=batched_graph.edge_attr, T=T, N=N)
+        h = self.rgat2(h, batched_graph.edge_index, batched_graph.edge_type, edge_attr=batched_graph.edge_attr, T=T, N=N)
+        
+        # Reshape batched output back to (N, T, hidden_dim)
+        h = h.view(T, N, -1).transpose(0, 1)  # (N, T, hidden_dim)
+        return h

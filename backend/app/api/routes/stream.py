@@ -11,17 +11,35 @@ router = APIRouter(prefix="/stream", tags=["stream"])
 
 FORCE_PREDICTION_BROADCAST = False
 
-# Discover SYMBOLS
-try:
-    from ml.pipelines.inference_pipeline import SYMBOLS
-except ImportError:
-    SYMBOLS = [
-        "BTC","ETH","BNB","SOL","XRP","ADA","AVAX","DOT","MATIC","LINK",
-        "DOGE","SHIB","UNI","LTC","ATOM","NEAR","FIL","APT","ARB","OP",
-        "AAVE","MKR","CRV","SNX","COMP","RUNE","INJ","FTM","MANA","SAND",
-        "AXS","GALA","ENJ","LRC","IMX","ALGO","VET","EOS","XLM","XTZ",
-        "HBAR","EGLD","THETA","ICP","GRT","STX","FLOW","KAVA","ZEC","DASH"
+# Discover SYMBOLS from local database dynamically
+def get_db_symbols() -> List[str]:
+    import sqlite3
+    db_path = Path(__file__).resolve().parent.parent.parent.parent / "cryptograph.db"
+    if not db_path.exists():
+        # Check standard location inside backend folder
+        db_path = Path(__file__).resolve().parent.parent.parent / "cryptograph.db"
+    try:
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.cursor()
+        cursor.execute("SELECT symbol FROM assets")
+        rows = cursor.fetchall()
+        conn.close()
+        if rows:
+            return [r[0] for r in rows]
+    except Exception as e:
+        print(f"Error querying symbols from database: {e}")
+    # Hardcoded fallback of all 50 database assets
+    return [
+        "BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "AVAX", "LINK", "DOT",
+        "MATIC", "UNI", "ATOM", "LTC", "BCH", "NEAR", "APT", "ICP", "STX", "FIL",
+        "XMR", "AR", "HBAR", "VET", "MKR", "INJ", "GRT", "OP", "THETA",
+        "LDO", "FET", "FTM", "TAO", "TIA", "SEI", "SUI", "PYTH", "JUP", "GALA",
+        "AAVE", "ALGO", "SAND", "EGLD", "QNT", "SNX", "AXS", "CHZ", "MANA", "MINA",
+        "DYDX"
     ]
+
+SYMBOLS = get_db_symbols()
+
 
 @router.post("/broadcast")
 async def trigger_broadcast():
@@ -78,16 +96,24 @@ async def stream_market(websocket: WebSocket):
         pass
 
 connected_clients: List[WebSocket] = []
+MAX_CLIENTS = 100
 
 @router.websocket("/predictions")
 async def stream_predictions(websocket: WebSocket):
+    if len(connected_clients) >= MAX_CLIENTS:
+        await websocket.accept()
+        await websocket.send_json({"error": "Server busy. Too many active connections."})
+        await websocket.close(code=1008) # Policy Violation
+        return
+
     await websocket.accept()
     connected_clients.append(websocket)
     try:
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
-        connected_clients.remove(websocket)
+        if websocket in connected_clients:
+            connected_clients.remove(websocket)
 
 async def prediction_broadcast_loop():
     """Background task to broadcast predictions directly from SQLite database."""

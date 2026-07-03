@@ -47,33 +47,30 @@ The feature store serves features in this order:
 
 ## 2. Model Architecture & Layer Shapes
 
-The model processes spatial structure (cross-asset connections) and temporal patterns sequentially:
+The model processes spatial structure across multi-relational graph edges (Sector, Market-Cap, Correlation) and temporal patterns sequentially:
 
 ```text
        Input Tensor Sequence [30 x (N, 24)]
                       |
                       v
       +-------------------------------+
-      |   Linear Input Projection     |  Shape: (N, 128) per timestep
+      |   Linear Input Projection     |  Shape: (N, hidden_dim=32) per timestep
       +---------------+---------------+
                       |
                       v
       +-------------------------------+
-      |    Spatio-Temporal GAT        |  Applies GATv2Conv per timestep
-      |  - Layer 1: 8 heads (concat)  |  Shape: (N, 128)
-      |  - Layer 2: 4 heads (average) |  Shape: (N, 128)
+      | Spatio-Temporal Relational GNN|  Applies RGATConv / Adaptive GNN per timestep
+      |  - Layer 1: 2 heads (concat)  |  Shape: (N, 32)
+      |  - Layer 2: 1 head  (average) |  Shape: (N, 32)
       +---------------+---------------+
                       |
                       v
       +-------------------------------+
       |   Temporal Stacking Module    |  Combine steps along time axis
-      +---------------+---------------+  Shape: (N, 30, 128)
-                      |
-                      v
-      +-------------------------------+
-      |  Temporal Transformer Encoder |  - Sinusoidal Pos Encoding
-      |  - d_model: 128, nhead: 8     |  - 4 self-attention layers
-      |  - Extraction: output[:, -1]  |  Shape: (N, 128)
+      +---------------+---------------+  Shape: (N, 30, 32)
+      | Causal TCN / Temp Transformer |  - Learnable Position Embedding
+      |  - d_model: 32, nhead: 4      |  - Temporal convolutions or attention
+      |  - Extraction: output[:, -1]  |  Shape: (N, 32)
       +---------------+---------------+
                       |
              +--------+--------+
@@ -84,68 +81,61 @@ The model processes spatial structure (cross-asset connections) and temporal pat
       |  Class Head  |  | Class Head   |
       +------+-------+  +------+-------+
              |                 |
-             v (5 logits)      v (4 logits)
+             v (3 logits)      v (4 logits)
 ```
 
 ### 2.1 Layer Execution Specification
 
 1. **LinearProjection**:
    - **Math**: $\mathbf{H}_t^{(0)} = \mathbf{X}_t \mathbf{W}_{proj}$
-   - **Tensor Shape**: `(N, 24) -> (N, 128)` for each timestep $t \in [1, 30]$.
+   - **Tensor Shape**: `(N, 24) -> (N, 32)` for each timestep $t \in [1, 30]$.
 
-2. **SpatioTemporalGAT**:
-   - Applies message-passing across graph edges for each timestep $t$. Uses `GATv2Conv` layers:
-     - **GATv2 L1**:
-       - Input channels: `128`
-       - Output channels: `16` (multiplied by `8` heads = `128` channels)
+2. **SpatioTemporalRelationalGNN**:
+   - Applies relational message-passing across graph edges for each timestep $t$ using `RGATConv` layers:
+     - **RGAT L1**:
+       - Input channels: `32`
+       - Output channels: `16` (`2` heads = `32` channels)
        - Activation: `ELU` + `Dropout(0.1)`
-       - Output shape: `(N, 128)`
-     - **GATv2 L2**:
-       - Input channels: `128`
-       - Output channels: `128` (`4` heads, `concat=False` -> averaged output)
+       - Output shape: `(N, 32)`
+     - **RGAT L2**:
+       - Input channels: `32`
+       - Output channels: `32` (`1` head)
        - Activation: `ELU` + `Dropout(0.1)`
-       - Output shape: `(N, 128)`
+       - Output shape: `(N, 32)`
 
-3. **Temporal Stacking**:
+3. **Temporal Stacking & Encoding**:
    - Compiles embeddings chronologically.
-   - Output shape: `(N, 30, 128)`
-
-4. **TemporalTransformer**:
-   - Models dependencies across timesteps.
-   - **Sinusoidal Position Encoding**: Standard sine/cosine values added directly to the spatial-temporal tensor:
-     - Output shape: `(N, 30, 128)`
-   - **Transformer Encoder**:
-     - `d_model`: `128`
-     - `nhead`: `8`
-     - `num_layers`: `4`
-     - `dim_feedforward`: `512`
+   - Output shape: `(N, 30, 32)`
+   - Applies learnable positional embeddings + Causal Temporal Convolutional Network (TCN) or Temporal Transformer Encoder:
+     - `d_model`: `32`
+     - `nhead`: `4`
+     - `num_layers`: `2`
      - `dropout`: `0.1`
-     - `batch_first`: `True`
    - **Extraction**: Selects output at the final timestep $t=30$.
-     - Output shape: `(N, 128)`
+     - Output shape: `(N, 32)`
 
-5. **MultiTaskHead**:
+4. **MultiTaskHead**:
    - Splits into two parallel feed-forward heads:
      - **Direction Head**:
-       - Layer 1: `Linear(128, 64) -> ReLU() -> Dropout(0.2)`
-       - Layer 2: `Linear(64, 5)`
-       - Output shape: `(N, 5)` logits representing classification classes.
+       - Layer 1: `Linear(32, 16) -> ReLU() -> Dropout(0.1)`
+       - Layer 2: `Linear(16, 3)`
+       - Output shape: `(N, 3)` logits representing classification classes (`down`, `neutral`, `up`).
      - **Volatility Head**:
-       - Layer 1: `Linear(128, 64) -> ReLU() -> Dropout(0.2)`
-       - Layer 2: `Linear(64, 4)`
-       - Output shape: `(N, 4)` logits representing volatility categories.
+       - Layer 1: `Linear(32, 16) -> ReLU() -> Dropout(0.1)`
+       - Layer 2: `Linear(16, 4)`
+       - Output shape: `(N, 4)` logits representing volatility categories (`low`, `medium`, `high`, `extreme`).
 
 ---
 
 ## 3. Output Class Definitions
 
 ### 3.1 Direction Categories
-Predicts the forward log return threshold classification over $H$ horizon days (default $H=1$):
-- **strong_up**: Forward Return $> 3\%$
-- **up**: Forward Return $\in (0\%, 3\%]$
-- **neutral**: Forward Return $\in (-1\%, 0\%]$
-- **down**: Forward Return $\in [-3\%, -1\%)$
-- **strong_down**: Forward Return $< -3\%$
+Predicts the forward return classification over target horizon:
+- **down**: Negative forward return trend
+- **neutral**: Sideways / rangebound forward return
+- **up**: Positive forward return trend
+
+*(Note: Signals are mapped at inference display time to `strong_up` or `strong_down` when calibrated confidence exceeds 65.0%).*
 
 ### 3.2 Volatility Regimes
 Categorizes asset standard deviation patterns:

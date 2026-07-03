@@ -83,11 +83,11 @@ async def get_forecast(request: Request, symbol: str, db: Session = Depends(get_
         db_forecast = db.query(SQLAForecast).filter(SQLAForecast.asset_id == asset_id).order_by(desc(SQLAForecast.timestamp)).first()
         if db_forecast:
             forecast = {
-                "forecast_prices": json.loads(db_forecast.forecast_prices),
-                "lower_bound": json.loads(db_forecast.lower_bound),
-                "upper_bound": json.loads(db_forecast.upper_bound),
-                "lstm_forecast": json.loads(db_forecast.lstm_forecast) if db_forecast.lstm_forecast else json.loads(db_forecast.forecast_prices),
-                "prophet_forecast": json.loads(db_forecast.prophet_forecast) if db_forecast.prophet_forecast else json.loads(db_forecast.forecast_prices),
+                "forecast_prices": db_forecast.forecast_prices,
+                "lower_bound": db_forecast.lower_bound,
+                "upper_bound": db_forecast.upper_bound,
+                "lstm_forecast": db_forecast.lstm_forecast if db_forecast.lstm_forecast else db_forecast.forecast_prices,
+                "prophet_forecast": db_forecast.prophet_forecast if db_forecast.prophet_forecast else db_forecast.forecast_prices,
                 "model_used": "Pre-calculated LSTM+Prophet Ensemble",
                 "ensemble": True
             }

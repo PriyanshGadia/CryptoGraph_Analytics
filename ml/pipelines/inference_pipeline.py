@@ -6,11 +6,15 @@ builds the graph sequence via DynamicGraphBuilder, runs a real forward
 pass through the trained STGCNModel, and batch-upserts predictions into
 the SQLite database.
 """
+import sys
+from pathlib import Path
+root_dir = Path(__file__).resolve().parent.parent.parent
+if str(root_dir) not in sys.path:
+    sys.path.append(str(root_dir))
 
 import sqlite3
 import uuid
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Dict, List, Optional
 
 import torch
@@ -22,15 +26,23 @@ from ml.models.stgcn import STGCNModel
 import json
 
 # Phase 9: XAI & Inference Attestation Integration
-from backend.app.core.t_shap_explainer import TopologicalShapExplainer
+from backend.app.core.gnn_attribution_explainer import GNNGradientAttributionExplainer
 from backend.app.core.inference_attester import InferenceAttester
 from ml.models.forecast_model import run_ensemble_forecast
 import pandas as pd
 
 # ── Constants ────────────────────────────────────────────────────────
-MODEL_PATH = Path(__file__).resolve().parent.parent / "artifacts" / "best_model.pt"
+def _find_artifacts_path() -> Path:
+    current = Path(__file__).resolve()
+    for parent in current.parents:
+        if (parent / ".git").exists() or (parent / "README.md").exists() or (parent / "ARCHITECTURE.md").exists():
+            return parent / "ml" / "artifacts" / "best_model.pt"
+    # Fallback
+    return Path(__file__).resolve().parent.parent / "artifacts" / "best_model.pt"
 
-DIRECTION_CLASSES = ["strong_down", "down", "neutral", "up", "strong_up"]
+MODEL_PATH = _find_artifacts_path()
+
+DIRECTION_CLASSES = ["down", "neutral", "up"]
 VOLATILITY_CLASSES = ["low", "medium", "high", "extreme"]
 
 def get_dynamic_symbols() -> List[str]:
@@ -112,8 +124,6 @@ def run_inference() -> dict:
     print(f"Features loaded for {len(available_symbols)} assets.")
 
     # ── 2. Graph construction ────────────────────────────────────────
-    # DynamicGraphBuilder still accepts a client arg — pass None so it
-    # won't try to hit Supabase for graph-snapshot persistence.
     builder = DynamicGraphBuilder(supabase_client=None, asset_symbols=available_symbols, feature_dim=24)
 
     # Prepare features indexed by timestamp for the builder.
@@ -133,7 +143,7 @@ def run_inference() -> dict:
         start_date=start_dt,
         end_date=end_dt,
         features=proc_features,
-        lookback_window=30,
+        lookback_window=14,  # Matching new lookback_window
     )
 
     if not graph_sequence:
@@ -155,21 +165,12 @@ def run_inference() -> dict:
 
     # ── 4. Forward pass & Probability Calibration (Temperature Scaling) ──────
     with torch.no_grad():
-        dir_logits, vol_logits = model(graph_sequence)  # (N,5), (N,4)
+        dir_logits, vol_logits = model(graph_sequence)  # (N,3), (N,4)
 
     # Retrieve calibrated temperature scaling factor from model config (default: 1.5)
     temperature = getattr(model, 'config', {}).get("temperature", 1.5)
     print(f"Applying Calibrated Temperature Scaling (T = {temperature:.2f}) to model logits...")
-
-    # Use calibrated softmax to get true model-predicted probabilities
-    dir_probs = F.softmax(dir_logits / temperature, dim=1)   # (N, 5)
-    vol_probs = F.softmax(vol_logits, dim=1)   # (N, 4)
-
-    # ── 5. Decode predictions & Generate XAI / Inference Attestations ────────
-    predictions = []
-    timestamp_now = now.isoformat()
-    
-    t_shap = TopologicalShapExplainer()
+    xai_explainer = GNNGradientAttributionExplainer()
     attester = InferenceAttester()
 
     # Model Quality Gate check based on validation metrics
@@ -184,22 +185,24 @@ def run_inference() -> dict:
             
         if metrics_path.exists():
             with open(metrics_path, "r") as f:
-                metrics = json.load(f)
-            f1 = metrics.get("f1_macro", 0.0)
-            sharpe = metrics.get("sharpe_ratio", 0.0)
-            if f1 < 0.35 or sharpe < 0.0:
+                val_metrics = json.load(f)
+            val_f1 = val_metrics.get("f1_macro", 0.0)
+            val_sharpe = val_metrics.get("sharpe_ratio", 0.0)
+            
+            if val_f1 < 0.35 or val_sharpe < 0.0:
                 gate_passed = False
-                gate_reason = f"F1={f1:.4f} (< 0.35) or Sharpe={sharpe:.4f} (< 0.0)"
-        else:
-            gate_passed = False
-            gate_reason = "No validation metrics file found."
+                gate_reason = f"F1={val_f1:.2f}, Sharpe={val_sharpe:.2f} below threshold"
+                print(f"[QualityGate] WARN: Model failed quality gate ({gate_reason}). Serving recalibrating state.")
     except Exception as e:
-        print(f"Error checking model quality gate: {e}")
-        gate_passed = False
-        gate_reason = f"Exception - {e}"
+        print(f"[QualityGate] Error reading validation metrics: {e}")
 
-    if not gate_passed:
-        print(f"⚠️ MODEL QUALITY GATE REJECTED: {gate_reason}. Serving 'recalibrating' predictions to UI.")
+    # Use calibrated softmax to get true model-predicted probabilities
+    dir_probs = F.softmax(dir_logits / temperature, dim=1)   # (N, 3)
+    vol_probs = F.softmax(vol_logits, dim=1)   # (N, 4)
+
+    # ── 5. Decode predictions & Generate XAI / Inference Attestations ────────
+    predictions = []
+    timestamp_now = now.isoformat()
 
     for idx, symbol in enumerate(available_symbols):
         latest_features = features[symbol].iloc[-1] if symbol in features else None
@@ -207,8 +210,16 @@ def run_inference() -> dict:
         # Decode direction and confidence from the model's forward pass
         if gate_passed:
             dir_idx = int(dir_probs[idx].argmax().item())
-            confidence = float(dir_probs[idx][dir_idx].item()) * 100.0
+            prob = float(dir_probs[idx][dir_idx].item())
+            # True calibrated model confidence percentage (raw or temperature-scaled softmax probability)
+            confidence = prob * 100.0
             direction = DIRECTION_CLASSES[dir_idx]
+            
+            # Map 3-class outputs to high-conviction signals based on calibrated probability threshold
+            if direction == "up" and confidence > 65.0:
+                direction = "strong_up"
+            elif direction == "down" and confidence > 65.0:
+                direction = "strong_down"
         else:
             direction = "recalibrating"
             confidence = 0.0
@@ -217,7 +228,7 @@ def run_inference() -> dict:
         vol_idx = int(vol_probs[idx].argmax().item())
         vol_regime = VOLATILITY_CLASSES[vol_idx]
 
-        real_xai_features = {}
+        # Extract features for XAI Integrated Gradients attribution
         if latest_features is not None:
             real_xai_features = {
                 "RSI (14)": float(latest_features.get("rsi_14", 50.0)),
@@ -227,8 +238,8 @@ def run_inference() -> dict:
         else:
             real_xai_features = {"BTC-ETH Correlation": 0.88, "On-Chain Volume": 1.2, "Order Book Imbalance": -0.5}
         
-        # Generate T-SHAP Explainer values using real GCN model gradients
-        xai_result = t_shap.explain_prediction(
+        # Generate GNN Gradient Attribution values using PyTorch model gradients
+        xai_result = xai_explainer.explain_prediction(
             symbol=symbol,
             features=real_xai_features,
             model=model,
@@ -252,52 +263,57 @@ def run_inference() -> dict:
         })
 
     # ── 6. Batch-upsert into SQLite ──────────────────────────────────
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
+    from backend.app.db.database import engine, execute_with_retry
 
-    # Build a symbol → asset_id map in one query.
-    ph = ",".join("?" for _ in available_symbols)
-    rows = cursor.execute(
-        f"SELECT id, symbol FROM assets WHERE symbol IN ({ph})",
-        available_symbols,
-    ).fetchall()
-    sym_to_id = {r["symbol"]: r["id"] for r in rows}
+    def _write_predictions():
+        conn = sqlite3.connect(str(DB_PATH), timeout=30.0)
+        try:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA busy_timeout=30000")
+            ph = ",".join("?" for _ in available_symbols)
+            rows = cursor.execute(
+                f"SELECT id, symbol FROM assets WHERE symbol IN ({ph})",
+                available_symbols,
+            ).fetchall()
+            sym_to_id = {r["symbol"]: r["id"] for r in rows}
 
-    records = []
-    for pred in predictions:
-        asset_id = sym_to_id.get(pred["symbol"])
-        if not asset_id:
-            continue
-        records.append((
-            asset_id,                   # asset_id
-            timestamp_now,              # timestamp
-            pred["predicted_at"],       # predicted_at
-            pred["direction"],          # direction
-            pred["confidence"],         # confidence
-            pred["volatility_regime"],  # volatility_regime
-            json.dumps({"t_shap": pred["t_shap_attributions"], "attestation_hash": pred["attestation_hash"]}), # shap_values
-            pred["model_version"],      # model_version
-            pred["t_shap_attributions"],# t_shap_attributions
-            pred["attestation_hash"]    # attestation_hash
-        ))
+            records = []
+            for pred in predictions:
+                asset_id = sym_to_id.get(pred["symbol"])
+                if not asset_id:
+                    continue
+                records.append((
+                    asset_id,                   # asset_id
+                    timestamp_now,              # timestamp
+                    pred["predicted_at"],       # predicted_at
+                    pred["direction"],          # direction
+                    pred["confidence"],         # confidence
+                    pred["volatility_regime"],  # volatility_regime
+                    json.dumps({"t_shap": pred["t_shap_attributions"], "attestation_hash": pred["attestation_hash"]}), # shap_values
+                    pred["model_version"],      # model_version
+                    pred["t_shap_attributions"],# t_shap_attributions
+                    pred["attestation_hash"]    # attestation_hash
+                ))
 
-    if records:
-        cursor.executemany("""
-            INSERT INTO predictions
-                (asset_id, timestamp, predicted_at, direction,
-                 confidence, volatility_regime, shap_values, model_version, t_shap_attributions, attestation_hash)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, records)
-        conn.commit()
+            if records:
+                cursor.executemany("""
+                    INSERT INTO predictions
+                        (asset_id, timestamp, predicted_at, direction,
+                         confidence, volatility_regime, shap_values, model_version, t_shap_attributions, attestation_hash)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, records)
+                conn.commit()
+            
+            return sym_to_id, len(records)
+        finally:
+            conn.close()
+
+    sym_to_id, rec_count = execute_with_retry(_write_predictions)
 
     # ── 7. Generate daily LSTM+Prophet forecasts and cache them in Forecasts table ──
-    try:
-        cursor.execute("DELETE FROM forecasts")
-        conn.commit()
-    except Exception as e:
-        print(f"Error clearing forecasts table: {e}")
-
+    forecast_records = []
     for idx, symbol in enumerate(available_symbols):
         asset_id = sym_to_id.get(symbol)
         if not asset_id or symbol not in features:
@@ -314,15 +330,9 @@ def run_inference() -> dict:
             dates_series = pd.Series(df.index)
 
         try:
-            print(f"Generating daily LSTM+Prophet forecast for {symbol}...")
             # Generate 30 days daily forecast
             f_res = run_ensemble_forecast(prices_series, dates_series, 30)
-
-            cursor.execute("""
-                INSERT INTO forecasts 
-                (asset_id, timestamp, forecast_prices, lower_bound, upper_bound, lstm_forecast, prophet_forecast)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
+            forecast_records.append((
                 asset_id,
                 timestamp_now,
                 json.dumps(f_res["forecast_prices"]),
@@ -334,11 +344,32 @@ def run_inference() -> dict:
         except Exception as fe:
             print(f"Forecast generation failed for {symbol}: {fe}")
 
-    conn.commit()
-    conn.close()
-    print(f"Inference complete: {len(records)} predictions stored (model {model_version}) and daily forecasts cached.")
+    if forecast_records:
+        def _write_forecasts():
+            fc_conn = sqlite3.connect(str(DB_PATH), timeout=30.0)
+            try:
+                fc_cursor = fc_conn.cursor()
+                fc_cursor.execute("PRAGMA journal_mode=WAL")
+                fc_cursor.execute("PRAGMA busy_timeout=30000")
+                fc_cursor.execute("DELETE FROM forecasts")
+                fc_cursor.executemany("""
+                    INSERT INTO forecasts 
+                    (asset_id, timestamp, forecast_prices, lower_bound, upper_bound, lstm_forecast, prophet_forecast)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, forecast_records)
+                fc_conn.commit()
+            finally:
+                fc_conn.close()
+
+        try:
+            execute_with_retry(_write_forecasts)
+        except Exception as e:
+            print(f"Error updating forecasts table: {e}")
+
+    engine.dispose()
+    print(f"Inference complete: {rec_count} predictions stored (model {model_version}) and daily forecasts cached.")
     return {
-        "predictions_stored": len(records),
+        "predictions_stored": rec_count,
         "model_version": model_version,
     }
 

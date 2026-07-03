@@ -3,13 +3,13 @@ import pandas as pd
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 from ml.evaluation.finance_metrics import compute_all_finance_metrics
 
-DIRECTION_CLASS_NAMES  = ["strong_up", "up", "neutral", "down", "strong_down"]
+DIRECTION_CLASS_NAMES  = ["down", "neutral", "up"]
 VOLATILITY_CLASS_NAMES = ["low", "medium", "high", "extreme"]
 
 def compute_all_metrics(
     y_true: np.ndarray,    # integer class labels
     y_pred: np.ndarray,    # integer class predictions
-    y_prob: np.ndarray,    # probability matrix (N, 5)
+    y_prob: np.ndarray,    # probability matrix (N, num_classes)
     returns: np.ndarray    # actual daily returns for finance metrics
 ) -> dict:
     """
@@ -34,17 +34,19 @@ def compute_all_metrics(
     except ValueError:
         roc_auc = 0.5  # Fallback if only 1 class is present in y_true
         
-    per_class = f1_score(y_true, y_pred, average=None, zero_division=0)
-    per_class_f1 = {}
-    
-    # We map what we can. If y_true doesn't have all classes, length might differ.
-    # Actually, f1_score(average=None) returns scores for all unique labels in y_true and y_pred.
-    # To be safe, specify labels parameter to force full length.
+    # Dynamically determine number of classes from y_prob shape
     n_classes = y_prob.shape[1]
     full_per_class = f1_score(y_true, y_pred, labels=list(range(n_classes)), average=None, zero_division=0)
     
+    # Map class names dynamically
+    class_names = DIRECTION_CLASS_NAMES if n_classes == 3 else (
+        ["strong_down", "down", "neutral", "up", "strong_up"] if n_classes == 5 else
+        [f"class_{i}" for i in range(n_classes)]
+    )
+    
+    per_class_f1 = {}
     for i, score in enumerate(full_per_class):
-        name = DIRECTION_CLASS_NAMES[i] if i < len(DIRECTION_CLASS_NAMES) else f"class_{i}"
+        name = class_names[i] if i < len(class_names) else f"class_{i}"
         per_class_f1[name] = float(score)
 
     fin_metrics = compute_all_finance_metrics(pd.Series(returns))

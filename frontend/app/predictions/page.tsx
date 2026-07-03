@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect, Suspense } from "react";
+import { BlockchainLoader } from "@/components/BlockchainLoader";
 
 import { useChartPalette } from "@/lib/useChartPalette";
 import useSWR from "swr"
@@ -10,7 +11,7 @@ import {
   Tooltip, ResponsiveContainer, ReferenceLine, BarChart, Bar, Cell
 } from "recharts"
 import { TrendingUp, TrendingDown, Minus, Brain, 
-         BarChart2, AlertTriangle, CheckCircle, Terminal, Lock, Clock, Target, Layers, Info, X } from "lucide-react"
+         BarChart2, AlertTriangle, CheckCircle, Terminal, Lock, Clock, Target, Layers, Info, X, Activity, Shield } from "lucide-react"
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 const WS_BASE = BASE.replace(/^http/, "ws")
@@ -579,29 +580,28 @@ function PredictionStudio() {
                 <div className="bg-surface/80 h-full w-full rounded-[31px] p-8 flex flex-col relative z-10 backdrop-blur-2xl border border-text/5">
                     <div className="flex items-center justify-between mb-6">
                         <div className="flex items-center gap-3">
-                            <div className="p-2.5 glass bg-success/10 rounded-sm shadow-inner"><Terminal size={20} className="text-success" /></div>
-                            <h3 className="text-text font-black text-xl tracking-tight">Inference Attestation</h3>
+                            <div className="p-2.5 glass bg-text/5 rounded-sm"><Terminal size={20} className="text-text-muted" /></div>
+                            <h3 className="text-text font-black text-xl tracking-tight">Execution Audit Checksum</h3>
                         </div>
-                        <Lock size={20} className="text-success/50 drop-shadow-[0_0_8px_rgba(34,197,94,0.5)]" />
+                        <Shield size={20} className="text-text-muted/40" />
                     </div>
                     
                     <p className="text-sm text-text/80 mb-8 leading-relaxed font-light tracking-wide flex-1">
-                        Cryptographic attestation hash binding inputs and outputs directly to the audited ST-GCN model weights securely.
+                        SHA-256 audit hash binding input features, outputs, and the model version to verify prediction data integrity and execution path tracking.
                     </p>
                     
                     {zkProof ? (
-                        <div className="mt-auto bg-black/60 p-5 rounded-sm border border-success/30 font-mono text-[10px] sm:text-xs break-all relative overflow-hidden shadow-[0_0_20px_rgba(34,197,94,0.1)]">
-                        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10" />
-                        <div className="text-success/70 mb-3 uppercase tracking-widest text-[9px] font-bold">{'// Attestation Hash'}</div>
+                        <div className="mt-auto bg-black/60 p-5 rounded-sm border border-text/10 font-mono text-[10px] sm:text-xs break-all relative overflow-hidden shadow-inner">
+                        <div className="text-text-muted/70 mb-3 uppercase tracking-widest text-[9px] font-bold">{'// Audit Checksum'}</div>
                         <div className="text-text/90 leading-relaxed font-bold tracking-tight">{zkProof}</div>
-                        <div className="mt-5 flex items-center gap-2 text-success tracking-widest uppercase text-[10px] font-black drop-shadow-[0_0_5px_rgba(34,197,94,0.5)] bg-success/10 w-fit px-3 py-1.5 rounded-sm border border-success/20">
-                            <CheckCircle size={14} /> ATTESTATION VALID
+                        <div className="mt-5 flex items-center gap-2 text-text tracking-widest uppercase text-[10px] font-black bg-text/10 w-fit px-3 py-1.5 rounded-sm border border-text/20">
+                            <CheckCircle size={14} className="text-success" /> AUDIT CHECKSUM MATCH
                         </div>
                         </div>
                     ) : (
                         <div className="mt-auto bg-black/40 p-6 rounded-sm border border-text/5 font-mono text-xs font-bold text-text-muted text-center uppercase tracking-widest flex items-center justify-center gap-3">
                         <div className="w-3 h-3 border-2 border-text/20 border-t-text rounded-full animate-spin" />
-                        Generating Proof...
+                        Generating Checksum...
                         </div>
                     )}
                 </div>
@@ -621,7 +621,9 @@ export default function PredictionsPage() {
     setMounted(true);
   }, []);
 
-  if (!mounted) return <div className="h-screen w-full flex items-center justify-center text-text-muted font-mono bg-background">Loading chart components...</div>;
+  if (!mounted) {
+    return null;
+  }
 
   return (
     <Suspense fallback={<div className="h-[calc(100vh-8rem)] flex items-center justify-center text-accent font-mono text-xs font-bold tracking-widest uppercase animate-pulse">Initializing ST-GCN Canvas...</div>}>

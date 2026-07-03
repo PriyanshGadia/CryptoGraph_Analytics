@@ -7,6 +7,10 @@ const __dirname = path.dirname(__filename);
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  devIndicators: {
+    appIsrStatus: false,
+    buildActivity: false,
+  },
   output: process.env.BUILD_MOBILE === "true" ? "export" : "standalone",
   images: { unoptimized: true }, // Required for Capacitor mobile export and static hosting
   poweredByHeader: false,

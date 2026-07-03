@@ -48,6 +48,10 @@ if is_sqlite:
         cursor.execute("PRAGMA cache_size=-64000") 
         cursor.close()
 
+import time
+import sqlite3
+from sqlalchemy.exc import OperationalError
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
@@ -59,3 +63,16 @@ def get_db():
         yield db
     finally:
         db.close()
+
+def execute_with_retry(action_fn, max_retries: int = 5, backoff_seconds: float = 0.2):
+    """Executes a database transaction callback with retries on SQLite operational/busy locks."""
+    for attempt in range(max_retries):
+        try:
+            return action_fn()
+        except (OperationalError, sqlite3.OperationalError) as e:
+            if "locked" in str(e).lower() or "busy" in str(e).lower():
+                if attempt == max_retries - 1:
+                    raise e
+                time.sleep(backoff_seconds * (2 ** attempt))
+            else:
+                raise e

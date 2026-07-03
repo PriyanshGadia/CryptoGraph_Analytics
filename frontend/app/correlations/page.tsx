@@ -91,8 +91,6 @@ export default function CorrelationsPage() {
     setMounted(true);
   }, []);
 
-  if (!mounted) return <div className="h-screen w-full flex items-center justify-center text-text-muted font-mono bg-background">Loading chart components...</div>;
-
   const palette = useChartPalette();
   
   const [days, setDays] = useState(30);
@@ -113,6 +111,8 @@ export default function CorrelationsPage() {
     assetsData.forEach((a: any) => map[a.symbol] = a.sector);
     return map;
   }, [assetsData]);
+
+  if (!mounted) return <div className="h-screen w-full flex items-center justify-center text-text-muted font-mono bg-background">Loading chart components...</div>;
 
   if (matrixLoading || sectorLoading) return <ChartSkeleton />;
   

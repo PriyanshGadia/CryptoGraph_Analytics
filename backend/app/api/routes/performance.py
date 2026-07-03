@@ -116,11 +116,37 @@ def get_model_performance(
         if date_str not in daily_stats:
             daily_stats[date_str] = {"total": 0, "correct": 0}
 
-        if aid in price_map and date_str in price_map[aid] and next_day_str in price_map[aid]:
+        close_today = None
+        close_next = None
+
+        if aid in price_map and date_str in price_map[aid]:
             close_today = price_map[aid][date_str]
-            close_next = price_map[aid][next_day_str]
-            if not close_today or close_today == 0:
-                continue
+            if next_day_str in price_map[aid]:
+                close_next = price_map[aid][next_day_str]
+            else:
+                sym = asset_map.get(aid)
+                if sym:
+                    from app.core.streams.binance_ws import get_global_market_state
+                    market_state = get_global_market_state()
+                    live_price = market_state.get(sym, {}).get("current_price", 0)
+                    if live_price > 0:
+                        close_next = live_price
+        else:
+            ohlcv_today = db.query(OHLCV).filter(
+                OHLCV.asset_id == aid,
+                OHLCV.timestamp <= ts
+            ).order_by(desc(OHLCV.timestamp)).first()
+            if ohlcv_today:
+                close_today = ohlcv_today.close
+                sym = asset_map.get(aid)
+                if sym:
+                    from app.core.streams.binance_ws import get_global_market_state
+                    market_state = get_global_market_state()
+                    live_price = market_state.get(sym, {}).get("current_price", 0)
+                    if live_price > 0:
+                        close_next = live_price
+
+        if close_today and close_next and close_today > 0:
             actual_return = (close_next - close_today) / close_today
 
             # Determine actual class

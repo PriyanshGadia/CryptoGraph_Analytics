@@ -1,6 +1,6 @@
 "use client";
-
 import React, { useState, useEffect } from "react";
+import { BlockchainLoader } from "@/components/BlockchainLoader";
 import { useChartPalette } from "@/lib/useChartPalette";
 import useSWR from "swr";
 import { fetcher } from "@/lib/api";
@@ -59,7 +59,9 @@ export default function PerformancePage() {
 
   useEffect(() => setMounted(true), []);
 
-  if (!mounted) return <div className="h-screen w-full flex items-center justify-center text-text-muted font-mono bg-background">Loading chart components...</div>;
+  if (!mounted) {
+    return null;
+  }
   
   if (isLoading) return (
     <div className="space-y-8 pt-8 max-w-[1600px] mx-auto">
@@ -193,7 +195,7 @@ export default function PerformancePage() {
         <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mb-8">Baseline 50% = Random Walk · Values above indicate predictive skill</p>
         
         <div className="h-[320px]">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
             <ComposedChart data={data.rolling_accuracy} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
               <XAxis dataKey="date" stroke="rgba(255,255,255,0.1)" tick={{fill: palette.text, fontSize: 10, fontFamily: 'monospace'}} tickMargin={10} />
               <YAxis domain={[0, 100]} stroke="rgba(255,255,255,0.1)" tick={{fill: palette.text, fontSize: 10, fontFamily: 'monospace'}} />
@@ -274,7 +276,7 @@ export default function PerformancePage() {
           <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mb-8">Expected vs Actual Precision per Decile</p>
           
           <div className="h-[260px]">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
               <ComposedChart data={data.confidence_calibration.map((d: any) => {
                   const upper = parseInt(d.confidence_range.split('-')[1]);
                   return { ...d, ideal: isNaN(upper) ? d.actual_accuracy : upper };
@@ -376,9 +378,9 @@ export default function PerformancePage() {
                     <td className="px-8 py-4 text-right font-mono text-danger font-bold">{a.wrong}</td>
                     <td className="px-8 py-4 text-right font-mono text-text-muted">
                         <div className="flex items-center justify-end gap-2">
-                            <span>{(a.avg_confidence * 100).toFixed(1)}%</span>
+                            <span>{a.avg_confidence.toFixed(1)}%</span>
                             <div className="w-12 h-1.5 bg-background rounded-full overflow-hidden">
-                                <div className="h-full bg-accent" style={{width: `${a.avg_confidence*100}%`}} />
+                                <div className="h-full bg-accent" style={{width: `${a.avg_confidence}%`}} />
                             </div>
                         </div>
                     </td>

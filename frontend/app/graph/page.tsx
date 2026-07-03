@@ -11,36 +11,70 @@ import * as d3 from "d3-force";
 import * as THREE from "three";
 import { useRouter } from "next/navigation";
 
+const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
+  ssr: false,
+  loading: () => <Skeleton className="w-full h-[600px] shape-squircle" />,
+});
+
 const ForceGraph3D = dynamic(() => import("react-force-graph-3d"), {
   ssr: false,
   loading: () => <Skeleton className="w-full h-[600px] shape-squircle" />,
 });
 
 const SECTOR_COLORS: Record<string, string> = {
-"Layer 1": "#6366f1",
-"Layer 2": "#3b82f6",
-"DeFi": "#22c55e",
-"Infrastructure": "#f59e0b",
-"Gaming": "#a855f7",
-"Meme": "#ec4899",
-"Other": "#64748b",
+  "Layer 1": "#6366f1",
+  "Layer 2": "#3b82f6",
+  "DeFi": "#22c55e",
+  "Infrastructure": "#f59e0b",
+  "Gaming": "#a855f7",
+  "Meme": "#ec4899",
+  "Other": "#64748b",
 };
 
 const SECTOR_LABELS: Record<string, string> = {
-"Layer 1": "Layer 1",
-"Layer 2": "Layer 2",
-"DeFi": "DeFi",
-"Infrastructure": "Infrastructure",
-"Gaming": "Gaming",
-"Meme": "Meme",
-"Other": "Other",
+  "Layer 1": "Layer 1",
+  "Layer 2": "Layer 2",
+  "DeFi": "DeFi",
+  "Infrastructure": "Infrastructure",
+  "Gaming": "Gaming",
+  "Meme": "Meme",
+  "Other": "Other",
 };
 
 const EDGE_STYLES: Record<string, { color: string; opacity: number; widthMul: number }> = {
-positive_correlation: { color: "#22c55e", opacity: 0.6, widthMul: 3 },
-negative_correlation: { color: "#ef4444", opacity: 0.6, widthMul: 3 },
+  positive_correlation: { color: "#39ff14", opacity: 0.95, widthMul: 6 }, // Neon green
+  negative_correlation: { color: "#ff073a", opacity: 0.95, widthMul: 6 }, // Neon red
 };
-const DEFAULT_EDGE = { color: "#94a3b8", opacity: 0.3, widthMul: 1 };
+
+const DEFAULT_EDGE = { color: "#d4a547", opacity: 0.8, widthMul: 4 };
+
+function interpolateColor(color1: string, color2: string, t: number): string {
+  const hex = (x: string) => {
+    const val = x.replace("#", "");
+    if (val.length === 3) {
+      return [parseInt(val[0] + val[0], 16), parseInt(val[1] + val[1], 16), parseInt(val[2] + val[2], 16)];
+    }
+    return [parseInt(val.slice(0, 2), 16), parseInt(val.slice(2, 4), 16), parseInt(val.slice(4, 6), 16)];
+  };
+  try {
+    const c1 = hex(color1);
+    const c2 = hex(color2);
+    const r = Math.round(c1[0] * (1 - t) + c2[0] * t);
+    const g = Math.round(c1[1] * (1 - t) + c2[1] * t);
+    const b = Math.round(c1[2] * (1 - t) + c2[2] * t);
+    return `rgb(${r},${g},${b})`;
+  } catch (e) {
+    return color1;
+  }
+}
+
+function getSignalColor(dir: string | null | undefined): string {
+  const d = dir?.toLowerCase() || "";
+  if (d.includes("up")) return "#22c55e";
+  if (d.includes("down")) return "#ef4444";
+  if (d.includes("recalibrating")) return "#d4a547";
+  return "#94a3b8";
+}
 
 function getNodeRadius(marketCap: number | null | undefined): number {
   if (!marketCap) return 7;
@@ -70,15 +104,34 @@ export default function GraphPage() {
   const { resolvedTheme } = useTheme();
   const router = useRouter();
   
-  const { data, error, isLoading, mutate } = useSWR<GraphResponse>("/api/graph/latest", fetcher, {
-    revalidateOnFocus: false, dedupingInterval: 30000,
-  });
+  const [sliderVal, setSliderVal] = useState<number>(2.0); // Smooth continuous float [0.0 - 4.0]
+  const [is3D, setIs3D] = useState(true);
+  const [mounted, setMounted] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0); // State trigger for 2D image-load repaints
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  
+  const { data: histData } = useSWR<GraphResponse>("/api/graph/latest?mode=historical", fetcher, { revalidateOnFocus: false, dedupingInterval: 60000 });
+  const { data: hist30Data } = useSWR<GraphResponse>("/api/graph/latest?mode=historical_30", fetcher, { revalidateOnFocus: false, dedupingInterval: 60000 });
+  const { data: liveData, error, isLoading, mutate } = useSWR<GraphResponse>("/api/graph/latest?mode=live", fetcher, { revalidateOnFocus: false, dedupingInterval: 60000 });
+  const { data: proj15Data } = useSWR<GraphResponse>("/api/graph/latest?mode=projected_15", fetcher, { revalidateOnFocus: false, dedupingInterval: 60000 });
+  const { data: proj30Data } = useSWR<GraphResponse>("/api/graph/latest?mode=projected", fetcher, { revalidateOnFocus: false, dedupingInterval: 60000 });
 
   const graphRef = useRef<any>(null);
+  const graphRef2D = useRef<any>(null);
   const hasZoomed = useRef(false);
   const [selectedNode, setSelectedNode] = useState<any>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Smooth slider transition state (keeps node/link reference identical, updates in-place)
+  const [graphDataState, setGraphDataState] = useState<{ nodes: any[], links: any[] }>({ nodes: [], links: [] });
+  const graphInitialized = useRef(false);
+
+  // Persistent cache for ThreeJS objects to prevent violent recreations
+  const nodeThreeObjsMap = useRef<Map<string, THREE.Group>>(new Map());
 
   useEffect(() => {
     const update = () => {
@@ -102,8 +155,10 @@ export default function GraphPage() {
           if (!document.hidden) {
             if (entry.isIntersecting) {
               graphRef.current?.resumeAnimation();
+              graphRef2D.current?.resumeAnimation();
             } else {
               graphRef.current?.pauseAnimation();
+              graphRef2D.current?.pauseAnimation();
             }
           }
         },
@@ -115,15 +170,18 @@ export default function GraphPage() {
     const handleVisibilityChange = () => {
       if (document.hidden) {
         graphRef.current?.pauseAnimation();
+        graphRef2D.current?.pauseAnimation();
       } else {
-        // Only resume if visible in viewport
         if (containerRef.current) {
           const rect = containerRef.current.getBoundingClientRect();
           const isVisible = (
             rect.top < (window.innerHeight || document.documentElement.clientHeight) &&
             rect.bottom > 0
           );
-          if (isVisible) graphRef.current?.resumeAnimation();
+          if (isVisible) {
+            graphRef.current?.resumeAnimation();
+            graphRef2D.current?.resumeAnimation();
+          }
         }
       }
     };
@@ -134,76 +192,231 @@ export default function GraphPage() {
     };
   }, []);
 
-  // Zoom to fit after graph settles
+  // Initialize the topology reference once when base liveData is ready
   useEffect(() => {
-    if (graphRef.current && data) {
-      setTimeout(() => graphRef.current?.zoomToFit(400, 40), 500);
-    }
-  }, [data]);
+    if (liveData && !graphInitialized.current) {
+      const nodes = liveData.nodes.map((n: any) => ({
+        ...n,
+        radius: getNodeRadius(n.market_cap_usd),
+        color: getSignalColor(n.predicted_direction),
+      }));
 
+      const nodeIds = new Set(nodes.map((n: any) => n.symbol));
+      const links = liveData.edges
+        .filter((e: any) => nodeIds.has(e.source) && nodeIds.has(e.target))
+        .map((e: any) => ({
+          source: e.source,
+          target: e.target,
+          weight: e.weight,
+          edge_type: e.edge_type,
+          motif_similarity: e.motif_similarity,
+        }));
+
+      setGraphDataState({ nodes, links });
+      graphInitialized.current = true;
+    }
+  }, [liveData]);
+
+  // Smoothly update attributes in-place when slider changes to prevent graph reload/force reset
   useEffect(() => {
-    if (graphRef.current) {
-      graphRef.current.d3Force('link')?.strength((link: any) =>
-        (link.weight || 0.5) * 0.8
-      );
-      graphRef.current.d3Force('charge')?.strength(-200);
-      graphRef.current.d3Force('collision', 
-        d3.forceCollide().radius((node: any) => getNodeRadius(node.market_cap_usd) + 2)
+    if (graphDataState.nodes.length === 0) return;
+
+    const stepLower = Math.min(4, Math.max(0, Math.floor(sliderVal)));
+    const stepUpper = Math.min(4, Math.max(0, Math.ceil(sliderVal)));
+    const t = sliderVal - stepLower;
+
+    const list = [histData, hist30Data, liveData, proj15Data, proj30Data];
+    const dataLower = list[stepLower] || liveData;
+    const dataUpper = list[stepUpper] || liveData;
+
+    if (!dataLower || !dataUpper) return;
+
+    const nodeMapLower = new Map(dataLower.nodes.map((n: any) => [n.symbol, n]));
+    const nodeMapUpper = new Map(dataUpper.nodes.map((n: any) => [n.symbol, n]));
+
+    graphDataState.nodes.forEach((n: any) => {
+      const nLower = nodeMapLower.get(n.symbol);
+      const nUpper = nodeMapUpper.get(n.symbol);
+      const targetDirLower = nLower?.predicted_direction || "neutral";
+      const targetDirUpper = nUpper?.predicted_direction || "neutral";
+
+      const colLower = getSignalColor(targetDirLower);
+      const colUpper = getSignalColor(targetDirUpper);
+      n.color = interpolateColor(colLower, colUpper, t);
+
+      const radLower = getNodeRadius(nLower?.market_cap_usd || 1e9);
+      const radUpper = getNodeRadius(nUpper?.market_cap_usd || 1e9);
+      n.radius = Math.max(5, radLower * (1 - t) + radUpper * t);
+      n.predicted_direction = t < 0.5 ? targetDirLower : targetDirUpper;
+
+      // Update ThreeJS meshes in-place for instant, buttery smooth slider transitions
+      const group = nodeThreeObjsMap.current.get(n.symbol);
+      if (group) {
+        const sphereMesh = group.children[0] as THREE.Mesh;
+        if (sphereMesh && sphereMesh.material) {
+          (sphereMesh.material as THREE.MeshBasicMaterial).color.set(n.color || '#64748b');
+          sphereMesh.scale.setScalar(n.radius / 7);
+        }
+        const logoSprite = group.children[1] as THREE.Sprite;
+        if (logoSprite) {
+          logoSprite.scale.setScalar(13 + (n.radius - 7) * 0.4);
+        }
+        const textSprite = group.children[2] as THREE.Sprite;
+        if (textSprite) {
+          textSprite.scale.setScalar(18 + (n.radius - 7) * 0.5);
+          textSprite.position.y = n.radius + 6;
+        }
+      }
+    });
+
+    const edgeMapLower = new Map(dataLower.edges.map((e: any) => [`${e.source}-${e.target}`, e]));
+    const edgeMapUpper = new Map(dataUpper.edges.map((e: any) => [`${e.source}-${e.target}`, e]));
+
+    graphDataState.links.forEach((l: any) => {
+      const srcId = l.source.symbol || l.source;
+      const tgtId = l.target.symbol || l.target;
+      const key = `${srcId}-${tgtId}`;
+      const revKey = `${tgtId}-${srcId}`;
+
+      const eLower = edgeMapLower.get(key) || edgeMapLower.get(revKey);
+      const eUpper = edgeMapUpper.get(key) || edgeMapUpper.get(revKey);
+
+      const wLower = eLower ? eLower.weight : 0.0;
+      const wUpper = eUpper ? eUpper.weight : 0.0;
+      l.weight = wLower * (1 - t) + wUpper * t;
+
+      const typeLower = eLower ? eLower.edge_type : eUpper?.edge_type;
+      const typeUpper = eUpper ? eUpper.edge_type : eLower?.edge_type;
+      l.edge_type = t < 0.5 ? typeLower : typeUpper;
+
+      const motifLower = eLower ? eLower.motif_similarity : 0.0;
+      const motifUpper = eUpper ? eUpper.motif_similarity : 0.0;
+      l.motif_similarity = motifLower * (1 - t) + motifUpper * t;
+    });
+
+    // Refresh rendering contexts: 3D has dynamic refresh() while 2D gets a React wrapper update
+    if (is3D) {
+      graphRef.current?.refresh();
+    } else {
+      setGraphDataState({
+        nodes: [...graphDataState.nodes],
+        links: [...graphDataState.links]
+      });
+    }
+  }, [sliderVal, histData, hist30Data, liveData, proj15Data, proj30Data, is3D]);
+
+  // Handle perfect centering as per given viewport space and 3D toggle updates
+  useEffect(() => {
+    if (graphDataState.nodes.length > 0) {
+      const timer = setTimeout(() => {
+        graphRef.current?.zoomToFit(800, 120);
+        graphRef2D.current?.zoomToFit(800, 120);
+      }, 600);
+      return () => clearTimeout(timer);
+    }
+  }, [graphDataState, is3D]);
+
+  // Adjust forces: massive repulsion and link spacing to spread out node connections cleanly
+  useEffect(() => {
+    const activeRef = is3D ? graphRef.current : graphRef2D.current;
+    if (activeRef) {
+      activeRef.d3Force('link')
+        ?.strength((link: any) => (link.weight || 0.5) * 0.9)
+        ?.distance(350); // High distance spacing
+      activeRef.d3Force('charge')?.strength(-1200); // Strong repulsion spacing
+      activeRef.d3Force('collision', 
+        d3.forceCollide().radius((node: any) => (node.radius || 7) * 2.5 + 20)
       );
     }
-  }, [data]);
-
-  const graphData = useMemo(() => {
-    if (!data) return { nodes: [], links: [] };
-    const nodes = data.nodes.map((n: any) => ({
-      ...n,
-      radius: getNodeRadius(n.market_cap_usd),
-      color: SECTOR_COLORS[n.sector] || "#64748b",
-    }));
-    const nodeIds = new Set(nodes.map((n: any) => n.symbol));
-    const links = data.edges
-      .filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target))
-      .map((e) => ({ source: e.source, target: e.target, weight: e.weight, edge_type: e.edge_type }));
-    return { nodes, links };
-  }, [data]);
+  }, [graphDataState, is3D]);
 
   const nodeThreeObject = useCallback((node: any) => {
     const radius = node.radius || 7;
-    
-    // 1. Create sphere geometry
-    const sphereGeom = new THREE.SphereGeometry(radius, 24, 24);
-    
-    // 2. Create radial gradient canvas texture
-    const sphereCanvas = document.createElement('canvas');
-    sphereCanvas.width = 128;
-    sphereCanvas.height = 128;
-    const sCtx = sphereCanvas.getContext('2d');
-    if (sCtx) {
-      const gradient = sCtx.createRadialGradient(64, 64, 0, 64, 64, 64);
-      gradient.addColorStop(0, '#ffffff'); // bright highlight center
-      gradient.addColorStop(0.3, node.color || '#64748b'); // main sector color
-      gradient.addColorStop(0.8, node.color || '#64748b');
-      gradient.addColorStop(1, '#020305'); // dark border edge
-      sCtx.fillStyle = gradient;
-      sCtx.fillRect(0, 0, 128, 128);
+
+    // Use cached ThreeJS group representation if present to avoid violent rebuilds
+    const cachedGroup = nodeThreeObjsMap.current.get(node.symbol);
+    if (cachedGroup) {
+      const sphereMesh = cachedGroup.children[0] as THREE.Mesh;
+      if (sphereMesh && sphereMesh.material) {
+        (sphereMesh.material as THREE.MeshBasicMaterial).color.set(node.color || '#64748b');
+        sphereMesh.scale.setScalar(radius / 7);
+      }
+      const logoSprite = cachedGroup.children[1] as THREE.Sprite;
+      if (logoSprite) {
+        logoSprite.scale.setScalar(16 * (radius / 7));
+      }
+      const textSprite = cachedGroup.children[2] as THREE.Sprite;
+      if (textSprite) {
+        textSprite.scale.setScalar(22 * (radius / 7));
+        textSprite.position.y = radius + 6;
+      }
+      return cachedGroup;
     }
-    const sphereTex = new THREE.CanvasTexture(sphereCanvas);
+
+    const sphereGeom = new THREE.SphereGeometry(7, 24, 24); // Define with base size 7, scaled in-place
     const sphereMat = new THREE.MeshBasicMaterial({ 
-      map: sphereTex, 
-      transparent: true, 
-      opacity: 0.9 
+      color: node.color || '#64748b', 
+      transparent: true,
+      opacity: 0.12 // More transparent sphere meshes
     });
     const sphereMesh = new THREE.Mesh(sphereGeom, sphereMat);
+    sphereMesh.scale.setScalar(radius / 7);
+
+    const iconUrl = `https://cdn.jsdelivr.net/gh/atomiclabs/cryptocurrency-icons@1a63530be6e374711a8554f31b17e4cb92c25fa5/svg/color/${node.symbol.toLowerCase()}.svg`;
     
-    // 3. Create Sprite for symbol text (always faces camera)
+    // Create canvas texture immediately with fallback orb to avoid empty nodes
+    const canvas = document.createElement("canvas");
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      ctx.beginPath();
+      ctx.arc(32, 32, 28, 0, 2 * Math.PI);
+      ctx.fillStyle = node.color || '#64748b';
+      ctx.fill();
+      ctx.font = 'bold 24px sans-serif';
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(node.symbol.slice(0, 3), 32, 32);
+    }
+    const logoTex = new THREE.CanvasTexture(canvas);
+
+    // Asynchronously load the official color icon from cdn
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.src = iconUrl;
+    img.onload = () => {
+      (logoTex as any).image = img;
+      logoTex.needsUpdate = true;
+      graphRef.current?.refresh();
+    };
+
+    const logoMat = new THREE.SpriteMaterial({ 
+      map: logoTex, 
+      transparent: true,
+      depthTest: true
+    });
+    const logoSprite = new THREE.Sprite(logoMat);
+    logoSprite.scale.setScalar(13 + (radius - 7) * 0.4);
+
     const textCanvas = document.createElement('canvas');
     textCanvas.width = 128;
     textCanvas.height = 128;
     const tCtx = textCanvas.getContext('2d');
     if (tCtx) {
       tCtx.clearRect(0, 0, 128, 128);
-      tCtx.font = 'bold 36px monospace';
-      tCtx.fillStyle = '#ffffff'; // White text for maximum contrast on color background
+      // Dark rounded rectangle backing box for symbol readability
+      tCtx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+      tCtx.beginPath();
+      tCtx.roundRect(10, 36, 108, 56, 8);
+      tCtx.fill();
+      tCtx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+      tCtx.lineWidth = 2;
+      tCtx.stroke();
+
+      tCtx.font = 'bold 32px sans-serif';
+      tCtx.fillStyle = '#ffffff';
       tCtx.textAlign = 'center';
       tCtx.textBaseline = 'middle';
       tCtx.fillText(node.symbol, 64, 64);
@@ -212,28 +425,36 @@ export default function GraphPage() {
     const spriteMat = new THREE.SpriteMaterial({ 
       map: textTex, 
       transparent: true,
-      depthTest: false 
+      depthTest: true 
     });
-    const sprite = new THREE.Sprite(spriteMat);
-    sprite.scale.set(radius * 1.5, radius * 1.5, 1);
-    
-    // 4. Combine into group
+    const textSprite = new THREE.Sprite(spriteMat);
+    textSprite.scale.setScalar(18 + (radius - 7) * 0.5);
+    textSprite.position.y = radius + 6;
+
     const group = new THREE.Group();
     group.add(sphereMesh);
-    group.add(sprite);
+    group.add(logoSprite);
+    group.add(textSprite);
     
+    nodeThreeObjsMap.current.set(node.symbol, group);
     return group;
   }, []);
 
   const linkColor = useCallback((link: any) => {
     const style = EDGE_STYLES[link.edge_type] || DEFAULT_EDGE;
-    return `rgba(${hexToRgb(style.color)}, ${style.opacity})`;
+    const absWeight = Math.abs(link.weight || 0.2);
+    const opacity = Math.min(0.95, Math.max(0.15, absWeight * 1.2));
+    return `rgba(${hexToRgb(style.color)}, ${opacity})`;
   }, []);
 
   const linkWidth = useCallback((link: any) => {
-    const style = EDGE_STYLES[link.edge_type] || DEFAULT_EDGE;
-    return (link.weight || 0.5) * style.widthMul;
+    const absWeight = Math.abs(link.weight || 0.2);
+    return 0.5 + absWeight * 3.5;
   }, []);
+
+  if (!mounted) {
+    return null;
+  }
 
   if (error) {
     return (
@@ -249,33 +470,56 @@ export default function GraphPage() {
   }
 
   return (
-    <div className="h-[calc(100vh-8rem)] flex flex-col relative w-full pt-8 p-6 glass-2 rounded-2xl overflow-hidden">
-      <div className="mb-6 relative z-10 px-4 max-w-6xl mx-auto w-full">
-        <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-text via-text/80 to-text-muted tracking-tight font-sans">Topological Graph</h1>
-        <p className="text-text-muted font-light tracking-wide mt-2">Spatial-Temporal Graph — {graphData.nodes.length} assets, {graphData.links.length} connections</p>
+    <div className="relative min-h-[calc(100vh-8rem)] flex flex-col gap-6 w-full max-w-[1600px] mx-auto p-4 md:p-6">
+      
+      {/* Header controls */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10 w-full">
+        <div>
+          <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-text via-text/80 to-text-muted tracking-tight">Correlation Network</h1>
+          <p className="text-text-muted font-light tracking-wide mt-2">Spatial-Temporal Graph — {graphDataState.nodes.length} assets, {graphDataState.links.length} connections</p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-4 bg-surface/30 p-2 rounded-lg border border-text/10 backdrop-blur-md">
+          {/* 2D/3D switcher */}
+          <button 
+            onClick={() => setIs3D(!is3D)} 
+            className="flex items-center gap-2 px-4 py-2 text-xs font-mono font-bold uppercase tracking-wider rounded border border-text/10 bg-text/5 hover:bg-text/15 text-text transition-all"
+          >
+            <Activity size={14} className="text-accent" />
+            Switch to {is3D ? "2D Graph" : "3D Graph"}
+          </button>
+          
+          <button onClick={() => {
+            if (is3D) graphRef.current?.zoomToFit(400, 40);
+            else graphRef2D.current?.zoomToFit(400, 40);
+          }} className="flex items-center gap-2 px-4 py-2 text-xs font-mono font-bold uppercase tracking-wider rounded border border-text/10 bg-text/5 hover:bg-text/15 text-text transition-all">
+            <ZoomIn size={14} /> Center Graph
+          </button>
+        </div>
       </div>
 
       <div ref={containerRef} className="flex-1 w-full relative glass-flat rounded-xl bg-background overflow-hidden">
-        {isLoading || !data ? (
+        {isLoading || !liveData ? (
           <Skeleton className="w-full h-full" />
-        ) : (
+        ) : is3D ? (
           <ForceGraph3D
             key={resolvedTheme || 'dark'}
             ref={graphRef}
             width={dimensions.width}
             height={dimensions.height}
-            graphData={graphData}
+            graphData={graphDataState}
             nodeId="symbol"
             nodeThreeObject={nodeThreeObject}
             linkColor={linkColor}
             linkWidth={linkWidth}
             linkResolution={6}
+            linkDirectionalParticles={4}
             linkDirectionalParticleColor={(link: any) => {
               const ms = link.motif_similarity || 0;
-              return ms > 0.4 ? "rgba(34, 197, 94, 0.9)" : ms < -0.4 ? "rgba(239, 68, 68, 0.9)" : "rgba(212, 165, 71, 0.8)";
+              return ms > 0.4 ? "rgba(57, 255, 20, 0.95)" : ms < -0.4 ? "rgba(255, 7, 58, 0.95)" : "rgba(212, 165, 71, 0.8)";
             }}
-            linkDirectionalParticleWidth={(link: any) => Math.max(2, (Math.abs(link.motif_similarity || 0.5) * 4))}
-            linkDirectionalParticleSpeed={(link: any) => 0.01 + (Math.abs(link.motif_similarity || 0.1) * 0.025)}
+            linkDirectionalParticleWidth={(link: any) => 0.8} // Small particle size inside connection link
+            linkDirectionalParticleSpeed={(link: any) => 0.012 + (Math.abs(link.motif_similarity || 0.1) * 0.03)}
             backgroundColor="rgba(0,0,0,0)"
             d3AlphaDecay={0.06}
             d3VelocityDecay={0.4}
@@ -287,49 +531,101 @@ export default function GraphPage() {
               }
             }}
             onNodeClick={(node: any) => {
-              // Click redirects user to the coin's specific detail route /coin/[symbol]
-              router.push(`/coin/${node.symbol}`);
+              setSelectedNode(node);
+            }}
+          />
+        ) : (
+          <ForceGraph2D
+            ref={graphRef2D}
+            width={dimensions.width}
+            height={dimensions.height}
+            graphData={graphDataState}
+            nodeId="symbol"
+            nodeVal={(node: any) => node.radius || 7}
+            nodeCanvasObject={(node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
+              const radius = node.radius || 7;
+              
+              // 1. Outer transparent signal ring/glow
+              ctx.beginPath();
+              ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI, false);
+              ctx.fillStyle = node.color || '#64748b';
+              ctx.globalAlpha = 0.25; // Transparent spheres match 3D
+              ctx.fill();
+              ctx.globalAlpha = 1.0;
+              
+              // 2. Render cryptocurrency coin logo clipped inside circle with fallbacks
+              const imgId = `img-logo-${node.symbol}`;
+              let img = document.getElementById(imgId) as HTMLImageElement;
+              if (!img) {
+                img = document.createElement("img");
+                img.id = imgId;
+                img.src = `https://cdn.jsdelivr.net/gh/atomiclabs/cryptocurrency-icons@1a63530be6e374711a8554f31b17e4cb92c25fa5/svg/color/${node.symbol.toLowerCase()}.svg`;
+                img.style.display = "none";
+                img.onload = () => {
+                  node.__imgLoaded = true;
+                  setRefreshTrigger(prev => prev + 1);
+                };
+                img.onerror = () => {
+                  node.__imgFailed = true;
+                  setRefreshTrigger(prev => prev + 1);
+                };
+                document.body.appendChild(img);
+              }
+              
+              if (img.complete && img.naturalWidth !== 0 && !node.__imgFailed) {
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, radius * 0.8, 0, 2 * Math.PI, false);
+                ctx.clip();
+                ctx.drawImage(img, node.x - radius * 0.8, node.y - radius * 0.8, radius * 1.6, radius * 1.6);
+                ctx.restore();
+              } else {
+                // Instantly drawn canvas orb fallback texture
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, radius * 0.8, 0, 2 * Math.PI, false);
+                ctx.fillStyle = node.color || '#64748b';
+                ctx.fill();
+                ctx.font = `bold ${radius * 0.7}px monospace`;
+                ctx.fillStyle = '#ffffff';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(node.symbol.slice(0, 3), node.x, node.y);
+                ctx.restore();
+              }
+              
+              // 3. Float ticker text label below
+              const fontSize = 11 / globalScale;
+              ctx.font = `bold ${fontSize}px monospace`;
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillStyle = '#ffffff';
+              ctx.fillText(node.symbol, node.x, node.y + radius + 9 / globalScale);
+            }}
+            linkColor={linkColor}
+            linkWidth={linkWidth}
+            linkDirectionalParticles={4}
+            linkDirectionalParticleColor={(link: any) => {
+              const ms = link.motif_similarity || 0;
+              return ms > 0.4 ? "rgba(57, 255, 20, 0.95)" : ms < -0.4 ? "rgba(255, 7, 58, 0.95)" : "rgba(212, 165, 71, 0.8)";
+            }}
+            linkDirectionalParticleWidth={(link: any) => 0.8} // Small particle size inside connection link
+            linkDirectionalParticleSpeed={(link: any) => 0.012 + (Math.abs(link.motif_similarity || 0.1) * 0.03)}
+            backgroundColor="rgba(0,0,0,0)"
+            d3AlphaDecay={0.06}
+            d3VelocityDecay={0.4}
+            cooldownTime={4000}
+            onEngineStop={() => {
+              if (graphRef2D.current && !hasZoomed.current) {
+                graphRef2D.current.zoomToFit(400, 40);
+                hasZoomed.current = true;
+              }
+            }}
+            onNodeClick={(node: any) => {
+              setSelectedNode(node);
             }}
           />
         )}
-
-        {/* Controls panel */}
-        <div className="absolute top-4 right-4 glass-3 rounded-xl p-5 border border-text/5 space-y-4 z-10 w-64 shadow-2xl backdrop-blur-2xl">
-          <div className="text-[10px] font-mono font-bold text-accent uppercase tracking-widest flex items-center gap-2">
-            <Activity size={14} /> Network Controls
-          </div>
-          <button onClick={() => graphRef.current?.zoomToFit(400, 40)} className="w-full flex justify-center items-center gap-2 px-4 py-2.5 glass bg-accent/10 hover:bg-accent/20 text-accent rounded-sm text-xs font-bold transition-all border border-accent/20 shadow-[0_0_15px_rgba(var(--accent),0.1)]">
-            <ZoomIn size={14} /> Center Graph
-          </button>
-          <button onClick={() => mutate()} className="w-full flex justify-center items-center gap-2 px-4 py-2.5 glass bg-surface/50 hover:bg-text/5 text-text rounded-sm text-xs transition-colors border border-text/5">
-            <RefreshCcw size={14} /> Refresh Data
-          </button>
-          <div className="flex gap-2 text-[10px] uppercase tracking-widest font-mono pt-2 border-t border-text/10">
-            <span className="flex-1 text-center py-1.5 bg-success/10 text-success rounded-sm border border-success/20">{graphData.nodes.length} Nodes</span>
-            <span className="flex-1 text-center py-1.5 bg-warning/10 text-warning rounded-sm border border-warning/20">{graphData.links.length} Edges</span>
-          </div>
-        </div>
-
-        {/* Legend */}
-        <div className="absolute bottom-4 left-4 glass-3 rounded-xl p-5 border border-text/5 shadow-2xl backdrop-blur-2xl z-10">
-          <div className="text-[10px] font-mono font-bold text-accent mb-3 uppercase tracking-widest">Sectors</div>
-          <div className="grid grid-cols-2 gap-x-6 gap-y-2">
-              {Object.entries(SECTOR_LABELS).map(([key, label]) => (
-                <div key={key} className="flex items-center gap-2 text-xs text-text/80 font-medium">
-                  <div className="w-2 h-2 rounded-full shadow-[0_0_8px_currentColor]" style={{ backgroundColor: SECTOR_COLORS[key], color: SECTOR_COLORS[key] }} /> {label}
-                </div>
-              ))}
-          </div>
-          <div className="border-t border-text/10 my-4" />
-          <div className="text-[10px] font-mono font-bold text-accent mb-3 uppercase tracking-widest">Connection Types</div>
-          <div className="space-y-2.5">
-              {Object.entries({ positive_correlation: "Positive Correlation", negative_correlation: "Negative Correlation" }).map(([key, label]) => (
-                <div key={key} className="flex items-center gap-3 text-xs text-text/80 font-medium">
-                  <div className="w-6 h-0.5 rounded shadow-[0_0_8px_currentColor]" style={{ backgroundColor: EDGE_STYLES[key]?.color, color: EDGE_STYLES[key]?.color }} /> {label}
-                </div>
-              ))}
-          </div>
-        </div>
 
         {/* Selected node panel */}
         {selectedNode && (
@@ -367,6 +663,40 @@ export default function GraphPage() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* Smooth Timeline range control */}
+      <div className="relative z-10 w-full glass-2 rounded-xl p-6 border border-text/10 shadow-lg mt-2">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <div className="flex items-center gap-3">
+            <span className="w-2.5 h-2.5 rounded-full bg-accent animate-pulse" />
+            <span className="text-xs font-mono font-black tracking-widest text-text uppercase">Swarm Timeline Controller</span>
+          </div>
+          <div className="text-xs font-mono font-bold text-accent bg-accent/10 px-3 py-1 rounded">
+            {sliderVal < 0.5 ? "90D PAST HISTORY" :
+             sliderVal < 1.5 ? "30D PAST HISTORY" :
+             sliderVal < 2.5 ? "LIVE ENGINE STATE" :
+             sliderVal < 3.5 ? "GNN PROJECTED +15D" : "GNN PROJECTED +30D"}
+          </div>
+        </div>
+
+        <input 
+          type="range"
+          min="0"
+          max="4"
+          step="0.01"
+          value={sliderVal}
+          onChange={(e) => setSliderVal(parseFloat(e.target.value))}
+          className="w-full h-2 bg-text/10 rounded-lg appearance-none cursor-pointer accent-accent focus:outline-none"
+        />
+
+        <div className="flex justify-between text-[10px] font-mono text-text-muted mt-3 uppercase tracking-wider font-bold">
+          <span>90D Past</span>
+          <span>30D Past</span>
+          <span className="text-accent font-black">Live Engine</span>
+          <span>Projected +15D</span>
+          <span>Projected +30D</span>
+        </div>
       </div>
     </div>
   );

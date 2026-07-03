@@ -20,10 +20,15 @@ def sortino_ratio(returns: pd.Series, annualization: int = 252) -> float:
 
 def max_drawdown(returns: pd.Series) -> float:
     """Maximum peak-to-trough percentage decline. Returns negative float."""
+    # Clip returns to reasonable daily boundaries to prevent mathematical overflows
+    clipped_returns = np.clip(returns.values, -0.99, 10.0)
     # Convert returns to cumulative wealth index
-    wealth = (1 + returns).cumprod()
-    peaks = wealth.cummax()
-    drawdowns = (wealth - peaks) / peaks
+    wealth = np.cumprod(1 + clipped_returns)
+    # Handle any inf/nan outputs safely
+    wealth = np.nan_to_num(wealth, nan=1.0, posinf=1.0, neginf=1.0)
+    # cummax requires pandas series or manual loop
+    peaks = pd.Series(wealth).cummax().values
+    drawdowns = (wealth - peaks) / (peaks + 1e-8)
     return float(drawdowns.min())
 
 def profit_factor(returns: pd.Series) -> float:

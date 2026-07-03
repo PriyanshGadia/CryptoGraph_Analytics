@@ -58,34 +58,38 @@ class DynamicGraphBuilder:
         if self.feature_dim == 27:
             feature_cols.extend(["tvl", "revenue", "active_users"])
         
-        # STEP 1: Node Features with Rolling 30-day scaling per-asset (cached for speed)
+        # STEP 1: Node Features with Rolling 30-day Z-Score normalization (all features)
         x_list = []
         for sym in self.symbols:
             if sym in proc_features:
                 df = proc_features[sym]
+                # Cache rolling mean/std for ALL feature columns (not just 6)
                 if sym not in self.rolling_min_cache:
-                    cols_to_scale = ["open", "high", "low", "close", "volume", "market_cap_usd"]
-                    if self.feature_dim == 27:
-                        cols_to_scale.extend(["tvl", "revenue", "active_users"])
-                    cols_present = [c for c in cols_to_scale if c in df.columns]
-                    self.rolling_min_cache[sym] = df[cols_present].rolling(window=30, min_periods=1).min()
-                    self.rolling_max_cache[sym] = df[cols_present].rolling(window=30, min_periods=1).max()
+                    cols_present = [c for c in feature_cols if c in df.columns]
+                    # Store rolling mean in min_cache, rolling std in max_cache (reusing cache names)
+                    self.rolling_min_cache[sym] = df[cols_present].rolling(window=30, min_periods=1).mean()
+                    rolling_std = df[cols_present].rolling(window=30, min_periods=1).std()
+                    # Replace zero std with 1.0 to avoid division by zero
+                    self.rolling_max_cache[sym] = rolling_std.replace(0.0, 1.0).fillna(1.0)
                 
-                df_min = self.rolling_min_cache[sym]
-                df_max = self.rolling_max_cache[sym]
+                df_mean = self.rolling_min_cache[sym]
+                df_std = self.rolling_max_cache[sym]
                 try:
                     row = df.loc[target_date]
-                    row_min = df_min.loc[target_date]
-                    row_max = df_max.loc[target_date]
+                    row_mean = df_mean.loc[target_date]
+                    row_std = df_std.loc[target_date]
                     vals = []
                     for col in feature_cols:
-                        val = row[col]
-                        if col in row_min.index:
-                            col_min = row_min[col]
-                            col_max = row_max[col]
-                            col_range = col_max - col_min if col_max > col_min else 1.0
-                            val = (val - col_min) / col_range
-                        vals.append(float(val) if not pd.isna(val) else 0.0)
+                        val = row[col] if not pd.isna(row[col]) else 0.0
+                        if col in row_mean.index:
+                            col_mean = row_mean[col] if not pd.isna(row_mean[col]) else 0.0
+                            col_std = row_std[col] if not pd.isna(row_std[col]) else 1.0
+                            if col_std == 0.0:
+                                col_std = 1.0
+                            val = (float(val) - col_mean) / col_std
+                        # Clip to [-5, 5] to handle outliers
+                        val = max(-5.0, min(5.0, float(val)))
+                        vals.append(val)
                     vals = np.array(vals, dtype=np.float32)
                 except Exception:
                     vals = np.zeros(len(feature_cols), dtype=np.float32)
@@ -94,19 +98,16 @@ class DynamicGraphBuilder:
             x_list.append(vals)
             
         x = torch.tensor(np.array(x_list), dtype=torch.float32)
+        # Dictionary to accumulate edges: (u, v, relation_type) -> weight
+        edges_dict: Dict[Tuple[int, int, int], float] = {}
 
-        # Dictionary to accumulate edges: (u, v) -> weight
-        edges_dict: Dict[Tuple[int, int], float] = {}
-
-        def add_edge(u: int, v: int, w: float):
+        def add_edge(u: int, v: int, w: float, rel: int):
             if u == v:
                 return
-            if (u, v) not in edges_dict or edges_dict[(u, v)] < w:
-                edges_dict[(u, v)] = w
-            if (v, u) not in edges_dict or edges_dict[(v, u)] < w:
-                edges_dict[(v, u)] = w
+            edges_dict[(u, v, rel)] = w
+            edges_dict[(v, u, rel)] = w
 
-        # STEP 2: Correlation edges
+        # STEP 2: Correlation edges (Relation 2)
         start_corr = target_date - timedelta(days=30)
         returns_matrix = []
         for sym in self.symbols:
@@ -134,45 +135,69 @@ class DynamicGraphBuilder:
                 padded.append(r)
                 
         if padded:
-            corr_mat = np.corrcoef(padded)
+            # Handle constant/zero returns safely to avoid division-by-zero warnings in np.corrcoef
+            padded_arr = np.array(padded)
+            std = np.std(padded_arr, axis=1)
+            zero_std_idx = np.where(std == 0.0)[0]
+            if len(zero_std_idx) > 0:
+                padded_arr[zero_std_idx, :] = padded_arr[zero_std_idx, :] + np.random.normal(0, 1e-9, padded_arr[zero_std_idx, :].shape)
+            
+            corr_mat = np.corrcoef(padded_arr)
+            corr_mat = np.nan_to_num(corr_mat, nan=0.0, posinf=0.0, neginf=0.0)
+            
             # Vectorized thresholding for 20k scaling
             row_idx, col_idx = np.where(np.abs(corr_mat) > 0.6)
             for i, j in zip(row_idx, col_idx):
                 if i < j:
-                    add_edge(int(i), int(j), float(corr_mat[i, j]))
+                    add_edge(int(i), int(j), float(corr_mat[i, j]), 2)
 
-        # STEP 3: Market cap edges
-        for i in range(N):
-            for j in range(i + 1, N):
+        # STEP 3: Market cap edges (Relation 1)
+        market_caps = {}
+        for idx, sym in enumerate(self.symbols):
+            if sym in proc_features:
                 try:
-                    mc_i = float(proc_features[self.symbols[i]].loc[target_date, "market_cap_usd"])
-                    mc_j = float(proc_features[self.symbols[j]].loc[target_date, "market_cap_usd"])
-                    max_mc = max(mc_i, mc_j)
-                    weight = min(mc_i, mc_j) / max_mc if max_mc > 0 else 0
-                    if weight > 0.3:
-                        add_edge(i, j, weight)
+                    val = proc_features[sym].loc[target_date, "market_cap_usd"]
+                    market_caps[idx] = float(val) if not pd.isna(val) else 0.0
                 except KeyError:
-                    pass
+                    market_caps[idx] = 0.0
+            else:
+                market_caps[idx] = 0.0
 
-        # STEP 4: Sector edges
+        for i in range(N):
+            mc_i = market_caps[i]
+            if mc_i <= 0:
+                continue
+            for j in range(i + 1, N):
+                mc_j = market_caps[j]
+                if mc_j <= 0:
+                    continue
+                max_mc = max(mc_i, mc_j)
+                weight = min(mc_i, mc_j) / max_mc
+                if weight > 0.3:
+                    add_edge(i, j, weight, 1)
+
+        # STEP 4: Sector edges (Relation 0)
         for sector, syms in SECTORS.items():
             valid_idx = [self.symbol_to_idx[s] for s in syms if s in self.symbol_to_idx]
             for i in range(len(valid_idx)):
                 for j in range(i + 1, len(valid_idx)):
-                    add_edge(valid_idx[i], valid_idx[j], 1.0)
+                    add_edge(valid_idx[i], valid_idx[j], 1.0, 0)
 
         # STEP 5: Merge edges
         if not edges_dict:
             edge_index = torch.empty((2, 0), dtype=torch.long)
             edge_attr = torch.empty((0, 1), dtype=torch.float32)
+            edge_type = torch.empty((0,), dtype=torch.long)
         else:
             edge_list = list(edges_dict.items())
-            edge_indices = [[u, v] for (u, v), w in edge_list]
-            edge_weights = [[w] for (u, v), w in edge_list]
+            edge_indices = [[u, v] for (u, v, rel), w in edge_list]
+            edge_weights = [[w] for (u, v, rel), w in edge_list]
+            edge_types = [rel for (u, v, rel), w in edge_list]
             edge_index = torch.tensor(edge_indices, dtype=torch.long).t().contiguous()
             edge_attr = torch.tensor(edge_weights, dtype=torch.float32)
+            edge_type = torch.tensor(edge_types, dtype=torch.long)
 
-        return torch_geometric.data.Data(x=x, edge_index=edge_index, edge_attr=edge_attr, num_nodes=N)
+        return torch_geometric.data.Data(x=x, edge_index=edge_index, edge_attr=edge_attr, edge_type=edge_type, num_nodes=N)
 
     def build_realtime_graph(
         self,
@@ -216,14 +241,15 @@ class DynamicGraphBuilder:
             
         x = torch.tensor(np.array(x_list), dtype=torch.float32)
 
-        edges_dict: Dict[Tuple[int, int], float] = {}
+        # Dictionary to accumulate edges: (u, v, relation_type) -> weight
+        edges_dict: Dict[Tuple[int, int, int], float] = {}
 
-        def add_edge(u: int, v: int, w: float):
+        def add_edge(u: int, v: int, w: float, rel: int):
             if u == v: return
-            if (u, v) not in edges_dict or edges_dict[(u, v)] < w: edges_dict[(u, v)] = w
-            if (v, u) not in edges_dict or edges_dict[(v, u)] < w: edges_dict[(v, u)] = w
+            edges_dict[(u, v, rel)] = w
+            edges_dict[(v, u, rel)] = w
 
-        # STEP 2: Correlation edges (compute over the recent window of close prices)
+        # STEP 2: Correlation edges (Relation 2)
         returns_matrix = []
         for sym in self.symbols:
             if sym in features and not features[sym].empty:
@@ -249,9 +275,9 @@ class DynamicGraphBuilder:
             row_idx, col_idx = np.where(np.abs(corr_mat) > 0.6)
             for i, j in zip(row_idx, col_idx):
                 if i < j:
-                    add_edge(int(i), int(j), float(corr_mat[i, j]))
+                    add_edge(int(i), int(j), float(corr_mat[i, j]), 2)
 
-        # STEP 3: Market cap edges
+        # STEP 3: Market cap edges (Relation 1)
         for i in range(N):
             for j in range(i + 1, N):
                 try:
@@ -261,29 +287,32 @@ class DynamicGraphBuilder:
                         max_mc = max(mc_i, mc_j)
                         weight = min(mc_i, mc_j) / max_mc if max_mc > 0 else 0
                         if weight > 0.3:
-                            add_edge(i, j, weight)
+                            add_edge(i, j, weight, 1)
                 except KeyError:
                     pass
 
-        # STEP 4: Sector edges
+        # STEP 4: Sector edges (Relation 0)
         for sector, syms in SECTORS.items():
             valid_idx = [self.symbol_to_idx[s] for s in syms if s in self.symbol_to_idx]
             for i in range(len(valid_idx)):
                 for j in range(i + 1, len(valid_idx)):
-                    add_edge(valid_idx[i], valid_idx[j], 1.0)
+                    add_edge(valid_idx[i], valid_idx[j], 1.0, 0)
 
         # STEP 5: Merge edges
         if not edges_dict:
             edge_index = torch.empty((2, 0), dtype=torch.long)
             edge_attr = torch.empty((0, 1), dtype=torch.float32)
+            edge_type = torch.empty((0,), dtype=torch.long)
         else:
             edge_list = list(edges_dict.items())
-            edge_indices = [[u, v] for (u, v), w in edge_list]
-            edge_weights = [[w] for (u, v), w in edge_list]
+            edge_indices = [[u, v] for (u, v, rel), w in edge_list]
+            edge_weights = [[w] for (u, v, rel), w in edge_list]
+            edge_types = [rel for (u, v, rel), w in edge_list]
             edge_index = torch.tensor(edge_indices, dtype=torch.long).t().contiguous()
             edge_attr = torch.tensor(edge_weights, dtype=torch.float32)
+            edge_type = torch.tensor(edge_types, dtype=torch.long)
 
-        return torch_geometric.data.Data(x=x, edge_index=edge_index, edge_attr=edge_attr, num_nodes=N)
+        return torch_geometric.data.Data(x=x, edge_index=edge_index, edge_attr=edge_attr, edge_type=edge_type, num_nodes=N)
 
     def build_temporal_graph_sequence(
         self,

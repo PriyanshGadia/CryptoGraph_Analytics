@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc, text, func
 from app.api.deps import get_db
 from app.db.models import GraphResponse, GraphNode, GraphEdge
-from app.db.models_sqla import Asset, Prediction, OHLCV
+from app.db.models_sqla import Asset, Prediction, OHLCV, Forecast as SQLAForecast
 from datetime import datetime, timezone, timedelta
 import numpy as np
 import pandas as pd
@@ -12,35 +12,68 @@ import pandas as pd
 router = APIRouter(prefix="/graph", tags=["graph"])
 
 
-def _compute_correlation_graph(db: Session, top_n_edges: int = 100):
+def _compute_correlation_graph(db: Session, top_n_edges: int = 100, mode: str = "live"):
     """
-    Builds a correlation-based graph from the local OHLCV + technical_features tables.
+    Builds a correlation-based graph from local OHLCV, technical_features, or forecasts tables.
     Nodes = assets, Edges = top Pearson correlations between daily returns.
+    Supports mode="live" (last 30 days), mode="historical" (last 90 days), mode="projected" (ensemble forecasted 30 days).
     """
-    since = datetime.now(timezone.utc) - timedelta(days=30)
+    if mode.startswith("projected"):
+        # Load forecasts for all assets
+        forecast_rows = db.query(SQLAForecast).all()
+        if not forecast_rows:
+            mode = "live"
+        else:
+            import json
+            proj_data = {}
+            for f in forecast_rows:
+                prices = f.forecast_prices
+                if isinstance(prices, str):
+                    try:
+                        prices = json.loads(prices)
+                    except Exception:
+                        continue
+                if isinstance(prices, list) and len(prices) > 1:
+                    if mode == "projected_15":
+                        proj_data[f.asset_id] = prices[:15]
+                    else:
+                        proj_data[f.asset_id] = prices[:30]
+            
+            if len(proj_data) < 2:
+                mode = "live"
+            else:
+                # Build DataFrame
+                df_proj = pd.DataFrame(proj_data)
+                # Compute returns of projected prices
+                df_returns = df_proj.pct_change().dropna()
+                corr_matrix = df_returns.corr(method="pearson").fillna(0.0)
 
-    # Batched query: get all daily returns from technical_features
-    tech_query = text("""
-        SELECT asset_id, timestamp, returns_1d
-        FROM technical_features
-        WHERE timestamp >= :since
-        ORDER BY timestamp ASC
-    """)
-    rows = db.execute(tech_query, {"since": since.isoformat()}).fetchall()
+    if not mode.startswith("projected"):
+        days_lookback = 90 if mode == "historical" else 30
+        since = datetime.now(timezone.utc) - timedelta(days=days_lookback)
 
-    if not rows:
-        return [], []
+        # Batched query: get all daily returns from technical_features
+        tech_query = text("""
+            SELECT asset_id, timestamp, returns_1d
+            FROM technical_features
+            WHERE timestamp >= :since
+            ORDER BY timestamp ASC
+        """)
+        rows = db.execute(tech_query, {"since": since.isoformat()}).fetchall()
 
-    # Build a pivot table: date x asset_id -> returns_1d
-    df = pd.DataFrame(rows, columns=["asset_id", "timestamp", "returns_1d"])
-    df["date"] = df["timestamp"].apply(lambda x: str(x).split("T")[0] if isinstance(x, str) else str(x)[:10])
-    pivot = df.pivot_table(index="date", columns="asset_id", values="returns_1d")
-    pivot = pivot.dropna(axis=1, thresh=max(1, len(pivot) // 2))
+        if not rows:
+            return [], []
 
-    if pivot.shape[1] < 2:
-        return [], []
+        # Build a pivot table: date x asset_id -> returns_1d
+        df = pd.DataFrame(rows, columns=["asset_id", "timestamp", "returns_1d"])
+        df["date"] = df["timestamp"].apply(lambda x: str(x).split("T")[0] if isinstance(x, str) else str(x)[:10])
+        pivot = df.pivot_table(index="date", columns="asset_id", values="returns_1d")
+        pivot = pivot.dropna(axis=1, thresh=max(1, len(pivot) // 2))
 
-    corr_matrix = pivot.corr(method="pearson").fillna(0.0)
+        if pivot.shape[1] < 2:
+            return [], []
+
+        corr_matrix = pivot.corr(method="pearson").fillna(0.0)
 
     # Load asset metadata
     assets = db.query(Asset).all()
@@ -84,9 +117,44 @@ def _compute_correlation_graph(db: Session, top_n_edges: int = 100):
                 if not np.isnan(val) and abs(val) > 0.1:
                     pairs.append((aid_a, aid_b, float(val)))
 
-    # Sort by absolute correlation descending, take top_n_edges
-    pairs.sort(key=lambda x: abs(x[2]), reverse=True)
-    pairs = pairs[:top_n_edges]
+    # Ensure all nodes are connected (degree >= 1) by finding the strongest link for each asset first
+    connected_pairs = []
+    seen_pairs = set()
+    
+    asset_strongest = {}
+    for aid_a, aid_b, val in pairs:
+        if aid_a not in asset_strongest or abs(val) > abs(asset_strongest[aid_a][2]):
+            asset_strongest[aid_a] = (aid_a, aid_b, val)
+        if aid_b not in asset_strongest or abs(val) > abs(asset_strongest[aid_b][2]):
+            asset_strongest[aid_b] = (aid_a, aid_b, val)
+            
+    for aid, edge in asset_strongest.items():
+        key = tuple(sorted([edge[0], edge[1]]))
+        if key not in seen_pairs:
+            seen_pairs.add(key)
+            connected_pairs.append(edge)
+            
+    # Separate remaining pairs to mix positive and negative correlations (green and red edges)
+    remaining_pairs = [p for p in pairs if tuple(sorted([p[0], p[1]])) not in seen_pairs]
+    pos_remaining = [p for p in remaining_pairs if p[2] >= 0]
+    neg_remaining = [p for p in remaining_pairs if p[2] < 0]
+    
+    pos_remaining.sort(key=lambda x: x[2], reverse=True)
+    neg_remaining.sort(key=lambda x: x[2]) # Most negative first
+    
+    slots_left = max(0, top_n_edges - len(connected_pairs))
+    n_pos = int(slots_left * 0.75)
+    n_neg = slots_left - n_pos
+    
+    extra_pairs = []
+    extra_pairs.extend(pos_remaining[:n_pos])
+    extra_pairs.extend(neg_remaining[:n_neg])
+    
+    if len(extra_pairs) < slots_left:
+        deficit = slots_left - len(extra_pairs)
+        extra_pairs.extend(pos_remaining[n_pos : n_pos + deficit])
+        
+    pairs = connected_pairs + extra_pairs
 
     # Load latest technical features for Motif Mining (Structural Similarity)
     latest_tech_query = text("""
@@ -136,13 +204,64 @@ def _compute_correlation_graph(db: Session, top_n_edges: int = 100):
 
 
 @router.get("/latest", response_model=GraphResponse)
-async def get_latest_graph(db: Session = Depends(get_db)):
+async def get_latest_graph(mode: str = "live", db: Session = Depends(get_db)):
     """
     Returns current graph for visualization.
-    Computes correlation-based graph from local OHLCV/technical_features.
+    Computes correlation-based graph from local OHLCV/technical_features or forecasts depending on mode ("live", "historical", "projected").
+    Includes dynamic topological complex descriptors (Betti-0, Euler Characteristic, and Clustering).
     """
-    nodes, edges = _compute_correlation_graph(db)
-    return GraphResponse(nodes=nodes, edges=edges)
+    nodes, edges = _compute_correlation_graph(db, mode=mode)
+    
+    num_nodes = len(nodes)
+    num_edges = len(edges)
+    
+    # Adjacency list
+    adj = {node.symbol: set() for node in nodes}
+    for edge in edges:
+        adj[edge.source].add(edge.target)
+        adj[edge.target].add(edge.source)
+        
+    # BFS for Connected Components (Betti-0)
+    visited = set()
+    betti_0 = 0
+    for node in nodes:
+        if node.symbol not in visited:
+            betti_0 += 1
+            queue = [node.symbol]
+            visited.add(node.symbol)
+            while queue:
+                curr = queue.pop(0)
+                for neighbor in adj[curr]:
+                    if neighbor not in visited:
+                        visited.add(neighbor)
+                        queue.append(neighbor)
+                        
+    # Euler characteristic: V - E
+    euler_characteristic = num_nodes - num_edges
+    
+    # Average Clustering Coefficient
+    clustering_sum = 0.0
+    for node in nodes:
+        neighbors = adj[node.symbol]
+        k = len(neighbors)
+        if k < 2:
+            continue
+        links = 0
+        neigh_list = list(neighbors)
+        for i in range(len(neigh_list)):
+            for j in range(i + 1, len(neigh_list)):
+                if neigh_list[j] in adj[neigh_list[i]]:
+                    links += 1
+        clustering_sum += (2.0 * links) / (k * (k - 1))
+    average_clustering = clustering_sum / num_nodes if num_nodes > 0 else 0.0
+    
+    return GraphResponse(
+        nodes=nodes,
+        edges=edges,
+        betti_0=betti_0,
+        average_clustering=round(average_clustering, 4),
+        euler_characteristic=euler_characteristic
+    )
 
 
 @router.get("/history")

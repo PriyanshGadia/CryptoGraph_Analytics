@@ -33,8 +33,6 @@ export default function PortfolioPage() {
     setMounted(true);
   }, []);
 
-  if (!mounted) return <div className="h-screen w-full flex items-center justify-center text-text-muted font-mono bg-background">Loading chart components...</div>;
-
   const { data: portfolio, error: pErr, mutate: mutatePortfolio } = useSWR<PortfolioResponse>("/api/portfolio", fetcher, {
     refreshInterval: 60000,
   });
@@ -53,6 +51,8 @@ export default function PortfolioPage() {
   const [notes, setNotes] = useState<string>("");
   const [submittingGrade, setSubmittingGrade] = useState(false);
   const [signingTradeId, setSigningTradeId] = useState<number | null>(null);
+
+  if (!mounted) return <div className="h-screen w-full flex items-center justify-center text-text-muted font-mono bg-background">Loading chart components...</div>;
 
   const handleManualExecute = async () => {
     if (executing) return;

@@ -3,30 +3,45 @@ Cryptographic utility for securing sensitive API keys in the SQLite database.
 Uses AES-128 in CBC mode with HMAC (Fernet).
 """
 
+import base64
+import hashlib
 import os
 from pathlib import Path
 from cryptography.fernet import Fernet
-from app.core.config import settings
 
-# A local master key file prevents keys from being leaked via SQLite alone.
-# If SQLite is stolen, the keys are safe unless master.key is also stolen.
+# Master key file stored locally and gitignored for persistent local development key retention
 KEY_PATH = Path(__file__).parent.parent.parent / "master.key"
 
 def _get_or_create_master_key() -> bytes:
-    """Gets the master key from environment variables or disk, or generates a new one if it doesn't exist."""
+    """Gets or derives a 32-byte Fernet key from environment variables or local disk file."""
     env_key = os.getenv("ENCRYPTION_KEY") or os.getenv("MASTER_KEY")
     if env_key:
-        # If it's a raw string, we strip whitespace and encode it
-        return env_key.strip().encode("utf-8")
+        key_bytes = env_key.strip().encode("utf-8")
+        try:
+            # Test if it's already a valid Fernet key
+            Fernet(key_bytes)
+            return key_bytes
+        except Exception:
+            # Hash to 32 bytes and base64 encode for a valid Fernet key
+            digest = hashlib.sha256(key_bytes).digest()
+            return base64.urlsafe_b64encode(digest)
 
     if KEY_PATH.exists():
-        with open(KEY_PATH, "rb") as f:
-            return f.read().strip()
-    else:
-        new_key = Fernet.generate_key()
+        try:
+            with open(KEY_PATH, "rb") as f:
+                content = f.read().strip()
+                Fernet(content)
+                return content
+        except Exception:
+            pass
+
+    new_key = Fernet.generate_key()
+    try:
         with open(KEY_PATH, "wb") as f:
             f.write(new_key)
-        return new_key
+    except Exception as e:
+        print(f"[Security] Could not write master.key to disk: {e}")
+    return new_key
 
 # Initialize global cipher
 try:

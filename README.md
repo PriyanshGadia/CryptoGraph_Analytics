@@ -137,7 +137,10 @@ graph LR
 **Feature, not a bug.** Binance delists coins (like `WAVES` or `REN`), or regional restrictions block their WebSocket stream. Instead of breaking the UI with a `$0.0000` price and `0.0%` change, our backend actively filters dead nodes out of the Swarm Map. 
 
 ### Does it actually trade my money?
-**No.** This is an Analytics and Forecasting dashboard. There is no wallet integration or automated execution. It tells you what the Neural Network *thinks* will happen. What you do with that information is up to you.
+**No.** This is an Analytics and Forecasting dashboard. The portfolio dashboard shows simulated backtested runs and paper trading. There is no automated execution.
+
+### How are the model validation metrics calculated?
+Validation metrics (F1 validation score, Sharpe ratio) are computed chronologically on a held-out validation set. If a model's F1 score is $< 0.35$ or Sharpe is $< 0.0$, the inference pipeline gates predictions and serves a "recalibrating" state to the UI to avoid outputting poor predictions.
 
 ### I am getting "Failed to load market data" or "Stream Offline".
 This happens if the backend isn't running, or if it's your very first time booting and the SQLite database is completely empty. Run the backend, let it establish the WebSocket handshake with Binance (takes about 5 seconds), and refresh the page.

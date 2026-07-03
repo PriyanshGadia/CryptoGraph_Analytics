@@ -31,14 +31,15 @@ async def get_validation_metrics():
                 pass
                 
     return {
-        "sharpe_ratio": 1.482,
-        "sortino_ratio": 1.954,
-        "max_drawdown": -0.124,
-        "profit_factor": 1.62,
-        "win_rate": 0.584,
-        "f1_macro": 0.395,
-        "precision_macro": 0.412,
-        "recall_macro": 0.387
+        "sharpe_ratio": 0.0,
+        "sortino_ratio": 0.0,
+        "max_drawdown": 0.0,
+        "profit_factor": 0.0,
+        "win_rate": 0.0,
+        "f1_macro": 0.0,
+        "precision_macro": 0.0,
+        "recall_macro": 0.0,
+        "status": "awaiting_calibration"
     }
 
 @router.get("", response_model=list[Prediction])

@@ -43,6 +43,10 @@ class WandbTracker:
         except Exception:
             pass
 
+        if not api_key:
+            print("[WandbTracker] W&B API key not found in SQLite settings — logging disabled.")
+            return
+
         try:
             _wandb.login(key=api_key)  # key=None → uses WANDB_API_KEY env var if set
             self.run = _wandb.init(
