@@ -165,15 +165,15 @@ export default function MarketPage() {
       </div>
 
       {/* Compact Hover-detail Grid view */}
-      <div className="relative z-10 w-full">
+      <div className="relative w-full">
         {isLoading || !assets || assets.length === 0 ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-x-3 gap-y-1.5 w-full content-start items-start justify-start">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-x-3 gap-y-1.5 auto-rows-[64px] w-full content-start items-start justify-start">
             {Array.from({ length: 25 }).map((_, i) => (
               <GlassCard tier="flat" shape="none" key={i} className="h-[64px] animate-pulse bg-[rgba(var(--text),0.03)] border border-text/5 rounded-sm" />
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-x-3 gap-y-1.5 w-full content-start items-start justify-start">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-x-3 gap-y-1.5 auto-rows-[64px] w-full content-start items-start justify-start">
             {sortedAssets.map((asset) => (
               <Link key={asset.symbol} href={`/coin/${asset.symbol}`} className="block w-full">
                 <PredictionNode asset={asset} onHoverChange={(hovered) => setHoveredAsset(hovered ? asset : null)} />
@@ -182,97 +182,15 @@ export default function MarketPage() {
           </div>
         )}
       </div>
-
-      {hoveredAsset && (() => {
-        const direction = (hoveredAsset.predicted_direction || (hoveredAsset as any).direction)?.toLowerCase() ?? "neutral";
-        const isUp = direction === "up" || direction === "strong_up";
-        const isDown = direction === "down" || direction === "strong_down";
-        const confidence = hoveredAsset.confidence;
-        const safeDirection = (direction in DIRECTION_TOKENS ? direction : "neutral") as Direction;
-        const t = DIRECTION_TOKENS[safeDirection];
-
-        return (
-          <>
-            {/* Viewport-wide Backdrop Blur */}
-            <div className="fixed inset-0 z-30 bg-black/60 backdrop-blur-[12px] -webkit-backdrop-filter: blur(12px) pointer-events-none transition-all duration-300" />
-            
-            {/* Viewport-centered Floating Detail Popup */}
-            <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-80 p-5 pointer-events-none transition-all duration-300">
-              <GlassCard 
-                tier={3} 
-                shape="none" 
-                className="rounded-xl border border-white/20 shadow-2xl p-5 relative overflow-hidden bg-[#355E3B]/95 text-white"
-                style={{
-                  backgroundImage: `url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjAiIGhlaWdodD0iMTIwIj4KPGZpbHRlciBpZD0ibm9pc2UiPgo8ZmVUdXJidWxlbmNlIHR5cGU9ImZyYWN0YWxOb2lzZSIgYmFzZUZyZXF1ZW5jeT0iMC44NSIgbnVtT2N0YXZlcz0iMyIgc3RpdGNoVGlsZXM9InN0aXRjaCIvPgo8ZmVDb2xvck1hdHJpeCB0eXBlPSJtYXRyaXgiIHZhbHVlcz0iMCAwIDAgMCAwIDAgMCAwIDAgMCAwIDAgMCAwIDAgMCAwIDAgMC4yNCAwIi8+CjwvZmlsdGVyPgo8cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWx0ZXI9InVybCgjbm9pc2UpIi8+Cjwvc3ZnPg==")`
-                }}
-              >
-                {/* Glow behind popup */}
-                <div className={`absolute inset-0 opacity-[0.05] blur-xl pointer-events-none ${t.textClass.replace('text-', 'bg-')}`} />
-                
-                <div className="relative z-10 space-y-4 text-left">
-                  {/* Header */}
-                  <div className="flex justify-between items-start border-b border-white/10 pb-2">
-                    <div className="min-w-0 flex-1 mr-2">
-                      <h3 className="text-white font-black text-base font-sans tracking-tight uppercase truncate">{hoveredAsset.name}</h3>
-                      <span className="text-[9px] text-white/60 uppercase tracking-widest font-mono mt-0.5 block truncate">{hoveredAsset.sector || "Uncategorized"}</span>
-                    </div>
-                    <div className={`text-[9px] font-black px-2 py-0.5 rounded-sm uppercase tracking-widest border ${t.textClass} border-current/25 bg-black/30 font-mono shrink-0`}>
-                      {t.label}
-                    </div>
-                  </div>
-
-                  {/* Swarm Confidence Bar */}
-                  {confidence != null && (
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-[9px] font-bold uppercase tracking-widest font-mono text-white/60">
-                        <span>Swarm Conviction</span>
-                        <span className={t.textClass}>{confidence.toFixed(1)}%</span>
-                      </div>
-                      <div className="w-full h-2 bg-black/45 rounded-full overflow-hidden border border-white/10 p-[1px]">
-                        <div 
-                          className={`h-full rounded-full transition-all duration-500 ${
-                            isUp ? 'bg-success' : isDown ? 'bg-danger' : 'bg-white/40'
-                          }`} 
-                          style={{ width: `${confidence}%` }} 
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Technical Details Grid */}
-                  <div className="grid grid-cols-2 gap-2 text-left">
-                    <div className="bg-black/30 rounded-sm p-2 border border-white/5">
-                      <span className="text-[8px] text-white/50 uppercase tracking-widest font-mono block mb-0.5">24h Vol</span>
-                      <span className="text-xs font-mono font-bold text-white">
-                        {hoveredAsset.volume_24h != null ? `$${((hoveredAsset.volume_24h) / 1000000).toFixed(1)}M` : "—"}
-                      </span>
-                    </div>
-                    <div className="bg-black/30 rounded-sm p-2 border border-white/5">
-                      <span className="text-[8px] text-white/50 uppercase tracking-widest font-mono block mb-0.5">RSI (14D)</span>
-                      <span className={`text-xs font-mono font-bold ${hoveredAsset.rsi_14 != null && hoveredAsset.rsi_14 > 70 ? 'text-danger' : hoveredAsset.rsi_14 != null && hoveredAsset.rsi_14 < 30 ? 'text-success' : 'text-white'}`}>
-                        {hoveredAsset.rsi_14 != null ? hoveredAsset.rsi_14.toFixed(1) : "—"}
-                      </span>
-                    </div>
-                    <div className="bg-black/30 rounded-sm p-2 border border-white/5 col-span-2">
-                      <span className="text-[8px] text-white/50 uppercase tracking-widest font-mono block mb-0.5">MACD Signal</span>
-                      <span className={`text-xs font-mono font-bold ${hoveredAsset.macd != null && hoveredAsset.macd > 0 ? 'text-success' : 'text-danger'}`}>
-                        {hoveredAsset.macd != null ? hoveredAsset.macd.toFixed(4) : "—"}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* CTA Footer */}
-                  <div className="pt-2 border-t border-white/10 text-center flex items-center justify-center gap-1.5 text-[9px] text-white tracking-[0.2em] font-mono uppercase font-black">
-                    <span>Explore Neural Profile</span>
-                    <ArrowUpRight size={12} className="tracking-normal animate-pulse" />
-                  </div>
-                </div>
-              </GlassCard>
-            </div>
-          </>
-        );
-      })()}
-
+      {hoveredAsset && (
+        <div 
+          className="fixed inset-0 z-30 bg-black/15 transition-all duration-300 pointer-events-none" 
+          style={{
+            backdropFilter: "blur(8px)",
+            WebkitBackdropFilter: "blur(8px)"
+          }}
+        />
+      )}
     </div>
   );
 }

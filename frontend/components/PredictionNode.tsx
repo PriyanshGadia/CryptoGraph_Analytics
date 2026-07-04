@@ -26,17 +26,17 @@ export function PredictionNode({ asset, onHoverChange }: { asset: Asset; onHover
   return (
     <div 
       className={`relative flex flex-col cursor-pointer group transition-all duration-300 w-full ${isHovered ? 'z-50' : 'z-10'}`}
+      onMouseEnter={() => {
+        setIsHovered(true);
+        onHoverChange?.(true);
+      }}
+      onMouseLeave={() => {
+        setIsHovered(false);
+        onHoverChange?.(false);
+      }}
     >
       {/* COMPACT RECTANGULAR CARD PANEL */}
       <div 
-        onMouseEnter={() => {
-          setIsHovered(true);
-          onHoverChange?.(true);
-        }}
-        onMouseLeave={() => {
-          setIsHovered(false);
-          onHoverChange?.(false);
-        }}
         className={`relative flex items-center justify-between w-full h-[64px] rounded-sm glass bg-surface/30 border transition-all duration-300 ease-out p-3.5 ${
           isHovered 
             ? `border-accent/40 bg-surface/60 shadow-[0_0_15px_rgba(var(--accent),0.15)] -translate-y-[2px]` 
@@ -86,6 +86,81 @@ export function PredictionNode({ asset, onHoverChange }: { asset: Asset; onHover
         </div>
       </div>
 
+      {/* DETAILED HOVER PANEL POPUP */}
+      {isHovered && (
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[300px] pointer-events-auto transition-all duration-200 animate-in fade-in zoom-in-95 duration-200">
+          <GlassCard 
+            tier={3} 
+            shape="none" 
+            className="rounded-xl border border-white/20 shadow-2xl p-4.5 relative overflow-hidden bg-[#355E3B]/95 text-white"
+            style={{
+              backgroundImage: `url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjAiIGhlaWdodD0iMTIwIj4KPGZpbHRlciBpZD0ibm9pc2UiPgo8ZmVUdXJidWxlbmNlIHR5cGU9ImZyYWN0YWxOb2lzZSIgYmFzZUZyZXF1ZW5jeT0iMC44NSIgbnVtT2N0YXZlcz0iMyIgc3RpdGNoVGlsZXM9InN0aXRjaCIvPgo8ZmVDb2xvck1hdHJpeCB0eXBlPSJtYXRyaXgiIHZhbHVlcz0iMCAwIDAgMCAwIDAgMCAwIDAgMCAwIDAgMCAwIDAgMCAwIDAgMC5yNCAwIi8+CjwvZmlsdGVyPgo8cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWx0ZXI9InVybCgjbm9pc2UpIi8+Cjwvc3ZnPg==")`
+            }}
+          >
+            {/* Glow behind popup */}
+            <div className={`absolute inset-0 opacity-[0.05] blur-xl pointer-events-none ${t.textClass.replace('text-', 'bg-')}`} />
+            
+            <div className="relative z-10 space-y-3.5 text-left">
+              {/* Header */}
+              <div className="flex justify-between items-start border-b border-white/10 pb-1.5">
+                <div className="min-w-0 flex-1 mr-2">
+                  <h3 className="text-white font-black text-sm font-sans tracking-tight uppercase truncate">{asset.name}</h3>
+                  <span className="text-[8px] text-white/60 uppercase tracking-widest font-mono mt-0.5 block truncate">{asset.sector || "Uncategorized"}</span>
+                </div>
+                <div className={`text-[8px] font-black px-1.5 py-0.5 rounded-sm uppercase tracking-widest border ${t.textClass} border-current/25 bg-black/30 font-mono shrink-0`}>
+                  {t.label}
+                </div>
+              </div>
+
+              {/* Swarm Confidence Bar */}
+              {confidence != null && (
+                <div className="space-y-0.5">
+                  <div className="flex justify-between text-[8px] font-bold uppercase tracking-widest font-mono text-white/60">
+                    <span>Swarm Conviction</span>
+                    <span className={t.textClass}>{confidence.toFixed(1)}%</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-black/45 rounded-full overflow-hidden border border-white/10 p-[1px]">
+                    <div 
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        isUp ? 'bg-success' : isDown ? 'bg-danger' : 'bg-white/40'
+                      }`} 
+                      style={{ width: `${confidence}%` }} 
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Technical Details Grid */}
+              <div className="grid grid-cols-2 gap-1.5 text-left">
+                <div className="bg-black/30 rounded-sm p-1.5 border border-white/5">
+                  <span className="text-[7px] text-white/50 uppercase tracking-widest font-mono block mb-0.5">24h Vol</span>
+                  <span className="text-xs font-mono font-bold text-white">
+                    {asset.volume_24h != null ? `$${((asset.volume_24h) / 1000000).toFixed(1)}M` : "—"}
+                  </span>
+                </div>
+                <div className="bg-black/30 rounded-sm p-1.5 border border-white/5">
+                  <span className="text-[7px] text-white/50 uppercase tracking-widest font-mono block mb-0.5">RSI (14D)</span>
+                  <span className={`text-xs font-mono font-bold ${asset.rsi_14 != null && asset.rsi_14 > 70 ? 'text-danger' : asset.rsi_14 != null && asset.rsi_14 < 30 ? 'text-success' : 'text-white'}`}>
+                    {asset.rsi_14 != null ? asset.rsi_14.toFixed(1) : "—"}
+                  </span>
+                </div>
+                <div className="bg-black/30 rounded-sm p-1.5 border border-white/5 col-span-2">
+                  <span className="text-[7px] text-white/50 uppercase tracking-widest font-mono block mb-0.5">MACD Signal</span>
+                  <span className={`text-xs font-mono font-bold ${asset.macd != null && asset.macd > 0 ? 'text-success' : 'text-danger'}`}>
+                    {asset.macd != null ? asset.macd.toFixed(4) : "—"}
+                  </span>
+                </div>
+              </div>
+
+              {/* CTA Footer */}
+              <div className="pt-1.5 border-t border-white/10 text-center flex items-center justify-center gap-1.5 text-[8px] text-white tracking-[0.2em] font-mono uppercase font-black">
+                <span>Explore Neural Profile</span>
+                <ArrowUpRight size={10} className="tracking-normal animate-pulse" />
+              </div>
+            </div>
+          </GlassCard>
+        </div>
+      )}
     </div>
   );
 }

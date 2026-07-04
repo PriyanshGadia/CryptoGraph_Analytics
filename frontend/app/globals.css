@@ -25,9 +25,9 @@
 
   .dark {
     /* LATTICE — Obsidian Lattice (dark) */
-    --background:   0   0   0;   /* Pure black background */
-    --surface:     14  16  20;   /* Ultra dark charcoal surface */
-    --surface-2:   22  25  31;   /* Slightly lighter dark charcoal */
+    --background:  38  26  15;   /* Mahogany / Dark chocolate brown */
+    --surface:     20  40  25;   /* Dark Forest/Hunter Green */
+    --surface-2:   14  28  18;   /* Deeper Dark Forest Green */
     --text:       243 244 246;   /* Crisp white/silver */
     --text-muted: 156 163 175;   /* Silver gray */
     --accent:     216 184 115;   /* PERFECT antique gold preserved */
@@ -45,9 +45,8 @@
     transition: background-color 500ms ease, color 500ms ease;
   }
 
-  html:not(.dark) body {
-    background-color: #4b3621 !important;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Crect width='160' height='160' fill='%234b3621'/%3E%3Cpath d='M8,0 C12,40 2,80 10,120 C4,140 15,160 6,160 M28,0 C22,50 35,110 24,160 M52,0 C42,60 58,110 46,160 M78,0 C85,50 68,110 80,160 M102,0 C92,55 110,115 98,160 M128,0 C135,50 120,110 132,160 M152,0 C144,50 155,100 148,160' stroke='%232c1e11' stroke-width='1.2' fill='none'/%3E%3Cpath d='M18,0 C12,50 25,110 14,160 M38,0 C45,65 30,120 42,160 M68,0 C58,50 78,110 60,160 M90,0 Q105,75 88,160 M115,0 Q98,80 118,160 M142,0 Q148,70 138,160 M160,0 C155,45 165,95 158,160' stroke='%23382717' stroke-width='0.8' fill='none'/%3E%3Cpath d='M4,10 L6,50 M12,120 L10,155 M32,30 L30,80 M56,90 L58,140 M72,20 L75,70 M92,100 L90,150 M110,40 L112,90 M135,80 L132,130 M148,15 L145,60' stroke='%231f1309' stroke-width='0.6' fill='none'/%3E%3Cpath d='M12,30 Q16,65 10,95 M44,110 Q50,135 42,160 M82,60 Q88,95 80,125 M122,100 Q128,130 120,160 M148,80 Q152,110 144,140' stroke='%235d452d' stroke-width='0.5' fill='none'/%3E%3Cpath d='M22,10 Q18,40 26,80 M60,50 Q66,85 58,120 M98,10 Q104,45 96,80 M138,40 Q144,75 136,110' stroke='%236e5237' stroke-width='0.4' fill='none'/%3E%3C/svg%3E") !important;
+  body {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Crect width='160' height='160' fill='none'/%3E%3Cpath d='M8,0 C12,40 2,80 10,120 C4,140 15,160 6,160 M28,0 C22,50 35,110 24,160 M52,0 C42,60 58,110 46,160 M78,0 C85,50 68,110 80,160 M102,0 C92,55 110,115 98,160 M128,0 C135,50 120,110 132,160 M152,0 C144,50 155,100 148,160' stroke='%232c1e11' stroke-width='1.2' fill='none'/%3E%3Cpath d='M18,0 C12,50 25,110 14,160 M38,0 C45,65 30,120 42,160 M68,0 C58,50 78,110 60,160 M90,0 Q105,75 88,160 M115,0 Q98,80 118,160 M142,0 Q148,70 138,160 M160,0 C155,45 165,95 158,160' stroke='%23382717' stroke-width='0.8' fill='none'/%3E%3Cpath d='M4,10 L6,50 M12,120 L10,155 M32,30 L30,80 M56,90 L58,140 M72,20 L75,70 M92,100 L90,150 M110,40 L112,90 M135,80 L132,130 M148,15 L145,60' stroke='%231f1309' stroke-width='0.6' fill='none'/%3E%3Cpath d='M12,30 Q16,65 10,95 M44,110 Q50,135 42,160 M82,60 Q88,95 80,125 M122,100 Q128,130 120,160 M148,80 Q152,110 144,140' stroke='%235d452d' stroke-width='0.5' fill='none'/%3E%3Cpath d='M22,10 Q18,40 26,80 M60,50 Q66,85 58,120 M98,10 Q104,45 96,80 M138,40 Q144,75 136,110' stroke='%236e5237' stroke-width='0.4' fill='none'/%3E%3C/svg%3E") !important;
     background-size: 160px 160px !important;
   }
 
@@ -80,35 +79,35 @@
   /* Glass tiers — see Part 2.5 for the rules on when to use which */
   .glass-flat { 
     background-color: rgb(var(--surface-2)); 
-    border: 1px solid rgba(var(--text), 0.08); 
+    border: 1px solid rgb(var(--text) / 0.08); 
   }
   .glass-1 {
     backdrop-filter: blur(8px) saturate(140%); -webkit-backdrop-filter: blur(8px) saturate(140%);
-    background-color: rgba(var(--surface), 0.55); 
-    border: 1px solid rgba(var(--text), 0.10);
+    background-color: rgb(var(--surface) / 0.55); 
+    border: 1px solid rgb(var(--text) / 0.10);
   }
   .glass-2 {
     backdrop-filter: blur(16px) saturate(160%); -webkit-backdrop-filter: blur(16px) saturate(160%);
-    background-color: rgba(var(--surface), 0.62); 
-    border: 1px solid rgba(var(--text), 0.12);
+    background-color: rgb(var(--surface) / 0.62); 
+    border: 1px solid rgb(var(--text) / 0.12);
     box-shadow: 0 8px 32px rgba(0,0,0, var(--shadow-strength, 0.18));
   }
   .glass-3 {
     backdrop-filter: blur(28px) saturate(180%); -webkit-backdrop-filter: blur(28px) saturate(180%);
-    background-color: rgba(var(--surface), 0.72); 
-    border: 1px solid rgba(var(--text), 0.16);
+    background-color: rgb(var(--surface) / 0.72); 
+    border: 1px solid rgb(var(--text) / 0.16);
     box-shadow: 0 24px 64px rgba(0,0,0, var(--shadow-strength, 0.32));
   }
 
-  html:not(.dark) .glass,
-  html:not(.dark) .glass-flat,
-  html:not(.dark) .glass-1,
-  html:not(.dark) .glass-2,
-  html:not(.dark) .glass-3 {
-    background-color: rgba(var(--surface), 0.96) !important;
+  .glass,
+  .glass-flat,
+  .glass-1,
+  .glass-2,
+  .glass-3 {
+    background-color: rgb(var(--surface) / 0.96) !important;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.18 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E") !important;
     background-size: 120px 120px !important;
-    border-color: rgba(var(--text), 0.32) !important;
+    border-color: rgb(var(--text) / 0.32) !important;
   }
   .dark .glass-2, .dark .glass-3 { --shadow-strength: 0.5; }
   [data-performance="lite"] .glass-1, [data-performance="lite"] .glass-2, [data-performance="lite"] .glass-3 {
@@ -133,7 +132,7 @@
   .tilt { transform-style: preserve-3d; transition: transform var(--dur-hover) var(--ease-glide); }
 
   /* Dark Mode black-on-black border overrides */
-  .dark .glass-flat, .dark .glass-1, .dark .glass-2, .dark .glass-3 {
+  .dark .glass, .dark .glass-flat, .dark .glass-1, .dark .glass-2, .dark .glass-3 {
     border-color: rgba(0, 229, 255, 0.22) !important;
     box-shadow: 0 0 12px rgba(0, 229, 255, 0.15), 0 8px 32px rgba(0,0,0,0.85) !important;
   }

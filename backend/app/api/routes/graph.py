@@ -16,15 +16,16 @@ def _compute_correlation_graph(db: Session, top_n_edges: int = 100, mode: str = 
     """
     Builds a correlation-based graph from local OHLCV, technical_features, or forecasts tables.
     Nodes = assets, Edges = top Pearson correlations between daily returns.
-    Supports mode="live" (last 30 days), mode="historical" (last 90 days), mode="projected" (ensemble forecasted 30 days).
+    Supports mode="live" (last 30 days), mode="historical" (last 90 days),
+    mode="historical_30" (last 30 days historical), mode="projected" (30 day forecast),
+    mode="projected_15" (15 day forecast).
     """
+    corr_matrix = None
     if mode.startswith("projected"):
         # Load forecasts for all assets
+        import json
         forecast_rows = db.query(SQLAForecast).all()
-        if not forecast_rows:
-            mode = "live"
-        else:
-            import json
+        if forecast_rows:
             proj_data = {}
             for f in forecast_rows:
                 prices = f.forecast_prices
@@ -38,18 +39,20 @@ def _compute_correlation_graph(db: Session, top_n_edges: int = 100, mode: str = 
                         proj_data[f.asset_id] = prices[:15]
                     else:
                         proj_data[f.asset_id] = prices[:30]
-            
-            if len(proj_data) < 2:
-                mode = "live"
-            else:
-                # Build DataFrame
-                df_proj = pd.DataFrame(proj_data)
-                # Compute returns of projected prices
-                df_returns = df_proj.pct_change().dropna()
-                corr_matrix = df_returns.corr(method="pearson").fillna(0.0)
 
-    if not mode.startswith("projected"):
-        days_lookback = 90 if mode == "historical" else 30
+            if len(proj_data) >= 2:
+                df_proj = pd.DataFrame(proj_data)
+                df_returns = df_proj.pct_change().dropna()
+                if len(df_returns) >= 2:
+                    corr_matrix = df_returns.corr(method="pearson").fillna(0.0)
+
+        if corr_matrix is None:
+            return [], []
+
+    if corr_matrix is None:
+        # Historical and live modes, also fallback when projected data is insufficient
+        days_map = {"historical": 90, "historical_30": 30, "live": 30}
+        days_lookback = days_map.get(mode, 30)
         since = datetime.now(timezone.utc) - timedelta(days=days_lookback)
 
         # Batched query: get all daily returns from technical_features
@@ -195,7 +198,7 @@ def _compute_correlation_graph(db: Session, top_n_edges: int = 100, mode: str = 
             edges.append(GraphEdge(
                 source=a.symbol,
                 target=b.symbol,
-                weight=round(abs(weight), 4),
+                weight=round(weight, 4),
                 edge_type=edge_type,
                 motif_similarity=round(max(-1.0, min(1.0, motif_sim)), 4)
             ))

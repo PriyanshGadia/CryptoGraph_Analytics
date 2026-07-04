@@ -108,6 +108,8 @@ export default function GraphPage() {
   const [is3D, setIs3D] = useState(true);
   const [mounted, setMounted] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0); // State trigger for 2D image-load repaints
+  const failedIcons = useRef<Set<string>>(new Set()); // Cache icon 404s to prevent repeated loads
+  const sliderInitialized = useRef(false); // Track whether initial zoom has occurred
 
   useEffect(() => {
     setMounted(true);
@@ -285,27 +287,48 @@ export default function GraphPage() {
       const wUpper = eUpper ? eUpper.weight : 0.0;
       l.weight = wLower * (1 - t) + wUpper * t;
 
-      const typeLower = eLower ? eLower.edge_type : eUpper?.edge_type;
-      const typeUpper = eUpper ? eUpper.edge_type : eLower?.edge_type;
-      l.edge_type = t < 0.5 ? typeLower : typeUpper;
+      // Interpolate edge_type: use the sign of the interpolated weight
+      l.edge_type = l.weight >= 0 ? "positive_correlation" : "negative_correlation";
 
       const motifLower = eLower ? eLower.motif_similarity : 0.0;
       const motifUpper = eUpper ? eUpper.motif_similarity : 0.0;
       l.motif_similarity = motifLower * (1 - t) + motifUpper * t;
     });
 
-    // Refresh rendering contexts: 3D has dynamic refresh() while 2D gets a React wrapper update
-    if (is3D) {
-      graphRef.current?.refresh();
-    } else {
-      setGraphDataState({
-        nodes: [...graphDataState.nodes],
-        links: [...graphDataState.links]
-      });
-    }
-  }, [sliderVal, histData, hist30Data, liveData, proj15Data, proj30Data, is3D]);
+    // Trigger lightweight repaint without resetting force simulation
+    // For 2D: increment refresh counter to re-render canvas without creating new data references
+    // For 3D: ThreeJS objects are already updated in-place above, just bump render
+    setRefreshTrigger(prev => prev + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sliderVal, histData, hist30Data, liveData, proj15Data, proj30Data]);
 
-  // Handle perfect centering as per given viewport space and 3D toggle updates
+  const applyForces = useCallback((graphInstance: any) => {
+    if (!graphInstance) return;
+    graphInstance.d3Force('link')
+      ?.strength((link: any) => (Math.abs(link.weight) || 0.5) * 0.9)
+      ?.distance(350); // High distance spacing
+    graphInstance.d3Force('charge')?.strength(-1200); // Strong repulsion spacing
+    graphInstance.d3Force('collision', 
+      d3.forceCollide().radius((node: any) => (node.radius || 7) * 2.5 + 20)
+    );
+    graphInstance.d3ReheatSimulation();
+  }, []);
+
+  const setGraphRef = useCallback((node: any) => {
+    graphRef.current = node;
+    if (node) {
+      applyForces(node);
+    }
+  }, [applyForces]);
+
+  const setGraphRef2D = useCallback((node: any) => {
+    graphRef2D.current = node;
+    if (node) {
+      applyForces(node);
+    }
+  }, [applyForces]);
+
+  // Handle perfect centering on initial load and 2D/3D toggle only — NOT on slider changes
   useEffect(() => {
     if (graphDataState.nodes.length > 0) {
       const timer = setTimeout(() => {
@@ -314,21 +337,17 @@ export default function GraphPage() {
       }, 600);
       return () => clearTimeout(timer);
     }
-  }, [graphDataState, is3D]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [is3D, graphDataState.nodes.length]);
 
   // Adjust forces: massive repulsion and link spacing to spread out node connections cleanly
   useEffect(() => {
-    const activeRef = is3D ? graphRef.current : graphRef2D.current;
-    if (activeRef) {
-      activeRef.d3Force('link')
-        ?.strength((link: any) => (link.weight || 0.5) * 0.9)
-        ?.distance(350); // High distance spacing
-      activeRef.d3Force('charge')?.strength(-1200); // Strong repulsion spacing
-      activeRef.d3Force('collision', 
-        d3.forceCollide().radius((node: any) => (node.radius || 7) * 2.5 + 20)
-      );
+    if (is3D && graphRef.current) {
+      applyForces(graphRef.current);
+    } else if (!is3D && graphRef2D.current) {
+      applyForces(graphRef2D.current);
     }
-  }, [graphDataState, is3D]);
+  }, [graphDataState, is3D, applyForces]);
 
   const nodeThreeObject = useCallback((node: any) => {
     const radius = node.radius || 7;
@@ -363,34 +382,47 @@ export default function GraphPage() {
     sphereMesh.scale.setScalar(radius / 7);
 
     const iconUrl = `https://cdn.jsdelivr.net/gh/atomiclabs/cryptocurrency-icons@1a63530be6e374711a8554f31b17e4cb92c25fa5/svg/color/${node.symbol.toLowerCase()}.svg`;
-    
-    // Create canvas texture immediately with fallback orb to avoid empty nodes
+    const isKnownFailed = failedIcons.current.has(node.symbol);
+
+    // Create canvas texture immediately with premium fallback orb to avoid empty nodes
     const canvas = document.createElement("canvas");
     canvas.width = 64;
     canvas.height = 64;
     const ctx = canvas.getContext("2d");
     if (ctx) {
+      ctx.clearRect(0, 0, 64, 64);
       ctx.beginPath();
-      ctx.arc(32, 32, 28, 0, 2 * Math.PI);
-      ctx.fillStyle = node.color || '#64748b';
+      ctx.arc(32, 32, 26, 0, 2 * Math.PI);
+      const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 26);
+      grad.addColorStop(0, node.color || '#64748b');
+      grad.addColorStop(1, 'rgba(15, 23, 42, 0.9)');
+      ctx.fillStyle = grad;
       ctx.fill();
-      ctx.font = 'bold 24px sans-serif';
+      ctx.strokeStyle = node.color || '#64748b';
+      ctx.lineWidth = 2.0;
+      ctx.stroke();
+      ctx.font = 'bold 16px sans-serif';
       ctx.fillStyle = '#ffffff';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(node.symbol.slice(0, 3), 32, 32);
+      ctx.fillText(node.symbol.length <= 4 ? node.symbol : node.symbol.slice(0, 3), 32, 32);
     }
     const logoTex = new THREE.CanvasTexture(canvas);
 
-    // Asynchronously load the official color icon from cdn
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.src = iconUrl;
-    img.onload = () => {
-      (logoTex as any).image = img;
-      logoTex.needsUpdate = true;
-      graphRef.current?.refresh();
-    };
+    if (!isKnownFailed) {
+      // Asynchronously load the official color icon from cdn
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.src = iconUrl;
+      img.onload = () => {
+        (logoTex as any).image = img;
+        logoTex.needsUpdate = true;
+        graphRef.current?.refresh();
+      };
+      img.onerror = () => {
+        failedIcons.current.add(node.symbol);
+      };
+    }
 
     const logoMat = new THREE.SpriteMaterial({ 
       map: logoTex, 
@@ -441,14 +473,16 @@ export default function GraphPage() {
   }, []);
 
   const linkColor = useCallback((link: any) => {
-    const style = EDGE_STYLES[link.edge_type] || DEFAULT_EDGE;
-    const absWeight = Math.abs(link.weight || 0.2);
+    const w = link.weight ?? 0;
+    const absWeight = Math.abs(w);
+    // Use signed weight to determine color: green for positive, red for negative
+    const color = w >= 0 ? "#39ff14" : "#ff073a";
     const opacity = Math.min(0.95, Math.max(0.15, absWeight * 1.2));
-    return `rgba(${hexToRgb(style.color)}, ${opacity})`;
+    return `rgba(${hexToRgb(color)}, ${opacity})`;
   }, []);
 
   const linkWidth = useCallback((link: any) => {
-    const absWeight = Math.abs(link.weight || 0.2);
+    const absWeight = Math.abs(link.weight ?? 0.2);
     return 0.5 + absWeight * 3.5;
   }, []);
 
@@ -504,7 +538,7 @@ export default function GraphPage() {
         ) : is3D ? (
           <ForceGraph3D
             key={resolvedTheme || 'dark'}
-            ref={graphRef}
+            ref={setGraphRef}
             width={dimensions.width}
             height={dimensions.height}
             graphData={graphDataState}
@@ -518,7 +552,7 @@ export default function GraphPage() {
               const ms = link.motif_similarity || 0;
               return ms > 0.4 ? "rgba(57, 255, 20, 0.95)" : ms < -0.4 ? "rgba(255, 7, 58, 0.95)" : "rgba(212, 165, 71, 0.8)";
             }}
-            linkDirectionalParticleWidth={(link: any) => 0.8} // Small particle size inside connection link
+            linkDirectionalParticleWidth={(link: any) => Math.max(0.3, linkWidth(link) * 0.25)} // Dynamic size inside connection link
             linkDirectionalParticleSpeed={(link: any) => 0.012 + (Math.abs(link.motif_similarity || 0.1) * 0.03)}
             backgroundColor="rgba(0,0,0,0)"
             d3AlphaDecay={0.06}
@@ -536,7 +570,7 @@ export default function GraphPage() {
           />
         ) : (
           <ForceGraph2D
-            ref={graphRef2D}
+            ref={setGraphRef2D}
             width={dimensions.width}
             height={dimensions.height}
             graphData={graphDataState}
@@ -555,24 +589,24 @@ export default function GraphPage() {
               
               // 2. Render cryptocurrency coin logo clipped inside circle with fallbacks
               const imgId = `img-logo-${node.symbol}`;
+              const isKnownFailed = failedIcons.current.has(node.symbol);
               let img = document.getElementById(imgId) as HTMLImageElement;
-              if (!img) {
+              if (!img && !isKnownFailed) {
                 img = document.createElement("img");
                 img.id = imgId;
                 img.src = `https://cdn.jsdelivr.net/gh/atomiclabs/cryptocurrency-icons@1a63530be6e374711a8554f31b17e4cb92c25fa5/svg/color/${node.symbol.toLowerCase()}.svg`;
                 img.style.display = "none";
                 img.onload = () => {
                   node.__imgLoaded = true;
-                  setRefreshTrigger(prev => prev + 1);
                 };
                 img.onerror = () => {
                   node.__imgFailed = true;
-                  setRefreshTrigger(prev => prev + 1);
+                  failedIcons.current.add(node.symbol);
                 };
                 document.body.appendChild(img);
               }
               
-              if (img.complete && img.naturalWidth !== 0 && !node.__imgFailed) {
+              if (img && img.complete && img.naturalWidth !== 0 && !node.__imgFailed && !isKnownFailed) {
                 ctx.save();
                 ctx.beginPath();
                 ctx.arc(node.x, node.y, radius * 0.8, 0, 2 * Math.PI, false);
@@ -580,17 +614,24 @@ export default function GraphPage() {
                 ctx.drawImage(img, node.x - radius * 0.8, node.y - radius * 0.8, radius * 1.6, radius * 1.6);
                 ctx.restore();
               } else {
-                // Instantly drawn canvas orb fallback texture
+                // High-quality canvas fallback with colored ring and symbol text
                 ctx.save();
                 ctx.beginPath();
                 ctx.arc(node.x, node.y, radius * 0.8, 0, 2 * Math.PI, false);
-                ctx.fillStyle = node.color || '#64748b';
+                const grad = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, radius * 0.8);
+                grad.addColorStop(0, node.color || '#64748b');
+                grad.addColorStop(1, 'rgba(15, 23, 42, 0.9)');
+                ctx.fillStyle = grad;
                 ctx.fill();
-                ctx.font = `bold ${radius * 0.7}px monospace`;
+                // Border ring
+                ctx.strokeStyle = node.color || '#64748b';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+                ctx.font = `bold ${Math.max(radius * 0.55, 4)}px monospace`;
                 ctx.fillStyle = '#ffffff';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                ctx.fillText(node.symbol.slice(0, 3), node.x, node.y);
+                ctx.fillText(node.symbol.length <= 4 ? node.symbol : node.symbol.slice(0, 3), node.x, node.y);
                 ctx.restore();
               }
               
@@ -609,7 +650,7 @@ export default function GraphPage() {
               const ms = link.motif_similarity || 0;
               return ms > 0.4 ? "rgba(57, 255, 20, 0.95)" : ms < -0.4 ? "rgba(255, 7, 58, 0.95)" : "rgba(212, 165, 71, 0.8)";
             }}
-            linkDirectionalParticleWidth={(link: any) => 0.8} // Small particle size inside connection link
+            linkDirectionalParticleWidth={(link: any) => Math.max(0.3, linkWidth(link) * 0.25)} // Dynamic size inside connection link
             linkDirectionalParticleSpeed={(link: any) => 0.012 + (Math.abs(link.motif_similarity || 0.1) * 0.03)}
             backgroundColor="rgba(0,0,0,0)"
             d3AlphaDecay={0.06}
