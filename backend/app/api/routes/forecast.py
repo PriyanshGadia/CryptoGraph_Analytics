@@ -16,6 +16,13 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 from cachetools import TTLCache
 import json
+from pathlib import Path
+root_dir = Path(__file__).resolve().parents[3]
+if str(root_dir) not in sys.path:
+    sys.path.insert(0, str(root_dir))
+
+from ml.models.forecast_model import run_ensemble_forecast
+from app.core.streams.binance_ws import get_global_market_state
 
 limiter = Limiter(key_func=get_remote_address)
 # 1-hour TTL cache for ML forecast models to eliminate wait times
@@ -72,62 +79,59 @@ async def get_forecast(request: Request, symbol: str, db: Session = Depends(get_
     
     prices = df["close"]
     dates  = df["timestamp"]
-    last_price = float(prices.iloc[-1])
+    db_last_price = float(prices.iloc[-1])
     
-    # 3. Cache-aware Forecast fetch or Autoregressive fallback
-    cache_key = f"{symbol}_{dates.iloc[-1].strftime('%Y-%m-%d')}"
-    if cache_key in ml_forecast_cache:
-        forecast = ml_forecast_cache[cache_key]
-    else:
-        # Check pre-calculated Forecast database table first
-        db_forecast = db.query(SQLAForecast).filter(SQLAForecast.asset_id == asset_id).order_by(desc(SQLAForecast.timestamp)).first()
-        if db_forecast:
-            forecast = {
-                "forecast_prices": db_forecast.forecast_prices,
-                "lower_bound": db_forecast.lower_bound,
-                "upper_bound": db_forecast.upper_bound,
-                "lstm_forecast": db_forecast.lstm_forecast if db_forecast.lstm_forecast else db_forecast.forecast_prices,
-                "prophet_forecast": db_forecast.prophet_forecast if db_forecast.prophet_forecast else db_forecast.forecast_prices,
-                "model_used": "Pre-calculated LSTM+Prophet Ensemble",
-                "ensemble": True
-            }
-            ml_forecast_cache[cache_key] = forecast
-        else:
-            # Cache miss: Fallback to fast, non-blocking autoregressive Gaussian drift projection
-            returns = prices.pct_change().dropna()
-            mean_return = float(returns.mean()) if not returns.empty else 0.0005
-            std_return = float(returns.std()) if not returns.empty else 0.02
-            
-            f_prices = []
-            l_bound = []
-            u_bound = []
-            curr_p = last_price
-            for d_idx in range(1, 31):
-                curr_p = curr_p * (1 + mean_return)
-                f_prices.append(curr_p)
-                vol_scale = std_return * (d_idx ** 0.5)
-                l_bound.append(curr_p * (1 - 1.96 * vol_scale))
-                u_bound.append(curr_p * (1 + 1.96 * vol_scale))
-                
-            forecast = {
-                "forecast_prices": f_prices,
-                "lower_bound": l_bound,
-                "upper_bound": u_bound,
-                "lstm_forecast": f_prices,
-                "prophet_forecast": f_prices,
-                "model_used": "Fast Autoregressive Drift Fallback",
-                "ensemble": False
-            }
-            ml_forecast_cache[cache_key] = forecast
-        
-    # 4. Get ST-GCN model prediction
+    # Check live price from SSOT state first so forecast targets align to real-time market
+    ssot_state = get_global_market_state().get(symbol.upper(), {})
+    live_price = float(ssot_state.get("current_price", 0.0))
+    last_price = live_price if live_price > 0 else db_last_price
+    
+    # 3. Get ST-GCN model prediction (SSOT flagship model)
     pred = db.query(SQLAPrediction).filter(SQLAPrediction.asset_id == asset_id).order_by(desc(SQLAPrediction.predicted_at)).first()
     stgcn_pred = {
         "direction": pred.direction if pred else "neutral",
-        "confidence": pred.confidence if pred else 50.0,
+        "confidence": pred.confidence if pred else 0.0,
         "volatility_regime": pred.volatility_regime if pred else "medium",
         "predicted_at": pred.predicted_at if pred else None
     }
+    
+    stgcn_dir = stgcn_pred["direction"]
+    stgcn_conf = stgcn_pred["confidence"]
+
+    # 4. Cache-aware Real PyTorch LSTM / Ensemble Forecast
+    cache_key = f"{symbol}_{dates.iloc[-1].strftime('%Y-%m-%d')}_{stgcn_dir}_{round(stgcn_conf, 1)}_{round(last_price, 2)}"
+    if cache_key in ml_forecast_cache:
+        forecast = ml_forecast_cache[cache_key]
+    else:
+        # Run actual PyTorch LSTM time-series forecast model
+        raw_forecast_res = run_ensemble_forecast(prices, dates, forecast_days=30)
+        raw_f_prices = raw_forecast_res.get("forecast_prices", [])
+        raw_l_bound = raw_forecast_res.get("lower_bound", [])
+        raw_u_bound = raw_forecast_res.get("upper_bound", [])
+        
+        # Scale/shift forecast proportionally to live_price if real-time ticker available
+        shift_ratio = (live_price / db_last_price) if (live_price > 0 and db_last_price > 0) else 1.0
+        
+        f_prices = [round(float(p * shift_ratio), 8) for p in raw_f_prices]
+        l_bound = [round(float(p * shift_ratio), 8) for p in raw_l_bound]
+        u_bound = [round(float(p * shift_ratio), 8) for p in raw_u_bound]
+        
+        raw_lstm = raw_forecast_res.get("lstm_forecast", raw_f_prices)
+        raw_prophet = raw_forecast_res.get("prophet_forecast", raw_f_prices)
+        
+        lstm_f = [round(float(p * shift_ratio), 8) for p in raw_lstm]
+        prophet_f = [round(float(p * shift_ratio), 8) for p in raw_prophet]
+        
+        forecast = {
+            "forecast_prices": f_prices,
+            "lower_bound": l_bound,
+            "upper_bound": u_bound,
+            "lstm_forecast": lstm_f,
+            "prophet_forecast": prophet_f,
+            "model_used": raw_forecast_res.get("model_used", "Pre-trained Global LSTM Forecaster"),
+            "ensemble": raw_forecast_res.get("ensemble", False)
+        }
+        ml_forecast_cache[cache_key] = forecast
     
     # 5. Extract Deep Learning Metrics
     lstm_forecast_arr = forecast.get("lstm_forecast", forecast["forecast_prices"])
@@ -151,7 +155,7 @@ async def get_forecast(request: Request, symbol: str, db: Session = Depends(get_
     
     # M2: LSTM
     lstm_price = round(lstm_forecast_arr[-1], 4)
-    lstm_direction = "up" if lstm_forecast_arr[-1] > last_price * 1.01 else "down" if lstm_forecast_arr[-1] < last_price * 0.99 else "neutral"
+    lstm_direction = "up" if lstm_forecast_arr[-1] > last_price * 1.001 else "down" if lstm_forecast_arr[-1] < last_price * 0.999 else "neutral"
     m2_snip = f"30D Tgt: ${lstm_price}"
     m2_steps = (
         "**Long Short-Term Memory (LSTM) Neural Network**\n\n"
@@ -165,7 +169,7 @@ async def get_forecast(request: Request, symbol: str, db: Session = Depends(get_
 
     # M3: Prophet
     prophet_price = round(prophet_forecast_arr[-1], 4)
-    prophet_direction = "up" if prophet_forecast_arr[-1] > last_price * 1.01 else "down" if prophet_forecast_arr[-1] < last_price * 0.99 else "neutral"
+    prophet_direction = "up" if prophet_forecast_arr[-1] > last_price * 1.001 else "down" if prophet_forecast_arr[-1] < last_price * 0.999 else "neutral"
     m3_snip = f"30D Tgt: ${prophet_price}"
     m3_steps = (
         "**NeuralProphet Time-Series Decomposition**\n\n"
@@ -286,24 +290,39 @@ async def get_forecast(request: Request, symbol: str, db: Session = Depends(get_
         "4. Signal: Trading above the median line establishes it as support (Bullish), trading below makes it resistance (Bearish)."
     )
     
-    # 7. Ultimate Consensus Calculation (Honest Tally)
-    signals = [
+    # 7. Ultimate Consensus Calculation (Weighted & Aligned with ST-GCN Core Model)
+    # ST-GCN carries 3 votes as the flagship model, other 8 metrics carry 1 vote each
+    stgcn_score = 3 if stgcn_dir_norm in ["up", "strong_up"] else (-3 if stgcn_dir_norm in ["down", "strong_down"] else 0)
+    
+    metrics_list = [
         stgcn_dir_norm, lstm_direction, prophet_direction, 
         rsi_direction, macd_direction, bb_direction, 
         mr_direction, vol_direction, sr_direction
     ]
-    ups = signals.count("up")
-    downs = signals.count("down")
-    
-    final_consensus = "up" if ups > downs else "down" if downs > ups else "neutral"
-    
-    agreement_signal = (
-        f"STRONG BUY — {ups}/9 Metrics Bullish" if ups >= 7 else
-        f"BUY — {ups}/9 Metrics Bullish" if ups > downs else
-        f"STRONG SELL — {downs}/9 Metrics Bearish" if downs >= 7 else
-        f"SELL — {downs}/9 Metrics Bearish" if downs > ups else
-        f"NEUTRAL — Market Indecision"
-    )
+    ups = metrics_list.count("up")
+    downs = metrics_list.count("down")
+    neutrals = metrics_list.count("neutral")
+
+    other_signals = [
+        lstm_direction, prophet_direction, 
+        rsi_direction, macd_direction, bb_direction, 
+        mr_direction, vol_direction, sr_direction
+    ]
+    other_ups = other_signals.count("up")
+    other_downs = other_signals.count("down")
+    other_score = other_ups - other_downs
+
+    net_score = stgcn_score + other_score
+
+    if net_score >= 3:
+        final_consensus = "up"
+        agreement_signal = f"STRONG BUY — {ups}/9 Metrics Bullish" if (ups >= 7 or net_score >= 6) else f"BUY — {ups}/9 Metrics Bullish"
+    elif net_score <= -3:
+        final_consensus = "down"
+        agreement_signal = f"STRONG SELL — {downs}/9 Metrics Bearish" if (downs >= 7 or net_score <= -6) else f"SELL — {downs}/9 Metrics Bearish"
+    else:
+        final_consensus = "neutral"
+        agreement_signal = f"NEUTRAL — Market Equilibrium ({neutrals}/9 Neutral)"
     
     # Extract Multi-Horizon Targets
     def get_target(day_idx):

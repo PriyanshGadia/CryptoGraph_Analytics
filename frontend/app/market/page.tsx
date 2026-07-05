@@ -167,13 +167,13 @@ export default function MarketPage() {
       {/* Compact Hover-detail Grid view */}
       <div className="relative w-full">
         {isLoading || !assets || assets.length === 0 ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-x-3 gap-y-1.5 auto-rows-[64px] w-full content-start items-start justify-start">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-x-4 gap-y-3 auto-rows-[76px] w-full content-start items-start justify-start">
             {Array.from({ length: 25 }).map((_, i) => (
-              <GlassCard tier="flat" shape="none" key={i} className="h-[64px] animate-pulse bg-[rgba(var(--text),0.03)] border border-text/5 rounded-sm" />
+              <GlassCard tier="flat" shape="none" key={i} className="h-[76px] animate-pulse bg-[rgba(var(--text),0.03)] border border-text/5 rounded-lg" />
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-x-3 gap-y-1.5 auto-rows-[64px] w-full content-start items-start justify-start">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-x-4 gap-y-3 auto-rows-[76px] w-full content-start items-start justify-start">
             {sortedAssets.map((asset) => (
               <Link key={asset.symbol} href={`/coin/${asset.symbol}`} className="block w-full">
                 <PredictionNode asset={asset} onHoverChange={(hovered) => setHoveredAsset(hovered ? asset : null)} />

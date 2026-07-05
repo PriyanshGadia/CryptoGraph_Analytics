@@ -7,8 +7,8 @@ interface GlassCardProps {
   className?: string;
   variant?: "dark" | "light" | "auto" | "flat" | 1 | 2 | 3;
   tier?: "flat" | 1 | 2 | 3;
-  asymmetric?: "default" | "lg" | "xl" | "sm" | "none" | "md" | "shape-facet" | "shape-ledger" | "shape-squircle" | "shape-hex" | "shape-seal";
-  shape?: "shape-facet" | "shape-facet-sm" | "shape-ledger" | "shape-squircle" | "shape-hex" | "shape-seal" | "none";
+  asymmetric?: "default" | "lg" | "xl" | "sm" | "none" | "md" | "shape-facet" | "shape-ledger" | "shape-squircle" | "shape-hex" | "shape-seal" | "shape-tag" | "shape-node";
+  shape?: "shape-facet" | "shape-facet-sm" | "shape-ledger" | "shape-squircle" | "shape-hex" | "shape-seal" | "shape-tag" | "shape-node" | "none";
   hoverable?: boolean;
   style?: React.CSSProperties;
 }

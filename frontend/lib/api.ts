@@ -156,8 +156,10 @@ export const apiService = {
   getPortfolio: () => api.get<PortfolioResponse>('/api/portfolio').then(res => res.data),
   getPortfolioTrades: (limit = 100, offset = 0) => api.get<PortfolioTradesResponse>(`/api/portfolio/trades?limit=${limit}&offset=${offset}`).then(res => res.data),
   triggerExecution: () => api.post('/api/portfolio/execute').then(res => res.data),
+  resetPortfolio: () => api.post('/api/portfolio/reset').then(res => res.data),
   gradeTrade: (tradeId: number, grade: number, notes: string) => api.post(`/api/portfolio/trades/${tradeId}/grade`, { grade, notes }).then(res => res.data),
   confirmWeb3Trade: (tradeId: number, txHash: string) => api.post(`/api/portfolio/trades/${tradeId}/confirm`, { tx_hash: txHash }).then(res => res.data),
   triggerRefreshAll: () => api.post('/api/status/refresh-all').then(res => res.data),
+  triggerSchedulerRun: () => api.post('/api/scheduler/run').then(res => res.data),
   getLatestSynthesis: () => api.get('/api/sentiment-data/latest-synthesis').then(res => res.data),
 };

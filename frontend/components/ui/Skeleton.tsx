@@ -6,7 +6,7 @@ export function Skeleton({
 }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn("animate-pulse shape-facet-sm bg-[rgba(var(--text),0.06)]", className)}
+      className={cn("animate-pulse shape-ledger bg-[rgba(var(--text),0.06)]", className)}
       {...props}
     />
   );

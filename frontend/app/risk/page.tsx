@@ -53,7 +53,7 @@ function RiskLivingGauge({ volatility, intervalSpread }: { volatility: number, i
   const hue = intervalSpread ? 120 - (normalizedSpread * 120) : 120 - (normalizedVol * 120); 
   
   return (
-    <GlassCard tier={2} shape="none" className="rounded-xl p-6 flex items-center gap-4 group hover:bg-white/[0.02] transition-colors border border-white/10 hover:border-white/20 h-32 relative overflow-hidden">
+    <GlassCard tier={2} shape="none" className="interactive-lift rounded-xl p-6 flex items-center gap-4 group hover:bg-white/[0.02] transition-colors border border-white/10 hover:border-white/20 h-32 relative overflow-hidden">
        <div 
           className="absolute inset-0 pointer-events-none transition-all duration-1000"
           style={{ background: `radial-gradient(circle at center, hsla(${hue}, 80%, 50%, ${glowOpacity}) 0%, transparent ${intervalSpread ? 50 + (normalizedSpread * 50) : 70}%)` }}
@@ -209,7 +209,7 @@ export default function RiskPage() {
               { label: "Monitored Nodes", value: String(data.total_assets_monitored ?? 50), icon: Shield, color: "text-text" },
               { label: "Isomorphic Clusters", value: String(Object.keys(data.correlation_clusters || {}).length), icon: BarChart3, color: "text-accent" },
             ].map((s, i) => (
-              <GlassCard key={i} tier={2} shape="none" className="rounded-xl p-6 flex items-center gap-4 group hover:bg-white/[0.02] transition-colors border border-white/10 hover:border-white/20 h-32">
+              <GlassCard key={i} tier={2} shape="none" className="interactive-lift rounded-xl p-6 flex items-center gap-4 group hover:bg-white/[0.02] transition-colors border border-white/10 hover:border-white/20 h-32">
                 <div className="p-3 rounded-sm glass bg-white/5 group-hover:bg-white/10 transition-colors shadow-inner shadow-white/5 border border-white/10">
                     <s.icon size={24} className={s.color} />
                 </div>
@@ -235,7 +235,7 @@ export default function RiskPage() {
                   <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-2">7-Day Trailing Price Variance</p>
                 </div>
                 <div className="h-[300px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                     <BarChart data={topMoversData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="transparent" vertical={false} />
                       <XAxis dataKey="name" stroke={palette.muted} fontSize={10} fontFamily="monospace" tickLine={false} axisLine={false} tickMargin={10} />
@@ -273,7 +273,7 @@ export default function RiskPage() {
                                 </div>
                             </div>
                         </div>
-                        <ResponsiveContainer width="100%" height="100%">
+                        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                         <PieChart>
                             <Pie 
                                 data={predDist} 
@@ -313,16 +313,16 @@ export default function RiskPage() {
               <div className="p-8">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                   {Object.entries(data.correlation_clusters).slice(0, 8).map(([cluster, assets]) => (
-                    <div key={cluster} className="p-5 glass bg-surface/50 rounded-sm border border-white/10 hover:border-accent/30 transition-colors group hover:shadow-[0_0_20px_rgba(var(--accent),0.1)]">
+                    <div key={cluster} className="interactive-lift p-5 glass bg-surface/50 rounded-sm border border-white/10 hover:border-accent/30 transition-colors group hover:shadow-[0_0_20px_rgba(var(--accent),0.1)]">
                       <div className="flex items-center justify-between mb-4">
                         <span className="font-mono text-sm font-black text-text group-hover:text-accent transition-colors">#{cluster.replace("_", "-").toUpperCase()}</span>
-                        <span className="px-3 py-1 bg-accent/10 text-accent rounded-full text-[10px] font-black tracking-widest border border-accent/20 shadow-inner">
+                        <span className="px-3 py-1 bg-accent/10 text-accent shape-tag text-[10px] font-black tracking-widest border border-accent/20 shadow-inner">
                             {assets.length} NODES
                         </span>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {assets.map((sym: string) => (
-                          <span key={sym} className="px-3 py-1.5 rounded-sm text-xs font-mono font-bold bg-white/5 text-text-muted border border-white/10 group-hover:bg-accent/5 group-hover:text-text group-hover:border-accent/20 transition-colors">
+                          <span key={sym} className="px-3 py-1.5 shape-tag text-xs font-mono font-bold bg-white/5 text-text-muted border border-white/10 group-hover:bg-accent/5 group-hover:text-text group-hover:border-accent/20 transition-colors">
                             {sym}
                           </span>
                         ))}
@@ -332,7 +332,7 @@ export default function RiskPage() {
                 </div>
                 {Object.keys(data.correlation_clusters).length > 8 && (
                     <div className="mt-6 text-center">
-                        <span className="inline-block px-6 py-2 rounded-full glass bg-white/5 border border-white/10 text-text-muted text-[10px] uppercase tracking-widest font-bold">
+                        <span className="inline-block px-6 py-2 shape-tag glass bg-white/5 border border-white/10 text-text-muted text-[10px] uppercase tracking-widest font-bold">
                             + {Object.keys(data.correlation_clusters).length - 8} Additional Subgraphs Hidden
                         </span>
                     </div>
@@ -352,7 +352,7 @@ export default function RiskPage() {
                   </h3>
                   <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-1">Automated structural vulnerability detection</p>
               </div>
-              <div className="hidden md:flex items-center gap-2 px-4 py-2 glass bg-white/5 border border-white/10 rounded-full text-[10px] font-bold text-text-muted uppercase tracking-widest">
+              <div className="hidden md:flex items-center gap-2 px-4 py-2 glass bg-white/5 border border-white/10 shape-tag text-[10px] font-bold text-text-muted uppercase tracking-widest">
                   Status: {data.risk_alerts?.length > 0 ? <span className="text-warning animate-pulse">ELEVATED</span> : <span className="text-success">NOMINAL</span>}
               </div>
             </div>
@@ -371,7 +371,7 @@ export default function RiskPage() {
                     const config = SEVERITY_CONFIG[alert.severity] || SEVERITY_CONFIG.low;
                     const AlertIcon = config.icon;
                     return (
-                      <li key={idx} className={`p-6 rounded-sm glass border ${config.bg} ${config.border} ${config.shadow} relative overflow-hidden group`}>
+                      <li key={idx} className={`interactive-lift p-6 rounded-sm glass border ${config.bg} ${config.border} ${config.shadow} relative overflow-hidden group`}>
                         <div className={`absolute left-0 top-0 bottom-0 w-1 ${config.bg.replace('/10', '')} opacity-50 group-hover:opacity-100 transition-opacity`} />
                         <div className="flex gap-4 items-start relative z-10">
                           <div className={`p-3 rounded-full glass bg-background/50 border border-white/5 shadow-inner`}>
@@ -379,14 +379,14 @@ export default function RiskPage() {
                           </div>
                           <div className="flex-1">
                             <div className="flex items-center justify-between mb-2">
-                                <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-sm border glass ${config.text} border-current/30`}>{alert.severity}</span>
-                                <span className="text-[10px] text-text-muted font-mono uppercase tracking-widest bg-black/40 px-2 py-0.5 rounded-sm">{alert.type.replace('_', ' ')}</span>
+                                <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 shape-tag border glass ${config.text} border-current/30`}>{alert.severity}</span>
+                                <span className="text-[10px] text-text-muted font-mono uppercase tracking-widest bg-black/40 px-2 py-0.5 shape-tag">{alert.type.replace('_', ' ')}</span>
                             </div>
                             <p className="text-text text-sm font-bold mt-3 leading-relaxed">{alert.message}</p>
                             {alert.recommendation && (
                               <div className="mt-4 p-3 bg-black/40 rounded-sm border border-white/5">
                                   <p className="text-text-muted text-xs italic flex items-center gap-2 font-serif">
-                                      <span className="text-white/50 not-italic font-sans text-[10px] uppercase font-bold tracking-widest">Protocol:</span> 
+                                      <span className="text-text-muted not-italic font-sans text-[10px] uppercase font-bold tracking-widest">Protocol:</span>
                                       {alert.recommendation}
                                   </p>
                               </div>
@@ -394,7 +394,7 @@ export default function RiskPage() {
                             {alert.affected_assets && alert.affected_assets.length > 0 && (
                               <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-white/5">
                                 {alert.affected_assets.map((sym) => (
-                                  <span key={sym} className="px-2 py-1 rounded-sm text-[10px] font-mono font-bold bg-white/5 text-text-muted border border-white/10 hover:bg-white/10 transition-colors cursor-default">
+                                  <span key={sym} className="px-2 py-1 shape-tag text-[10px] font-mono font-bold bg-white/5 text-text-muted border border-white/10 hover:bg-white/10 transition-colors cursor-default">
                                     {sym}
                                   </span>
                                 ))}
@@ -418,7 +418,7 @@ export default function RiskPage() {
                 <div>
                     <h2 className="text-3xl font-black text-text tracking-tight flex items-center gap-4">
                         Macro Parameters
-                        {(macro.crypto_vix_correlation ?? 0) < -0.5 && <span className="text-[10px] bg-danger/20 text-danger px-3 py-1.5 rounded-sm uppercase border border-danger/30 shadow-[0_0_10px_rgba(239,68,68,0.2)] tracking-widest font-black">Risk-Off Vector Active</span>}
+                        {(macro.crypto_vix_correlation ?? 0) < -0.5 && <span className="text-[10px] bg-danger/20 text-danger px-3 py-1.5 shape-tag uppercase border border-danger/30 shadow-[0_0_10px_rgba(239,68,68,0.2)] tracking-widest font-black">Risk-Off Vector Active</span>}
                     </h2>
                     <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-2">Traditional finance correlation indices</p>
                 </div>
@@ -431,7 +431,7 @@ export default function RiskPage() {
                       <div className="text-3xl font-black font-sans text-text tracking-tight">{(macro.current_fed_rate ?? 0).toFixed(2)}<span className="text-lg text-text-muted">%</span></div>
                       <div className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-1 mb-2">10Y Treasury Yield</div>
                       {macro.fed_rate_trend && (
-                        <div className={`text-[9px] px-2 py-0.5 rounded-sm border inline-block font-black uppercase tracking-widest ${macro.fed_rate_trend === 'rising' ? 'bg-danger/10 text-danger border-danger/30' : macro.fed_rate_trend === 'falling' ? 'bg-success/10 text-success border-success/30' : 'bg-white/5 text-text-muted border-white/10'}`}>
+                        <div className={`text-[9px] px-2 py-0.5 shape-tag border inline-block font-black uppercase tracking-widest ${macro.fed_rate_trend === 'rising' ? 'bg-danger/10 text-danger border-danger/30' : macro.fed_rate_trend === 'falling' ? 'bg-success/10 text-success border-success/30' : 'bg-white/5 text-text-muted border-white/10'}`}>
                           VECTOR: {macro.fed_rate_trend}
                         </div>
                       )}
@@ -443,7 +443,7 @@ export default function RiskPage() {
                       <div className="text-3xl font-black font-sans text-text tracking-tight">{(macro.current_vix ?? 0).toFixed(1)}</div>
                       <div className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-1 mb-2">VIX Fear Gauge</div>
                       {macro.vix_regime && (
-                        <div className={`text-[9px] px-2 py-0.5 rounded-sm border inline-block font-black uppercase tracking-widest ${macro.vix_regime === 'extreme_fear' ? 'bg-danger/10 text-danger border-danger/30 shadow-[0_0_10px_rgba(239,68,68,0.2)]' : macro.vix_regime === 'elevated' ? 'bg-warning/10 text-warning border-warning/30' : 'bg-success/10 text-success border-success/30'}`}>
+                        <div className={`text-[9px] px-2 py-0.5 shape-tag border inline-block font-black uppercase tracking-widest ${macro.vix_regime === 'extreme_fear' ? 'bg-danger/10 text-danger border-danger/30 shadow-[0_0_10px_rgba(239,68,68,0.2)]' : macro.vix_regime === 'elevated' ? 'bg-warning/10 text-warning border-warning/30' : 'bg-success/10 text-success border-success/30'}`}>
                           STATE: {macro.vix_regime.replace('_', ' ')}
                         </div>
                       )}
@@ -470,7 +470,7 @@ export default function RiskPage() {
                     <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-2">60-Day Historic VIX Window</p>
                   </div>
                   <div className="h-[320px] w-full">
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                       <ComposedChart data={macro.history} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="transparent" vertical={false} />
                         <XAxis dataKey="date" stroke={palette.muted} fontSize={10} fontFamily="monospace" tickLine={false} axisLine={false} minTickGap={30} />

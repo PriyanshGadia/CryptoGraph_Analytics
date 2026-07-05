@@ -10,16 +10,9 @@ import { ChartSkeleton, StatCardSkeleton } from "@/components/PageSkeleton";
 import { ScrollToTop } from "@/components/ScrollToTop";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Target, Activity, TrendingUp, Cpu } from "lucide-react";
+import { DirectionBadge } from "@/components/ui/DirectionBadge";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
-function DirectionBadge({ dir }: { dir: string }) {
-  if (dir === "strong_up") return <span className="px-3 py-1 rounded-sm bg-success/20 text-success border border-success/30 text-[10px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(34,197,94,0.1)]">Strong Buy</span>;
-  if (dir === "up") return <span className="px-3 py-1 rounded-sm bg-success/10 text-success border border-success/20 text-[10px] font-bold uppercase tracking-widest">Buy</span>;
-  if (dir === "strong_down") return <span className="px-3 py-1 rounded-sm bg-danger/20 text-danger border border-danger/30 text-[10px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(239,68,68,0.1)]">Strong Sell</span>;
-  if (dir === "down") return <span className="px-3 py-1 rounded-sm bg-danger/10 text-danger border border-danger/20 text-[10px] font-bold uppercase tracking-widest">Sell</span>;
-  return <span className="px-3 py-1 rounded-sm bg-surface/80 text-text-muted border border-white/10 text-[10px] font-bold uppercase tracking-widest">Neutral</span>;
-}
 
 function CountUp({ end, decimals = 0, suffix = "" }: { end: number, decimals?: number, suffix?: string }) {
   const [count, setCount] = useState(0);
@@ -142,7 +135,7 @@ export default function PerformancePage() {
       
       {/* SECTION 1 - Hero Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 relative z-10">
-        <GlassCard tier={2} shape="none" className="rounded-xl p-6 group relative overflow-hidden flex flex-col justify-between h-36 border border-white/10 hover:border-white/20 hover:bg-white/[0.02]">
+        <GlassCard tier={2} shape="none" className="rounded-xl p-6 group interactive-lift relative overflow-hidden flex flex-col justify-between h-36 border border-white/10 hover:border-white/20 hover:bg-white/[0.02]">
           <div className="absolute top-0 right-0 w-24 h-24 bg-success/5 rounded-full blur-[40px] group-hover:bg-success/10 transition-colors pointer-events-none" />
           <div className="text-[10px] text-text-muted uppercase tracking-widest font-bold flex items-center gap-2">
               <Activity size={12} className="text-success" />
@@ -153,7 +146,7 @@ export default function PerformancePage() {
           </div>
         </GlassCard>
         
-        <GlassCard tier={2} shape="none" className="rounded-xl p-6 group relative overflow-hidden flex flex-col justify-between h-36 border border-white/10 hover:border-white/20 hover:bg-white/[0.02]">
+        <GlassCard tier={2} shape="none" className="rounded-xl p-6 group interactive-lift relative overflow-hidden flex flex-col justify-between h-36 border border-white/10 hover:border-white/20 hover:bg-white/[0.02]">
           <div className="absolute top-0 right-0 w-24 h-24 bg-accent/5 rounded-full blur-[40px] group-hover:bg-accent/10 transition-colors pointer-events-none" />
           <div className="text-[10px] text-text-muted uppercase tracking-widest font-bold flex items-center gap-2">
               <Cpu size={12} className="text-accent" />
@@ -164,7 +157,7 @@ export default function PerformancePage() {
           </div>
         </GlassCard>
         
-        <GlassCard tier={2} shape="none" className="rounded-xl p-6 group relative overflow-hidden flex flex-col justify-between h-36 border border-white/10 hover:border-white/20 hover:bg-white/[0.02]">
+        <GlassCard tier={2} shape="none" className="rounded-xl p-6 group interactive-lift relative overflow-hidden flex flex-col justify-between h-36 border border-white/10 hover:border-white/20 hover:bg-white/[0.02]">
           <div className="absolute top-0 right-0 w-24 h-24 bg-success/5 rounded-full blur-[40px] group-hover:bg-success/10 transition-colors pointer-events-none" />
           <div className="text-[10px] text-text-muted uppercase tracking-widest font-bold flex items-center gap-2">
               <TrendingUp size={12} className={stratRet > 0 ? "text-success" : "text-danger"} />
@@ -175,7 +168,7 @@ export default function PerformancePage() {
           </div>
         </GlassCard>
         
-        <GlassCard tier={2} shape="none" className="rounded-xl p-6 group relative overflow-hidden flex flex-col justify-between h-36 border border-white/10 hover:border-white/20 hover:bg-white/[0.02]">
+        <GlassCard tier={2} shape="none" className="rounded-xl p-6 group interactive-lift relative overflow-hidden flex flex-col justify-between h-36 border border-white/10 hover:border-white/20 hover:bg-white/[0.02]">
           <div className="absolute top-0 right-0 w-24 h-24 bg-warning/5 rounded-full blur-[40px] group-hover:bg-warning/10 transition-colors pointer-events-none" />
           <div className="text-[10px] text-text-muted uppercase tracking-widest font-bold flex items-center gap-2">
               <Target size={12} className="text-warning" />
@@ -255,7 +248,7 @@ export default function PerformancePage() {
                   return (
                     <div 
                       key={`cell-${i}-${j}`} 
-                      className="aspect-square flex items-center justify-center rounded-sm text-white text-xs font-black font-mono cursor-crosshair transition-all hover:scale-105 border border-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.1)]"
+                      className="aspect-square flex items-center justify-center rounded-sm text-text text-xs font-black font-mono cursor-crosshair transition-all hover:scale-105 border border-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.1)]"
                       style={{ backgroundColor: bgColor }}
                       title={`Predicted ${data.confusion_labels[i]}, actually ${data.confusion_labels[j]}: ${val} instances`}
                     >
@@ -314,7 +307,7 @@ export default function PerformancePage() {
             const acc = (data.per_direction_accuracy?.[d.key] || 0) * 100;
             return (
               <div key={d.key} className="flex items-center gap-6 group">
-                <div className="w-32 text-right"><DirectionBadge dir={d.key} /></div>
+                <div className="w-32 text-right"><DirectionBadge direction={d.key} /></div>
                 <div className="flex-1 h-3 bg-surface border border-white/5 rounded-full overflow-hidden relative">
                   <div className="absolute left-[50%] top-0 bottom-0 w-px bg-white/20 z-10" />
                   <div className={`h-full transition-all duration-1000 ${d.color}`} style={{ width: `${acc}%` }} />
@@ -384,7 +377,7 @@ export default function PerformancePage() {
                             </div>
                         </div>
                     </td>
-                    <td className="px-8 py-4 text-right"><DirectionBadge dir={a.best_direction} /></td>
+                    <td className="px-8 py-4 text-right"><DirectionBadge direction={a.best_direction} /></td>
                   </tr>
                 );
               })}

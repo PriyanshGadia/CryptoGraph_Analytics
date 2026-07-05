@@ -68,20 +68,22 @@ function interpolateColor(color1: string, color2: string, t: number): string {
   }
 }
 
-function getSignalColor(dir: string | null | undefined): string {
+// Resolves a node's signal color from the current theme's CHART_HEX palette (instead of
+// ad hoc hex literals) so graph node colors correctly re-theme between day/night.
+function getSignalColor(dir: string | null | undefined, pal: { success: string; danger: string; warning: string; muted: string }): string {
   const d = dir?.toLowerCase() || "";
-  if (d.includes("up")) return "#22c55e";
-  if (d.includes("down")) return "#ef4444";
-  if (d.includes("recalibrating")) return "#d4a547";
-  return "#94a3b8";
+  if (d.includes("up")) return pal.success;
+  if (d.includes("down")) return pal.danger;
+  if (d.includes("recalibrating")) return pal.warning;
+  return pal.muted;
 }
 
 function getNodeRadius(marketCap: number | null | undefined): number {
-  if (!marketCap) return 7;
-  if (marketCap > 100_000_000_000) return 18;
-  if (marketCap > 10_000_000_000) return 14;
-  if (marketCap > 1_000_000_000) return 10;
-  return 7;
+  if (!marketCap) return 3.5;
+  if (marketCap > 100_000_000_000) return 6.0;
+  if (marketCap > 10_000_000_000) return 5.0;
+  if (marketCap > 1_000_000_000) return 4.2;
+  return 3.5;
 }
 
 function formatMarketCap(val: number | null | undefined): string {
@@ -107,7 +109,7 @@ export default function GraphPage() {
   const [sliderVal, setSliderVal] = useState<number>(2.0); // Smooth continuous float [0.0 - 4.0]
   const [is3D, setIs3D] = useState(true);
   const [mounted, setMounted] = useState(false);
-  const [refreshTrigger, setRefreshTrigger] = useState(0); // State trigger for 2D image-load repaints
+  const [refreshTrigger, setRefreshTrigger] = useState(0); // State trigger for 2D image-load repaints & timeline updates
   const failedIcons = useRef<Set<string>>(new Set()); // Cache icon 404s to prevent repeated loads
   const sliderInitialized = useRef(false); // Track whether initial zoom has occurred
 
@@ -130,17 +132,51 @@ export default function GraphPage() {
 
   // Smooth slider transition state (keeps node/link reference identical, updates in-place)
   const [graphDataState, setGraphDataState] = useState<{ nodes: any[], links: any[] }>({ nodes: [], links: [] });
+  const [minCorrelationThreshold, setMinCorrelationThreshold] = useState<number>(0.25);
   const graphInitialized = useRef(false);
+
+  const displayGraphData = useMemo(() => {
+    // ALWAYS sanitize link source and target to plain symbol string IDs so d3-force can correctly map nodes
+    const rawLinks = graphDataState.links.map((l: any) => ({
+      ...l,
+      source: typeof l.source === "object" ? (l.source.symbol || l.source.id) : l.source,
+      target: typeof l.target === "object" ? (l.target.symbol || l.target.id) : l.target,
+    }));
+
+    const filtered = minCorrelationThreshold <= 0 
+      ? rawLinks 
+      : rawLinks.filter((l: any) => Math.abs(l.weight || 0) >= minCorrelationThreshold);
+
+    return {
+      nodes: graphDataState.nodes,
+      links: filtered
+    };
+  }, [graphDataState, minCorrelationThreshold, refreshTrigger]);
 
   // Persistent cache for ThreeJS objects to prevent violent recreations
   const nodeThreeObjsMap = useRef<Map<string, THREE.Group>>(new Map());
+
+  const handleToggle3D = useCallback(() => {
+    // Sanitize link object source/target references back to raw symbol strings
+    // to prevent 2D/3D d3 simulation object reference collisions
+    setGraphDataState(prev => ({
+      nodes: prev.nodes,
+      links: prev.links.map((l: any) => ({
+        ...l,
+        source: typeof l.source === "object" ? l.source.symbol || l.source.id : l.source,
+        target: typeof l.target === "object" ? l.target.symbol || l.target.id : l.target,
+      }))
+    }));
+    nodeThreeObjsMap.current.clear();
+    setIs3D(prev => !prev);
+  }, []);
 
   useEffect(() => {
     const update = () => {
       if (containerRef.current) {
         setDimensions({
           width: containerRef.current.clientWidth,
-          height: containerRef.current.clientHeight || 600,
+          height: Math.max(550, containerRef.current.clientHeight || 650),
         });
       }
     };
@@ -156,11 +192,11 @@ export default function GraphPage() {
         ([entry]) => {
           if (!document.hidden) {
             if (entry.isIntersecting) {
-              graphRef.current?.resumeAnimation();
-              graphRef2D.current?.resumeAnimation();
+              graphRef.current?.resumeAnimation?.();
+              graphRef2D.current?.resumeAnimation?.();
             } else {
-              graphRef.current?.pauseAnimation();
-              graphRef2D.current?.pauseAnimation();
+              graphRef.current?.pauseAnimation?.();
+              graphRef2D.current?.pauseAnimation?.();
             }
           }
         },
@@ -171,8 +207,8 @@ export default function GraphPage() {
     
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        graphRef.current?.pauseAnimation();
-        graphRef2D.current?.pauseAnimation();
+        graphRef.current?.pauseAnimation?.();
+        graphRef2D.current?.pauseAnimation?.();
       } else {
         if (containerRef.current) {
           const rect = containerRef.current.getBoundingClientRect();
@@ -181,8 +217,8 @@ export default function GraphPage() {
             rect.bottom > 0
           );
           if (isVisible) {
-            graphRef.current?.resumeAnimation();
-            graphRef2D.current?.resumeAnimation();
+            graphRef.current?.resumeAnimation?.();
+            graphRef2D.current?.resumeAnimation?.();
           }
         }
       }
@@ -200,7 +236,7 @@ export default function GraphPage() {
       const nodes = liveData.nodes.map((n: any) => ({
         ...n,
         radius: getNodeRadius(n.market_cap_usd),
-        color: getSignalColor(n.predicted_direction),
+        color: getSignalColor(n.predicted_direction, palette),
       }));
 
       const nodeIds = new Set(nodes.map((n: any) => n.symbol));
@@ -217,7 +253,7 @@ export default function GraphPage() {
       setGraphDataState({ nodes, links });
       graphInitialized.current = true;
     }
-  }, [liveData]);
+  }, [liveData, palette]);
 
   // Smoothly update attributes in-place when slider changes to prevent graph reload/force reset
   useEffect(() => {
@@ -242,13 +278,13 @@ export default function GraphPage() {
       const targetDirLower = nLower?.predicted_direction || "neutral";
       const targetDirUpper = nUpper?.predicted_direction || "neutral";
 
-      const colLower = getSignalColor(targetDirLower);
-      const colUpper = getSignalColor(targetDirUpper);
+      const colLower = getSignalColor(targetDirLower, palette);
+      const colUpper = getSignalColor(targetDirUpper, palette);
       n.color = interpolateColor(colLower, colUpper, t);
 
       const radLower = getNodeRadius(nLower?.market_cap_usd || 1e9);
       const radUpper = getNodeRadius(nUpper?.market_cap_usd || 1e9);
-      n.radius = Math.max(5, radLower * (1 - t) + radUpper * t);
+      n.radius = Math.max(4, radLower * (1 - t) + radUpper * t);
       n.predicted_direction = t < 0.5 ? targetDirLower : targetDirUpper;
 
       // Update ThreeJS meshes in-place for instant, buttery smooth slider transitions
@@ -256,17 +292,17 @@ export default function GraphPage() {
       if (group) {
         const sphereMesh = group.children[0] as THREE.Mesh;
         if (sphereMesh && sphereMesh.material) {
-          (sphereMesh.material as THREE.MeshBasicMaterial).color.set(n.color || '#64748b');
-          sphereMesh.scale.setScalar(n.radius / 7);
+          (sphereMesh.material as THREE.MeshBasicMaterial).color.set(n.color || palette.muted);
+          sphereMesh.scale.setScalar(n.radius / 6);
         }
         const logoSprite = group.children[1] as THREE.Sprite;
         if (logoSprite) {
-          logoSprite.scale.setScalar(13 + (n.radius - 7) * 0.4);
+          logoSprite.scale.setScalar(14 * (n.radius / 6));
         }
         const textSprite = group.children[2] as THREE.Sprite;
         if (textSprite) {
-          textSprite.scale.setScalar(18 + (n.radius - 7) * 0.5);
-          textSprite.position.y = n.radius + 6;
+          textSprite.scale.setScalar(18 * (n.radius / 6));
+          textSprite.position.y = n.radius + 5;
         }
       }
     });
@@ -275,8 +311,8 @@ export default function GraphPage() {
     const edgeMapUpper = new Map(dataUpper.edges.map((e: any) => [`${e.source}-${e.target}`, e]));
 
     graphDataState.links.forEach((l: any) => {
-      const srcId = l.source.symbol || l.source;
-      const tgtId = l.target.symbol || l.target;
+      const srcId = typeof l.source === "object" ? l.source.symbol || l.source.id : l.source;
+      const tgtId = typeof l.target === "object" ? l.target.symbol || l.target.id : l.target;
       const key = `${srcId}-${tgtId}`;
       const revKey = `${tgtId}-${srcId}`;
 
@@ -295,45 +331,52 @@ export default function GraphPage() {
       l.motif_similarity = motifLower * (1 - t) + motifUpper * t;
     });
 
-    // Trigger lightweight repaint without resetting force simulation
-    // For 2D: increment refresh counter to re-render canvas without creating new data references
-    // For 3D: ThreeJS objects are already updated in-place above, just bump render
     setRefreshTrigger(prev => prev + 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sliderVal, histData, hist30Data, liveData, proj15Data, proj30Data]);
+  }, [sliderVal, histData, hist30Data, liveData, proj15Data, proj30Data, palette]);
 
   const applyForces = useCallback((graphInstance: any) => {
     if (!graphInstance) return;
-    graphInstance.d3Force('link')
-      ?.strength((link: any) => (Math.abs(link.weight) || 0.5) * 0.9)
-      ?.distance(350); // High distance spacing
-    graphInstance.d3Force('charge')?.strength(-1200); // Strong repulsion spacing
-    graphInstance.d3Force('collision', 
-      d3.forceCollide().radius((node: any) => (node.radius || 7) * 2.5 + 20)
-    );
-    graphInstance.d3ReheatSimulation();
+    try {
+      const linkForce = graphInstance.d3Force?.('link');
+      if (linkForce) {
+        linkForce
+          .strength((link: any) => (Math.abs(link.weight) || 0.5) * 0.9)
+          .distance(450); // Generous link distance for un-cramped spacing
+      }
+      const chargeForce = graphInstance.d3Force?.('charge');
+      if (chargeForce) {
+        chargeForce.strength(-7000); // Strong repulsion spacing
+      }
+      const collideForce = graphInstance.d3Force?.('collision');
+      if (collideForce) {
+        collideForce.radius((node: any) => (node.radius || 6) * 3.5 + 32);
+      } else if (d3.forceCollide) {
+        graphInstance.d3Force?.('collision', d3.forceCollide().radius((node: any) => (node.radius || 6) * 3.5 + 32));
+      }
+      graphInstance.d3ReheatSimulation?.();
+    } catch (err) {
+      console.warn("Could not apply forces:", err);
+    }
   }, []);
 
-  const setGraphRef = useCallback((node: any) => {
-    graphRef.current = node;
-    if (node) {
-      applyForces(node);
-    }
-  }, [applyForces]);
-
-  const setGraphRef2D = useCallback((node: any) => {
-    graphRef2D.current = node;
-    if (node) {
-      applyForces(node);
-    }
-  }, [applyForces]);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (is3D && graphRef.current) {
+        applyForces(graphRef.current);
+      } else if (!is3D && graphRef2D.current) {
+        applyForces(graphRef2D.current);
+      }
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [is3D, isLoading, minCorrelationThreshold, applyForces]);
 
   // Handle perfect centering on initial load and 2D/3D toggle only — NOT on slider changes
   useEffect(() => {
     if (graphDataState.nodes.length > 0) {
       const timer = setTimeout(() => {
-        graphRef.current?.zoomToFit(800, 120);
-        graphRef2D.current?.zoomToFit(800, 120);
+        graphRef.current?.zoomToFit?.(800, 120);
+        graphRef2D.current?.zoomToFit?.(800, 120);
       }, 600);
       return () => clearTimeout(timer);
     }
@@ -350,41 +393,43 @@ export default function GraphPage() {
   }, [graphDataState, is3D, applyForces]);
 
   const nodeThreeObject = useCallback((node: any) => {
-    const radius = node.radius || 7;
+    const radius = node.radius || 4;
 
     // Use cached ThreeJS group representation if present to avoid violent rebuilds
     const cachedGroup = nodeThreeObjsMap.current.get(node.symbol);
     if (cachedGroup) {
       const sphereMesh = cachedGroup.children[0] as THREE.Mesh;
       if (sphereMesh && sphereMesh.material) {
-        (sphereMesh.material as THREE.MeshBasicMaterial).color.set(node.color || '#64748b');
-        sphereMesh.scale.setScalar(radius / 7);
+        (sphereMesh.material as THREE.MeshBasicMaterial).color.set(node.color || palette.muted);
+        sphereMesh.scale.setScalar(radius / 4);
       }
       const logoSprite = cachedGroup.children[1] as THREE.Sprite;
       if (logoSprite) {
-        logoSprite.scale.setScalar(16 * (radius / 7));
+        logoSprite.scale.setScalar(9 * (radius / 4));
       }
       const textSprite = cachedGroup.children[2] as THREE.Sprite;
       if (textSprite) {
-        textSprite.scale.setScalar(22 * (radius / 7));
-        textSprite.position.y = radius + 6;
+        textSprite.scale.setScalar(12 * (radius / 4));
+        textSprite.position.y = radius + 3;
       }
       return cachedGroup;
     }
 
-    const sphereGeom = new THREE.SphereGeometry(7, 24, 24); // Define with base size 7, scaled in-place
-    const sphereMat = new THREE.MeshBasicMaterial({ 
-      color: node.color || '#64748b', 
+    // 1. Transparent ambient sphere orb (depthWrite: false so logo sprite is never obscured)
+    const sphereGeom = new THREE.SphereGeometry(4, 20, 20);
+    const sphereMat = new THREE.MeshBasicMaterial({
+      color: node.color || palette.muted,
       transparent: true,
-      opacity: 0.12 // More transparent sphere meshes
+      opacity: 0.22,
+      depthWrite: false
     });
     const sphereMesh = new THREE.Mesh(sphereGeom, sphereMat);
-    sphereMesh.scale.setScalar(radius / 7);
+    sphereMesh.scale.setScalar(radius / 4);
 
     const iconUrl = `https://cdn.jsdelivr.net/gh/atomiclabs/cryptocurrency-icons@1a63530be6e374711a8554f31b17e4cb92c25fa5/svg/color/${node.symbol.toLowerCase()}.svg`;
     const isKnownFailed = failedIcons.current.has(node.symbol);
 
-    // Create canvas texture immediately with premium fallback orb to avoid empty nodes
+    // Create canvas texture immediately with fallback orb to avoid empty nodes
     const canvas = document.createElement("canvas");
     canvas.width = 64;
     canvas.height = 64;
@@ -394,11 +439,11 @@ export default function GraphPage() {
       ctx.beginPath();
       ctx.arc(32, 32, 26, 0, 2 * Math.PI);
       const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 26);
-      grad.addColorStop(0, node.color || '#64748b');
-      grad.addColorStop(1, 'rgba(15, 23, 42, 0.9)');
+      grad.addColorStop(0, node.color || palette.muted);
+      grad.addColorStop(1, 'rgba(15, 23, 42, 0.95)');
       ctx.fillStyle = grad;
       ctx.fill();
-      ctx.strokeStyle = node.color || '#64748b';
+      ctx.strokeStyle = node.color || palette.muted;
       ctx.lineWidth = 2.0;
       ctx.stroke();
       ctx.font = 'bold 16px sans-serif';
@@ -410,27 +455,29 @@ export default function GraphPage() {
     const logoTex = new THREE.CanvasTexture(canvas);
 
     if (!isKnownFailed) {
-      // Asynchronously load the official color icon from cdn
       const img = new Image();
       img.crossOrigin = "anonymous";
       img.src = iconUrl;
       img.onload = () => {
         (logoTex as any).image = img;
         logoTex.needsUpdate = true;
-        graphRef.current?.refresh();
+        graphRef.current?.refresh?.();
       };
       img.onerror = () => {
         failedIcons.current.add(node.symbol);
       };
     }
 
+    // depthTest: false and renderOrder: 999 guarantees coin icon is always rendered on top of sphere!
     const logoMat = new THREE.SpriteMaterial({ 
       map: logoTex, 
       transparent: true,
-      depthTest: true
+      depthTest: false,
+      depthWrite: false
     });
     const logoSprite = new THREE.Sprite(logoMat);
-    logoSprite.scale.setScalar(13 + (radius - 7) * 0.4);
+    logoSprite.renderOrder = 999;
+    logoSprite.scale.setScalar(9 * (radius / 4));
 
     const textCanvas = document.createElement('canvas');
     textCanvas.width = 128;
@@ -438,16 +485,15 @@ export default function GraphPage() {
     const tCtx = textCanvas.getContext('2d');
     if (tCtx) {
       tCtx.clearRect(0, 0, 128, 128);
-      // Dark rounded rectangle backing box for symbol readability
-      tCtx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+      tCtx.fillStyle = 'rgba(15, 23, 42, 0.9)';
       tCtx.beginPath();
       tCtx.roundRect(10, 36, 108, 56, 8);
       tCtx.fill();
-      tCtx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+      tCtx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
       tCtx.lineWidth = 2;
       tCtx.stroke();
 
-      tCtx.font = 'bold 32px sans-serif';
+      tCtx.font = 'bold 32px monospace';
       tCtx.fillStyle = '#ffffff';
       tCtx.textAlign = 'center';
       tCtx.textBaseline = 'middle';
@@ -457,11 +503,13 @@ export default function GraphPage() {
     const spriteMat = new THREE.SpriteMaterial({ 
       map: textTex, 
       transparent: true,
-      depthTest: true 
+      depthTest: false,
+      depthWrite: false 
     });
     const textSprite = new THREE.Sprite(spriteMat);
-    textSprite.scale.setScalar(18 + (radius - 7) * 0.5);
-    textSprite.position.y = radius + 6;
+    textSprite.renderOrder = 1000;
+    textSprite.scale.setScalar(12 * (radius / 4));
+    textSprite.position.y = radius + 3;
 
     const group = new THREE.Group();
     group.add(sphereMesh);
@@ -470,20 +518,23 @@ export default function GraphPage() {
     
     nodeThreeObjsMap.current.set(node.symbol, group);
     return group;
-  }, []);
+  }, [palette]);
 
   const linkColor = useCallback((link: any) => {
     const w = link.weight ?? 0;
     const absWeight = Math.abs(w);
-    // Use signed weight to determine color: green for positive, red for negative
-    const color = w >= 0 ? "#39ff14" : "#ff073a";
-    const opacity = Math.min(0.95, Math.max(0.15, absWeight * 1.2));
+    // Pure electric neon red (#ff0033) for negative, high-luminance neon green (#00ff66) for positive
+    const color = w >= 0 ? "#00ff66" : "#ff0033";
+    // Negative connections get ultra-high baseline opacity (0.90 - 1.0) so red connections pop violently
+    const opacity = w < 0 ? Math.min(1.0, Math.max(0.90, absWeight * 3.0)) : Math.min(1.0, Math.max(0.60, absWeight * 2.0));
     return `rgba(${hexToRgb(color)}, ${opacity})`;
   }, []);
 
   const linkWidth = useCallback((link: any) => {
-    const absWeight = Math.abs(link.weight ?? 0.2);
-    return 0.5 + absWeight * 3.5;
+    const w = link.weight ?? 0;
+    const absWeight = Math.abs(w);
+    // Negative links get bold thick lines (1.8 + absWeight * 4.0) so red connections are ultra-prominent
+    return w < 0 ? 1.8 + absWeight * 4.0 : 0.8 + absWeight * 2.2;
   }, []);
 
   if (!mounted) {
@@ -514,9 +565,25 @@ export default function GraphPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-4 bg-surface/30 p-2 rounded-lg border border-text/10 backdrop-blur-md">
+          {/* Min correlation edge threshold filter */}
+          <div className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono rounded border border-text/10 bg-text/5 text-text">
+            <span className="text-text-muted font-bold">Min |r|:</span>
+            <select
+              value={minCorrelationThreshold}
+              onChange={(e) => setMinCorrelationThreshold(parseFloat(e.target.value))}
+              className="bg-transparent text-accent font-bold focus:outline-none cursor-pointer"
+            >
+              <option value={0.0} className="bg-background text-text">All Links (100)</option>
+              <option value={0.25} className="bg-background text-text">≥ 0.25 (Filtered)</option>
+              <option value={0.35} className="bg-background text-text">≥ 0.35 (Strong)</option>
+              <option value={0.45} className="bg-background text-text">≥ 0.45 (Clusters)</option>
+              <option value={0.60} className="bg-background text-text">≥ 0.60 (High Conviction)</option>
+            </select>
+          </div>
+
           {/* 2D/3D switcher */}
           <button 
-            onClick={() => setIs3D(!is3D)} 
+            onClick={handleToggle3D} 
             className="flex items-center gap-2 px-4 py-2 text-xs font-mono font-bold uppercase tracking-wider rounded border border-text/10 bg-text/5 hover:bg-text/15 text-text transition-all"
           >
             <Activity size={14} className="text-accent" />
@@ -532,27 +599,30 @@ export default function GraphPage() {
         </div>
       </div>
 
-      <div ref={containerRef} className="flex-1 w-full relative glass-flat rounded-xl bg-background overflow-hidden">
+      <div ref={containerRef} className="flex-1 w-full relative glass-flat rounded-xl bg-background overflow-hidden min-h-[720px]">
         {isLoading || !liveData ? (
           <Skeleton className="w-full h-full" />
         ) : is3D ? (
           <ForceGraph3D
             key={resolvedTheme || 'dark'}
-            ref={setGraphRef}
+            ref={graphRef}
             width={dimensions.width}
             height={dimensions.height}
-            graphData={graphDataState}
+            graphData={displayGraphData}
             nodeId="symbol"
             nodeThreeObject={nodeThreeObject}
             linkColor={linkColor}
             linkWidth={linkWidth}
             linkResolution={6}
-            linkDirectionalParticles={4}
+            linkDirectionalParticles={(link: any) => ((link.weight ?? 0) < 0 ? 6 : 4)}
             linkDirectionalParticleColor={(link: any) => {
-              const ms = link.motif_similarity || 0;
-              return ms > 0.4 ? "rgba(57, 255, 20, 0.95)" : ms < -0.4 ? "rgba(255, 7, 58, 0.95)" : "rgba(212, 165, 71, 0.8)";
+              const w = link.weight ?? 0;
+              return w < 0 ? "rgba(255, 0, 51, 1.0)" : "rgba(0, 255, 102, 1.0)";
             }}
-            linkDirectionalParticleWidth={(link: any) => Math.max(0.3, linkWidth(link) * 0.25)} // Dynamic size inside connection link
+            linkDirectionalParticleWidth={(link: any) => {
+              const w = link.weight ?? 0;
+              return w < 0 ? Math.max(1.2, linkWidth(link) * 0.45) : Math.max(0.4, linkWidth(link) * 0.25);
+            }} // Dynamic size inside connection link
             linkDirectionalParticleSpeed={(link: any) => 0.012 + (Math.abs(link.motif_similarity || 0.1) * 0.03)}
             backgroundColor="rgba(0,0,0,0)"
             d3AlphaDecay={0.06}
@@ -570,10 +640,10 @@ export default function GraphPage() {
           />
         ) : (
           <ForceGraph2D
-            ref={setGraphRef2D}
+            ref={graphRef2D}
             width={dimensions.width}
             height={dimensions.height}
-            graphData={graphDataState}
+            graphData={displayGraphData}
             nodeId="symbol"
             nodeVal={(node: any) => node.radius || 7}
             nodeCanvasObject={(node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
@@ -582,7 +652,7 @@ export default function GraphPage() {
               // 1. Outer transparent signal ring/glow
               ctx.beginPath();
               ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI, false);
-              ctx.fillStyle = node.color || '#64748b';
+              ctx.fillStyle = node.color || palette.muted;
               ctx.globalAlpha = 0.25; // Transparent spheres match 3D
               ctx.fill();
               ctx.globalAlpha = 1.0;
@@ -619,12 +689,12 @@ export default function GraphPage() {
                 ctx.beginPath();
                 ctx.arc(node.x, node.y, radius * 0.8, 0, 2 * Math.PI, false);
                 const grad = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, radius * 0.8);
-                grad.addColorStop(0, node.color || '#64748b');
+                grad.addColorStop(0, node.color || palette.muted);
                 grad.addColorStop(1, 'rgba(15, 23, 42, 0.9)');
                 ctx.fillStyle = grad;
                 ctx.fill();
                 // Border ring
-                ctx.strokeStyle = node.color || '#64748b';
+                ctx.strokeStyle = node.color || palette.muted;
                 ctx.lineWidth = 1.5;
                 ctx.stroke();
                 ctx.font = `bold ${Math.max(radius * 0.55, 4)}px monospace`;
@@ -645,12 +715,15 @@ export default function GraphPage() {
             }}
             linkColor={linkColor}
             linkWidth={linkWidth}
-            linkDirectionalParticles={4}
+            linkDirectionalParticles={(link: any) => ((link.weight ?? 0) < 0 ? 6 : 4)}
             linkDirectionalParticleColor={(link: any) => {
-              const ms = link.motif_similarity || 0;
-              return ms > 0.4 ? "rgba(57, 255, 20, 0.95)" : ms < -0.4 ? "rgba(255, 7, 58, 0.95)" : "rgba(212, 165, 71, 0.8)";
+              const w = link.weight ?? 0;
+              return w < 0 ? "rgba(255, 0, 51, 1.0)" : "rgba(0, 255, 102, 1.0)";
             }}
-            linkDirectionalParticleWidth={(link: any) => Math.max(0.3, linkWidth(link) * 0.25)} // Dynamic size inside connection link
+            linkDirectionalParticleWidth={(link: any) => {
+              const w = link.weight ?? 0;
+              return w < 0 ? Math.max(1.2, linkWidth(link) * 0.45) : Math.max(0.4, linkWidth(link) * 0.25);
+            }} // Dynamic size inside connection link
             linkDirectionalParticleSpeed={(link: any) => 0.012 + (Math.abs(link.motif_similarity || 0.1) * 0.03)}
             backgroundColor="rgba(0,0,0,0)"
             d3AlphaDecay={0.06}

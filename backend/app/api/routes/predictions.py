@@ -151,6 +151,11 @@ async def trigger_inference(background_tasks: BackgroundTasks, api_key: str = De
             env["PYTHONPATH"] = root_dir
             subprocess.run([python_exec, "ml/pipelines/inference_pipeline.py"], cwd=root_dir, env=env)
             print("[Scheduler] Inference completed.")
+            
+            # Refresh SSOT so /api/assets immediately reflects new confidence scores
+            from app.core.streams.binance_ws import refresh_predictions_in_ssot
+            refresh_predictions_in_ssot(db)
+            print("[Scheduler] SSOT prediction cache refreshed.")
         except Exception as e:
             print(f"[Scheduler] Error: {e}")
         finally:

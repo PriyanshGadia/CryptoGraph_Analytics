@@ -10,8 +10,9 @@ import {
   ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, ReferenceLine, BarChart, Bar, Cell
 } from "recharts"
-import { TrendingUp, TrendingDown, Minus, Brain, 
-         BarChart2, AlertTriangle, CheckCircle, Terminal, Lock, Clock, Target, Layers, Info, X, Activity, Shield } from "lucide-react"
+import { TrendingUp, TrendingDown, Minus, Brain,
+         BarChart2, AlertTriangle, CheckCircle, Terminal, Lock, Clock, Target, Layers, Info, X, Shield } from "lucide-react"
+import { DirectionBadge } from "@/components/ui/DirectionBadge"
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 const WS_BASE = BASE.replace(/^http/, "ws")
@@ -22,30 +23,13 @@ const fetcher = (url: string) => fetch(url).then(r => {
 })
 
 // ── Shared UI Components ──────────────────────────────────────────
-function DirectionBadge({ direction }: { direction: string }) {
-  const config: Record<string, {bg: string, text: string, label: string, icon: React.ReactNode, border: string}> = {
-    strong_up:   {bg:"bg-success/10",  text:"text-success", label:"STRONG BUY",  icon:<TrendingUp size={14}/>, border:"border-success/30 shadow-success/20"},
-    up:          {bg:"bg-success/5",  text:"text-success", label:"BUY",          icon:<TrendingUp size={14}/>, border:"border-success/20 shadow-success/10"},
-    neutral:     {bg:"bg-text-muted/10",   text:"text-text-muted",  label:"NEUTRAL",       icon:<Minus size={14}/>, border:"border-text/10 shadow-black/20"},
-    down:        {bg:"bg-danger/5",    text:"text-danger",   label:"SELL",         icon:<TrendingDown size={14}/>, border:"border-danger/20 shadow-danger/10"},
-    strong_down: {bg:"bg-danger/10",    text:"text-danger",   label:"STRONG SELL", icon:<TrendingDown size={14}/>, border:"border-danger/30 shadow-danger/20"},
-    recalibrating: {bg:"bg-warning/10",  text:"text-warning", label:"RECALIBRATING",  icon:<Activity size={14}/>, border:"border-warning/30 shadow-warning/20"},
-  }
-  const c = config[direction] || config["neutral"]
-  return (
-    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-sm text-[10px] sm:text-xs font-bold uppercase tracking-widest border shadow-lg ${c.bg} ${c.text} ${c.border}`}>
-      {c.icon}{c.label}
-    </span>
-  )
-}
-
 function VolatilityChip({ regime }: { regime: string }) {
   const colors: Record<string,string> = {
     low:"bg-info/10 text-info border-info/20", medium:"bg-warning/10 text-warning border-warning/20",
     high:"bg-danger/10 text-danger border-danger/20", extreme:"bg-danger/20 text-danger border-danger/30 font-black"
   }
   return (
-    <span className={`px-2 py-0.5 rounded-sm text-[10px] border font-mono uppercase tracking-widest ${colors[regime] || colors.medium}`}>
+    <span className={`px-2 py-0.5 shape-tag text-[10px] border font-mono uppercase tracking-widest ${colors[regime] || colors.medium}`}>
       {regime}
     </span>
   )
@@ -285,7 +269,7 @@ function PredictionStudio() {
                     <button
                       key={idx}
                       onClick={() => setSelectedSymbol(p.asset_symbol)}
-                      className={`group text-left glass-flat rounded-xl border border-text/5 hover:border-text/20 p-6 transition-all duration-[var(--dur-hover)] ease-glide hover:bg-text/[0.04] hover:shadow-[0_0_30px_rgba(${isUp ? '34,197,94' : isDown ? '239,68,68' : '255,255,255'},0.1)] relative overflow-hidden`}
+                      className={`group text-left glass-flat interactive-lift rounded-xl border border-text/5 hover:border-text/20 p-6 transition-all duration-[var(--dur-hover)] ease-glide hover:bg-text/[0.04] hover:shadow-[0_0_30px_rgba(${isUp ? '34,197,94' : isDown ? '239,68,68' : '255,255,255'},0.1)] relative overflow-hidden`}
                     >
                       
                       {/* VERDICT STAMP */}
@@ -302,7 +286,7 @@ function PredictionStudio() {
                             {p.model_version}
                           </span>
                         </div>
-                        <DirectionBadge direction={p.direction} />
+                        <DirectionBadge direction={p.direction} showIcon />
                       </div>
 
                       <div className="flex items-center justify-between mt-6">
@@ -402,7 +386,7 @@ function PredictionStudio() {
                 <div className="w-full glass bg-surface/50 border border-text/10 p-6 rounded-sm shadow-xl">
                     <div className="flex justify-between items-center mb-5">
                         <span className="text-text-muted text-[10px] font-bold uppercase tracking-widest font-mono">Ultimate Consensus</span>
-                        <DirectionBadge direction={forecastData.final_consensus} />
+                        <DirectionBadge direction={forecastData.final_consensus} showIcon />
                     </div>
                     <div className={`text-sm font-black tracking-widest uppercase flex items-center gap-3 ${forecastData.final_consensus === 'neutral' ? 'text-text-muted' : forecastData.final_consensus.includes('up') ? 'text-success' : 'text-danger'}`}>
                         {forecastData.final_consensus !== 'neutral' ? <Target size={20}/> : <Minus size={20}/>}
@@ -442,7 +426,7 @@ function PredictionStudio() {
                                 <div className="flex items-center gap-3">
                                     <div className="text-text font-bold text-xs font-mono uppercase tracking-widest">{m.name}</div>
                                 </div>
-                                <DirectionBadge direction={m.direction} />
+                                <DirectionBadge direction={m.direction} showIcon />
                             </div>
                             
                             {/* Hidden by default, reveals snippet and prompt on hover */}

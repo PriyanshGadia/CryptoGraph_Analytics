@@ -95,6 +95,14 @@ async def trigger_refresh_all(db: Session = Depends(get_db)):
     except Exception as e:
         results["predictions_broadcast"] = f"error: {e}"
 
+    # 5. Refresh SSOT prediction cache so /api/assets reflects fresh confidence
+    try:
+        from app.core.streams.binance_ws import refresh_predictions_in_ssot
+        refresh_predictions_in_ssot(db)
+        results["ssot_refresh"] = "predictions synced to SSOT"
+    except Exception as e:
+        results["ssot_refresh"] = f"error: {e}"
+
     return {
         "status": "success",
         "message": "Full refresh cycle completed",

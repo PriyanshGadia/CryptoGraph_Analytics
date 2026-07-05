@@ -13,7 +13,7 @@ from app.api.routes import (
     assets, predictions, graph, risk, explain,
     forecast, status, coins, performance,
     correlations, sentiment_data, screener, settings as app_settings_route,
-    portfolio, stream
+    portfolio, stream, scheduler
 )
 from app.db.database import engine, SessionLocal
 from app.db.models_sqla import Base, AppSetting
@@ -131,16 +131,44 @@ async def lifespan(app: FastAPI):
                     stream_module.FORCE_PREDICTION_BROADCAST = True
                 except Exception as e:
                     print(f"[Scheduler] Broadcast error: {e}")
+
+                # 3b. Refresh SSOT prediction cache so /api/assets reflects fresh confidence
+                try:
+                    from app.core.streams.binance_ws import refresh_predictions_in_ssot
+                    refresh_predictions_in_ssot(db)
+                    print("[Scheduler] SSOT prediction cache refreshed.")
+                except Exception as e:
+                    print(f"[Scheduler] SSOT refresh error: {e}")
+                    
+                # 4. Trigger autonomous portfolio trading loop
+                try:
+                    from app.core.trading_agent import execute_daily_trades
+                    print("[Scheduler] Auto-running autonomous portfolio trading agent...")
+                    await execute_daily_trades()
+                except Exception as e:
+                    print(f"[Scheduler] Portfolio execution error: {e}")
             except Exception as e:
                 print(f"[Scheduler] Database session error: {e}")
             finally:
                 db.close()
+
+    async def auto_portfolio_trading_loop():
+        """Periodic background task to run autonomous trading evaluations every 30 minutes."""
+        while True:
+            await asyncio.sleep(1800)  # Sleep for 30 minutes
+            try:
+                from app.core.trading_agent import execute_daily_trades
+                print("[PortfolioAgent] Auto-evaluating market signals and risk allocations...")
+                await execute_daily_trades()
+            except Exception as e:
+                print(f"[PortfolioAgent] Execution loop error: {e}")
                 
     # Start tasks
     binance_task = asyncio.create_task(binance_ws_loop(SYMBOLS))
     prediction_task = asyncio.create_task(prediction_broadcast_loop())
     screener_task = asyncio.create_task(screener_broadcast_loop())
     refresh_task = asyncio.create_task(auto_refresh_loop())
+    trading_task = asyncio.create_task(auto_portfolio_trading_loop())
     
     yield
     
@@ -195,6 +223,7 @@ app.include_router(screener.router,      prefix="/api")
 app.include_router(app_settings_route.router, prefix="/api")
 app.include_router(portfolio.router, prefix="/api")
 app.include_router(stream.router, prefix="/api")
+app.include_router(scheduler.router)
 
 # Lifespan context manager runs tasks automatically. No on_event('startup') needed.
 

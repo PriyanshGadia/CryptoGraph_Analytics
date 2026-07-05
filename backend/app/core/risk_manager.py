@@ -67,22 +67,38 @@ class RiskManagerCore:
                     "suggested_allocation_usd": 0.0
                 }
 
-        # 3. Position Sizing (Simplified Kelly Criterion modifier)
-        # Scale the base 5% allocation based on model confidence
-        # Confidence range is typically 0.5 to 1.0
-        edge = confidence - 0.5
-        # If confidence is 80%, edge is 0.3. 0.3 / 0.5 = 0.6 multiplier.
-        multiplier = max(0.1, edge / 0.5) 
+        # 3. Position Sizing (Kelly Criterion with 15% Allocation Cap & Cash Buffer Safeguard)
+        # Normalize confidence score: handle both percentage (85.5) and ratio (0.85) inputs
+        conf_norm = confidence / 100.0 if confidence > 1.0 else confidence
+        conf_norm = max(0.0, min(1.0, conf_norm))
         
-        target_fraction = self.base_kelly_fraction * multiplier
+        # Baseline for 3-class direction models is 33.3%, while binary models baseline is 50.0%
+        baseline = 0.333 if conf_norm < 0.50 else 0.50
+        edge = max(0.0, conf_norm - baseline)
+        multiplier = min(2.0, max(0.4, edge / 0.10 if baseline == 0.333 else edge / 0.50))
+        
+        # Base allocation: 5% of total portfolio value scaled by model edge multiplier
+        base_target_fraction = 0.05 * multiplier
+        # Hard cap: maximum 7% of portfolio total value per position
+        target_fraction = min(0.07, base_target_fraction)
+        
         suggested_allocation = current_portfolio.total_value * target_fraction
+        
+        # Cash Buffer Safeguard: Preserve at least 5% of total portfolio value in unallocated cash
+        min_cash_reserve = current_portfolio.total_value * 0.05
+        max_available_for_trade = max(0.0, current_portfolio.cash_balance - min_cash_reserve)
+        
+        if max_available_for_trade < 100.0:
+            return {
+                "approved": False,
+                "reasoning": f"RiskManager VETO: Insufficient unreserved cash balance (${current_portfolio.cash_balance:.2f}) to open new buy position.",
+                "suggested_allocation_usd": 0.0
+            }
 
-        # Don't allocate more cash than we have
-        if suggested_allocation > current_portfolio.cash_balance:
-            suggested_allocation = current_portfolio.cash_balance
+        suggested_allocation = min(suggested_allocation, max_available_for_trade)
 
         return {
             "approved": True, 
-            "reasoning": f"RiskManager APPROVED: Kelly modifier applied based on {confidence*100:.1f}% confidence.",
+            "reasoning": f"RiskManager APPROVED: Position sizing set to ${suggested_allocation:,.2f} based on {conf_norm*100:.1f}% confidence.",
             "suggested_allocation_usd": suggested_allocation
         }

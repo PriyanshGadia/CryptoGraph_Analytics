@@ -158,7 +158,7 @@ export default function SentimentPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
           {/* Gauge Card */}
-          <GlassCard tier={2} shape="none" className="rounded-xl p-8 flex flex-col items-center justify-center relative overflow-hidden group">
+          <GlassCard tier={2} shape="none" className="interactive-lift rounded-xl p-8 flex flex-col items-center justify-center relative overflow-hidden group">
             <div className="absolute top-0 right-0 p-4">
                 <HeartPulse size={20} className={`opacity-50 group-hover:opacity-100 transition-opacity ${today > 60 ? 'text-success animate-pulse' : today < 40 ? 'text-danger' : 'text-text-muted'}`} />
             </div>
@@ -197,7 +197,7 @@ export default function SentimentPage() {
             </div>
             
             <div className="h-[280px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <AreaChart data={fgHistory} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="colorFG" x1="0" y1="0" x2="0" y2="1">
@@ -249,7 +249,7 @@ export default function SentimentPage() {
               </div>
             </div>
             <div className="mt-4 text-right">
-              <span className="text-[9px] uppercase tracking-widest font-mono text-text-muted bg-black/40 px-2 py-1 rounded">Subject Asset: {synthesis.symbol}</span>
+              <span className="text-[9px] uppercase tracking-widest font-mono text-text-muted bg-black/40 px-2 py-1 shape-tag">Subject Asset: {synthesis.symbol}</span>
             </div>
           </GlassCard>
         )}
@@ -262,7 +262,7 @@ export default function SentimentPage() {
           </div>
           
           <div className="p-8 h-[400px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
               <ComposedChart data={btcHistory} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="transparent" vertical={false} />
                 <XAxis dataKey="date" stroke={palette.muted} tick={{fill: palette.text, fontSize: 10, fontFamily: 'monospace'}} minTickGap={30} tickLine={false} axisLine={false} />
@@ -275,7 +275,7 @@ export default function SentimentPage() {
                   formatter={(val: any, name: any) => [name === 'btc_price' ? `$${Number(val).toLocaleString()}` : val, name === 'btc_price' ? 'BTC Price' : 'Index Level']}
                 />
                 <Area yAxisId="right" type="monotone" dataKey="fear_greed" fill="url(#colorFG)" stroke="none" fillOpacity={0.15} />
-                <Line yAxisId="left" type="monotone" dataKey="btc_price" stroke="#f1f5f9" strokeWidth={3} dot={false} className="drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]" />
+                <Line yAxisId="left" type="monotone" dataKey="btc_price" stroke={palette.text} strokeWidth={3} dot={false} className="drop-shadow-[0_0_8px_rgba(var(--text),0.3)]" />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
@@ -292,7 +292,7 @@ export default function SentimentPage() {
             </div>
             
             <div className="h-[320px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <BarChart data={sectorSent} layout="vertical" margin={{ top: 5, right: 30, left: 10, bottom: 5 }}>
                   <XAxis type="number" domain={[-1, 1]} stroke={palette.muted} tick={{fill: palette.text, fontSize: 10, fontFamily: 'monospace'}} tickLine={false} axisLine={false} />
                   <YAxis dataKey="sector" type="category" stroke={palette.muted} tick={{fill: palette.text, fontSize: 10, fontFamily: 'monospace', fontWeight: 'bold'}} tickFormatter={(val) => typeof val === 'string' ? val.toUpperCase() : val} tickLine={false} axisLine={false} width={80} />
@@ -333,10 +333,10 @@ export default function SentimentPage() {
                 </div>
                 <div className="space-y-3">
                   {trending.gainers.map((g: any, i: number) => (
-                    <div key={i} className="flex justify-between items-center glass bg-success/5 p-4 rounded-sm border border-success/10 hover:border-success/30 hover:bg-success/10 transition-colors group">
+                    <div key={i} className="interactive-lift flex justify-between items-center glass bg-success/5 p-4 rounded-sm border border-success/10 hover:border-success/30 hover:bg-success/10 transition-colors group">
                       <div className="flex flex-col gap-1.5">
                         <Link href={`/graph?asset=${g.symbol}`} className="font-mono font-black text-text group-hover:text-success transition-colors text-lg tracking-tight">{g.symbol}</Link>
-                        <span className="text-[8px] uppercase tracking-widest font-bold text-white px-2 py-0.5 rounded-sm inline-block w-max shadow-inner" style={{ backgroundColor: getSectorColor(g.sector) }}>{g.sector}</span>
+                        <span className="text-[9px] uppercase tracking-widest font-bold text-white px-2 py-0.5 shape-tag inline-block w-max shadow-inner" style={{ backgroundColor: getSectorColor(g.sector) }}>{g.sector}</span>
                       </div>
                       <div className="text-right">
                         <div className="text-base font-black font-mono text-success drop-shadow-[0_0_5px_rgba(34,197,94,0.5)]">+{g.change.toFixed(3)}</div>
@@ -357,10 +357,10 @@ export default function SentimentPage() {
                 </div>
                 <div className="space-y-3">
                   {trending.losers.map((l: any, i: number) => (
-                    <div key={i} className="flex justify-between items-center glass bg-danger/5 p-4 rounded-sm border border-danger/10 hover:border-danger/30 hover:bg-danger/10 transition-colors group">
+                    <div key={i} className="interactive-lift flex justify-between items-center glass bg-danger/5 p-4 rounded-sm border border-danger/10 hover:border-danger/30 hover:bg-danger/10 transition-colors group">
                       <div className="flex flex-col gap-1.5">
                         <Link href={`/graph?asset=${l.symbol}`} className="font-mono font-black text-text group-hover:text-danger transition-colors text-lg tracking-tight">{l.symbol}</Link>
-                        <span className="text-[8px] uppercase tracking-widest font-bold text-white px-2 py-0.5 rounded-sm inline-block w-max shadow-inner" style={{ backgroundColor: getSectorColor(l.sector) }}>{l.sector}</span>
+                        <span className="text-[9px] uppercase tracking-widest font-bold text-white px-2 py-0.5 shape-tag inline-block w-max shadow-inner" style={{ backgroundColor: getSectorColor(l.sector) }}>{l.sector}</span>
                       </div>
                       <div className="text-right">
                         <div className="text-base font-black font-mono text-danger drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]">{l.change.toFixed(3)}</div>

@@ -24,7 +24,8 @@ import {
   Save,
   MessageSquare,
   Zap,
-  ShieldCheck
+  ShieldCheck,
+  RotateCcw
 } from "lucide-react";
 
 export default function PortfolioPage() {
@@ -42,6 +43,7 @@ export default function PortfolioPage() {
   });
 
   const [executing, setExecuting] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [stressTest, setStressTest] = useState(false);
   const palette = useChartPalette();
   const [expandedTradeId, setExpandedTradeId] = useState<number | null>(null);
@@ -55,7 +57,7 @@ export default function PortfolioPage() {
   if (!mounted) return <div className="h-screen w-full flex items-center justify-center text-text-muted font-mono bg-background">Loading chart components...</div>;
 
   const handleManualExecute = async () => {
-    if (executing) return;
+    if (executing || resetting) return;
     setExecuting(true);
     try {
       await apiService.triggerExecution();
@@ -65,6 +67,21 @@ export default function PortfolioPage() {
       console.error("Failed to execute agent", e);
     } finally {
       setExecuting(false);
+    }
+  };
+
+  const handleResetPortfolio = async () => {
+    if (resetting || executing) return;
+    if (!confirm("Are you sure you want to reset paper trading portfolio to $100,000 initial capital?")) return;
+    setResetting(true);
+    try {
+      await apiService.resetPortfolio();
+      await mutatePortfolio();
+      await mutateTrades();
+    } catch (e) {
+      console.error("Failed to reset portfolio", e);
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -147,23 +164,39 @@ export default function PortfolioPage() {
           <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-text via-text/80 to-text-muted tracking-tight font-sans">Autonomous Portfolio</h1>
           <p className="text-text-muted font-light tracking-wide mt-2">Paper-trading performance driven by ST-GCN agent signals.</p>
         </div>
-        <button
-          onClick={handleManualExecute}
-          disabled={executing}
-          className="relative z-10 flex items-center justify-center gap-3 glass bg-accent/20 hover:bg-accent/30 text-accent px-8 py-4 rounded-sm font-bold transition-all disabled:opacity-50 border border-accent/30 shadow-[0_0_20px_rgba(var(--accent),0.1)] hover:shadow-[0_0_30px_rgba(var(--accent),0.2)] tracking-widest uppercase text-xs"
-        >
-          {executing ? (
-            <div className="w-5 h-5 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
-          ) : (
-            <Play size={18} fill="currentColor" />
-          )}
-          {executing ? "Executing Strategy..." : "Force Execution"}
-        </button>
+        <div className="relative z-10 flex items-center gap-3">
+          <button
+            onClick={handleResetPortfolio}
+            disabled={resetting || executing}
+            className="flex items-center justify-center gap-2 glass bg-danger/10 hover:bg-danger/20 text-danger px-5 py-4 rounded-sm font-bold transition-all disabled:opacity-50 border border-danger/30 tracking-widest uppercase text-xs"
+            title="Reset paper trading capital to $100,000"
+          >
+            {resetting ? (
+              <div className="w-4 h-4 border-2 border-danger/30 border-t-danger rounded-full animate-spin" />
+            ) : (
+              <RotateCcw size={16} />
+            )}
+            {resetting ? "Resetting..." : "Reset"}
+          </button>
+
+          <button
+            onClick={handleManualExecute}
+            disabled={executing || resetting}
+            className="flex items-center justify-center gap-3 glass bg-accent/20 hover:bg-accent/30 text-accent px-8 py-4 rounded-sm font-bold transition-all disabled:opacity-50 border border-accent/30 shadow-[0_0_20px_rgba(var(--accent),0.1)] hover:shadow-[0_0_30px_rgba(var(--accent),0.2)] tracking-widest uppercase text-xs"
+          >
+            {executing ? (
+              <div className="w-5 h-5 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
+            ) : (
+              <Play size={18} fill="currentColor" />
+            )}
+            {executing ? "Executing Strategy..." : "Force Execution"}
+          </button>
+        </div>
       </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <GlassCard tier={2} shape="none" className="rounded-xl p-6 relative overflow-hidden group">
+        <GlassCard tier={2} shape="none" className="rounded-xl p-6 relative overflow-hidden group interactive-lift">
           <div className="absolute inset-0 bg-gradient-to-br from-accent/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
           <div className="text-[10px] font-bold font-mono tracking-widest text-text-muted uppercase mb-4 flex items-center gap-2">
             <Wallet size={16} className="text-accent" /> Total Value
@@ -176,7 +209,7 @@ export default function PortfolioPage() {
           </div>
         </GlassCard>
 
-        <GlassCard tier={2} shape="none" className="rounded-xl p-6 relative overflow-hidden group">
+        <GlassCard tier={2} shape="none" className="rounded-xl p-6 relative overflow-hidden group interactive-lift">
           <div className="absolute inset-0 bg-gradient-to-br from-success/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
           <div className="text-[10px] font-bold font-mono tracking-widest text-text-muted uppercase mb-4 flex items-center gap-2">
             <Activity size={16} className="text-success" /> Return on Investment
@@ -193,7 +226,7 @@ export default function PortfolioPage() {
           </div>
         </GlassCard>
 
-        <GlassCard tier={2} shape="none" className="rounded-xl p-6 relative overflow-hidden group">
+        <GlassCard tier={2} shape="none" className="rounded-xl p-6 relative overflow-hidden group interactive-lift">
           <div className="absolute inset-0 bg-gradient-to-br from-warning/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
           <div className="text-[10px] font-bold font-mono tracking-widest text-text-muted uppercase mb-4 flex items-center gap-2">
             <Target size={16} className="text-warning" /> Win Rate
@@ -206,7 +239,7 @@ export default function PortfolioPage() {
           </div>
         </GlassCard>
 
-        <GlassCard tier={2} shape="none" className="rounded-xl p-6 relative overflow-hidden group">
+        <GlassCard tier={2} shape="none" className="rounded-xl p-6 relative overflow-hidden group interactive-lift">
           <div className="absolute inset-0 bg-gradient-to-br from-danger/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
           <div className="text-[10px] font-bold font-mono tracking-widest text-text-muted uppercase mb-4 flex items-center gap-2">
             <TrendingDown size={16} className="text-danger" /> Max Drawdown
@@ -353,9 +386,16 @@ export default function PortfolioPage() {
                           </td>
                           <td className="px-6 py-4 font-black text-text tracking-tight">{trade.symbol}</td>
                           <td className="px-6 py-4">
-                            <span className={`inline-block px-2 py-1 rounded text-[9px] font-bold uppercase tracking-widest border ${trade.side === 'buy' ? 'bg-success/10 text-success border-success/20' : 'bg-danger/10 text-danger border-danger/20'}`}>
-                              {trade.side}
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className={`inline-block px-2 py-1 rounded text-[9px] font-bold uppercase tracking-widest border ${trade.side === 'buy' ? 'bg-success/10 text-success border-success/20' : 'bg-danger/10 text-danger border-danger/20'}`}>
+                                {trade.side}
+                              </span>
+                              {trade.confidence ? (
+                                <span className="text-[10px] font-mono font-bold text-accent bg-accent/10 border border-accent/20 px-1.5 py-0.5 rounded" title="Signal Confidence at execution">
+                                  {trade.confidence.toFixed(1)}%
+                                </span>
+                              ) : null}
+                            </div>
                           </td>
                           <td className="px-6 py-4 text-text font-mono text-xs">{trade.quantity.toLocaleString(undefined, {maximumFractionDigits: 4})}</td>
                           <td className="px-6 py-4 text-text font-mono text-xs">${trade.price.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
@@ -366,7 +406,7 @@ export default function PortfolioPage() {
                                   Action Req
                                 </span>
                               ) : trade.overseer_grade ? (
-                                <div className="flex text-yellow-400 gap-0.5" title={`Graded ${trade.overseer_grade} Stars`}>
+                                <div className="flex text-warning gap-0.5" title={`Graded ${trade.overseer_grade} Stars`}>
                                   {[...Array(trade.overseer_grade)].map((_, i) => <Star key={i} size={10} fill="currentColor" />)}
                                 </div>
                               ) : null}
@@ -419,7 +459,7 @@ export default function PortfolioPage() {
                                         {/* Overseer Grading */}
                                         <div className="md:border-l md:border-text/10 md:pl-8 flex flex-col justify-between">
                                             <div>
-                                                <h4 className="text-xs font-bold text-yellow-400 mb-2 flex items-center gap-2 tracking-widest uppercase font-mono">
+                                                <h4 className="text-xs font-bold text-warning mb-2 flex items-center gap-2 tracking-widest uppercase font-mono">
                                                     <Target size={14} />
                                                     Overseer Grading (RLHF)
                                                 </h4>
@@ -435,7 +475,7 @@ export default function PortfolioPage() {
                                                         <button
                                                             key={star}
                                                             onClick={() => setGrade(star)}
-                                                            className={`transition-all hover:scale-110 ${grade >= star ? "text-yellow-400 drop-shadow-[0_0_8px_rgba(250,204,21,0.5)]" : "text-text-muted/40 hover:text-yellow-400/50"}`}
+                                                            className={`transition-all hover:scale-110 ${grade >= star ? "text-warning drop-shadow-[0_0_8px_rgba(var(--warning),0.5)]" : "text-text-muted/40 hover:text-warning/50"}`}
                                                         >
                                                             <Star size={28} fill={grade >= star ? "currentColor" : "none"} strokeWidth={1.5} />
                                                         </button>
@@ -461,10 +501,10 @@ export default function PortfolioPage() {
                                             <button
                                                 onClick={() => submitGrade(trade.id)}
                                                 disabled={grade === 0 || submittingGrade}
-                                                className="w-full mt-6 flex items-center justify-center gap-2 glass bg-yellow-400/10 hover:bg-yellow-400/20 text-yellow-400 border border-yellow-400/30 px-6 py-3.5 rounded-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-widest text-xs shadow-[0_0_15px_rgba(250,204,21,0.05)]"
+                                                className="w-full mt-6 flex items-center justify-center gap-2 glass bg-warning/10 hover:bg-warning/20 text-warning border border-warning/30 px-6 py-3.5 rounded-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-widest text-xs shadow-[0_0_15px_rgba(var(--warning),0.05)]"
                                             >
                                                 {submittingGrade ? (
-                                                <div className="w-4 h-4 border-2 border-yellow-400/30 border-t-yellow-400 rounded-full animate-spin" />
+                                                <div className="w-4 h-4 border-2 border-warning/30 border-t-warning rounded-full animate-spin" />
                                                 ) : (
                                                 <Save size={16} />
                                                 )}
@@ -474,7 +514,7 @@ export default function PortfolioPage() {
 
                                         {/* Paper Trade Simulation Panel (if pending) */}
                                         {(trade.status === "PENDING_WEB3_SIGNATURE" || trade.status === "PENDING") && (
-                                        <div className="md:col-span-2 mt-2 p-6 glass-panel bg-warning/5 border border-warning/20 rounded-sm flex flex-col md:flex-row items-center justify-between gap-6 shadow-[0_0_30px_rgba(245,158,11,0.05)] relative overflow-hidden">
+                                        <div className="md:col-span-2 mt-2 p-6 glass-panel bg-warning/5 border border-warning/20 rounded-sm flex flex-col md:flex-row items-center justify-between gap-6 shadow-[0_0_30px_rgba(var(--warning),0.05)] relative overflow-hidden">
                                             <div className="absolute top-0 right-0 w-32 h-32 bg-warning/10 blur-[40px]" />
                                             <div className="relative z-10">
                                                 <h4 className="text-sm font-bold text-warning flex items-center gap-2 tracking-widest uppercase font-mono mb-2">
@@ -492,7 +532,7 @@ export default function PortfolioPage() {
                                             <button
                                                 onClick={() => handleWeb3Sign(trade)}
                                                 disabled={signingTradeId === trade.id}
-                                                className="relative z-10 flex-shrink-0 flex items-center justify-center gap-3 bg-warning hover:bg-warning/90 text-black font-black py-3 px-8 rounded-sm transition-all disabled:opacity-50 min-w-[240px] uppercase tracking-widest text-xs shadow-[0_0_20px_rgba(245,158,11,0.3)]"
+                                                className="relative z-10 flex-shrink-0 flex items-center justify-center gap-3 bg-warning hover:bg-warning/90 text-black font-black py-3 px-8 rounded-sm transition-all disabled:opacity-50 min-w-[240px] uppercase tracking-widest text-xs shadow-[0_0_20px_rgba(var(--warning),0.3)]"
                                             >
                                                 {signingTradeId === trade.id ? (
                                                 <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />

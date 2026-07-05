@@ -53,12 +53,12 @@ export default function Dashboard() {
                 </p>
                 <div className="flex items-center gap-4 mt-2">
                     <Link href="/predictions">
-                        <button className="glass-3 rounded-xl px-6 py-3 text-sm font-bold tracking-widest uppercase text-text border border-accent-2/50 hover:bg-accent-2/10 hover:shadow-[0_0_20px_rgba(var(--accent-2),0.2)] transition-all duration-[var(--dur-hover)] ease-glide">
+                        <button className="interactive-lift glass-3 rounded-xl px-6 py-3 text-sm font-bold tracking-widest uppercase text-text border border-accent-2/50 hover:bg-accent-2/10 hover:shadow-[0_0_20px_rgba(var(--accent-2),0.2)] transition-all duration-[var(--dur-hover)] ease-glide">
                             View Models
                         </button>
                     </Link>
                     <a href="http://localhost:8000/docs" target="_blank" rel="noreferrer">
-                        <button className="glass-flat rounded-xl px-6 py-3 text-sm font-bold tracking-widest uppercase text-text-muted hover:text-text border border-text/10 hover:bg-text/5 transition-all duration-[var(--dur-hover)] ease-glide flex items-center gap-2">
+                        <button className="interactive-lift glass-flat rounded-xl px-6 py-3 text-sm font-bold tracking-widest uppercase text-text-muted hover:text-text border border-text/10 hover:bg-text/5 transition-all duration-[var(--dur-hover)] ease-glide flex items-center gap-2">
                             <Cpu size={16}/> API Docs
                         </button>
                     </a>
@@ -72,17 +72,17 @@ export default function Dashboard() {
                     <span className="text-2xl font-mono font-bold text-text">{graphData?.nodes?.length || 0}</span>
                     <span className="text-[9px] uppercase tracking-widest font-mono text-text-muted">Nodes</span>
                 </div>
-                <div className="w-28 h-28 rounded-full glass-3 border border-success/40 shadow-[0_0_30px_rgba(34,197,94,0.15)] flex flex-col items-center justify-center gap-1 mt-12 animate-[float_5s_ease-in-out_infinite_reverse]">
+                <div className="w-28 h-28 rounded-full glass-3 border border-success/40 shadow-[0_0_30px_rgba(var(--success),0.15)] flex flex-col items-center justify-center gap-1 mt-12 animate-[float_5s_ease-in-out_infinite_reverse]">
                     <Network size={18} className="text-success" />
                     <span className="text-xl font-mono font-bold text-text">{graphData?.edges?.length || 0}</span>
                     <span className="text-[8px] uppercase tracking-widest font-mono text-text-muted">Edges</span>
                 </div>
-                <div className="w-24 h-24 rounded-full glass-3 border border-warning/40 shadow-[0_0_20px_rgba(245,158,11,0.15)] flex flex-col items-center justify-center gap-1 mt-4 animate-[float_3s_ease-in-out_infinite_0.5s]">
+                <div className="w-24 h-24 rounded-full glass-3 border border-warning/40 shadow-[0_0_20px_rgba(var(--warning),0.15)] flex flex-col items-center justify-center gap-1 mt-4 animate-[float_3s_ease-in-out_infinite_0.5s]">
                     <TrendingUp size={16} className="text-warning" />
                     <span className="text-lg font-mono font-bold text-text">{(riskData?.global_confidence || 0).toFixed(1)}%</span>
                     <span className="text-[7px] uppercase tracking-widest font-mono text-text-muted">Conf</span>
                 </div>
-                <div className={`flex flex-col justify-center gap-3 glass-3 border ${validationMetrics ? 'border-success/30' : 'border-text/10'} p-4 rounded-xl w-36 shadow-[0_0_20px_rgba(34,197,94,0.05)]`}>
+                <div className={`flex flex-col justify-center gap-3 glass-3 border ${validationMetrics ? 'border-success/30' : 'border-text/10'} p-4 rounded-xl w-36 shadow-[0_0_20px_rgba(var(--success),0.05)]`}>
                     <div className="flex items-center gap-1.5">
                         <CheckCircle size={12} className={validationMetrics ? "text-success" : "text-text-muted"} />
                         <span className="text-[9px] uppercase tracking-widest font-mono text-text-muted font-black">
@@ -104,9 +104,9 @@ export default function Dashboard() {
                         </div>
                     </div>
                 </div>
-                <div className="flex flex-col justify-center gap-3 glass-3 border border-accent-1/30 p-4 rounded-xl w-36 shadow-[0_0_20px_rgba(var(--accent-1),0.05)]">
+                <div className="flex flex-col justify-center gap-3 glass-3 border border-accent-2/30 p-4 rounded-xl w-36 shadow-[0_0_20px_rgba(var(--accent-2),0.05)]">
                     <div className="flex items-center gap-1.5">
-                        <Network size={12} className="text-accent-1" />
+                        <Network size={12} className="text-accent-2" />
                         <span className="text-[9px] uppercase tracking-widest font-mono text-text-muted font-black">Topology</span>
                     </div>
                     <div className="flex flex-col gap-1.5">
@@ -166,7 +166,7 @@ export default function Dashboard() {
                     <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div className="bg-surface/50 border border-text/5 p-4 rounded-sm">
                             <div className="text-[10px] text-text-muted uppercase tracking-widest font-mono font-bold mb-2">Net Alpha (ROI)</div>
-                            <div className={`text-2xl font-black font-sans tracking-tight ${portfolio?.roi_pct > 0 ? 'text-success drop-shadow-[0_0_10px_rgba(34,197,94,0.3)]' : portfolio?.roi_pct < 0 ? 'text-danger' : 'text-text'}`}>
+                            <div className={`text-2xl font-black font-sans tracking-tight ${portfolio?.roi_pct > 0 ? 'text-success drop-shadow-[0_0_10px_rgba(var(--success),0.3)]' : portfolio?.roi_pct < 0 ? 'text-danger' : 'text-text'}`}>
                                 {portfolio?.roi_pct > 0 ? '+' : ''}{portfolio?.roi_pct?.toFixed(2) || '0.00'}%
                             </div>
                         </div>

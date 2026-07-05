@@ -1,7 +1,7 @@
 """Specialized Analyst Agents for the MoA Swarm."""
 from app.core.agents.base import BaseAgent
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, text
 from app.db.models_sqla import Asset, AssetNews, OnchainMetric
 from typing import Optional
 
@@ -19,7 +19,7 @@ class MacroEconomistAgent(BaseAgent):
         inflation = 2.5
         try:
             # Query table dynamically to avoid requiring model imports
-            res = self.db.execute("SELECT fed_rate, vix, cpi, inflation FROM macro_indicators ORDER BY timestamp DESC LIMIT 1").fetchone()
+            res = self.db.execute(text("SELECT fed_rate, vix, cpi, inflation FROM macro_indicators ORDER BY timestamp DESC LIMIT 1")).fetchone()
             if res:
                 fed_rate = res[0] if res[0] is not None else fed_rate
                 vix = res[1] if res[1] is not None else vix

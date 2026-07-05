@@ -141,6 +141,14 @@ async def prediction_broadcast_loop():
             for pred, asset in res:
                 if asset.symbol not in latest_preds:
                     latest_preds[asset.symbol] = pred
+            
+            # Sync SSOT with fresh prediction data while we have an open session
+            try:
+                from app.core.streams.binance_ws import refresh_predictions_in_ssot
+                refresh_predictions_in_ssot(db)
+            except Exception:
+                pass
+            
             db.close()
             
             predictions = []
@@ -150,7 +158,7 @@ async def prediction_broadcast_loop():
                     predictions.append({
                         "symbol": symbol,
                         "direction": pred.direction or "neutral",
-                        "confidence": round(pred.confidence, 2) if pred.confidence else 50.0,
+                        "confidence": round(pred.confidence, 2) if pred.confidence else 0.0,
                         "volatility_regime": pred.volatility_regime or "medium",
                         "model_version": pred.model_version or "stgcn-v1.0",
                         "attestation_hash": pred.attestation_hash

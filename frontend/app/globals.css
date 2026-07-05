@@ -4,16 +4,16 @@
 
 @layer base {
   :root {
-    /* LATTICE — Old Money Heritage (light). Chesterfield Rich Brown & Hunter Green from Heritage Image. */
+    /* LATTICE — Old Money Heritage (day): leather, hunter green, brass & ox-blood. */
     --background:  75  54  33;   /* Rich Leather Brown: #4B3621 */
     --surface:     53  94  59;   /* Hunter Green: #355E3B */
     --surface-2:   36  65  41;   /* Deeper Hunter Green secondary panels */
     --text:       216 202 184;   /* Tweed Beige: #D8CAB8 */
     --text-muted: 180 165 145;   /* Muted Tweed Beige/Sand */
-    --accent:     216 202 184;   /* Tweed Beige accent */
+    --accent:     197 155  82;   /* Antique Brass Gold: #C59B52 */
     --accent-2:     0  33  71;   /* Oxford Blue: #002147 */
-    --success:     90 145 102;   /* Soft Sage/Green */
-    --danger:     128   0  32;   /* Burgundy: #800020 */
+    --success:    100 158 112;   /* Sage Green, brightened for legibility on hunter green: #649E70 */
+    --danger:     150  42  46;   /* Ox-Blood Red: #962A2E */
     --warning:    218 165  32;   /* Goldenrod Brass */
 
     --ease-glide: cubic-bezier(0.22, 1, 0.36, 1);
@@ -24,17 +24,17 @@
   }
 
   .dark {
-    /* LATTICE — Obsidian Lattice (dark) */
-    --background:  38  26  15;   /* Mahogany / Dark chocolate brown */
-    --surface:     20  40  25;   /* Dark Forest/Hunter Green */
-    --surface-2:   14  28  18;   /* Deeper Dark Forest Green */
-    --text:       243 244 246;   /* Crisp white/silver */
-    --text-muted: 156 163 175;   /* Silver gray */
-    --accent:     216 184 115;   /* PERFECT antique gold preserved */
-    --accent-2:     0 229 255;   /* Cyber neon cyan */
+    /* LATTICE — Obsidian Circuit (night): near-black navy, neon violet/cyan digital realm. */
+    --background:   8  10  18;   /* Near-black navy: #080A12 */
+    --surface:     16  22  34;   /* Dark slate glass: #101622 */
+    --surface-2:   10  14  22;   /* Deeper slate */
+    --text:       236 240 245;   /* Crisp white/silver */
+    --text-muted: 148 158 173;   /* Silver gray */
+    --accent:     176  92 255;   /* Neon violet: #B05CFF */
+    --accent-2:     0 229 255;   /* Neon cyan: #00E5FF */
     --success:     57 255  20;   /* Neon lime green */
     --danger:     255  46  99;   /* Neon pink/red */
-    --warning:    255 170   0;   /* Neon safety orange */
+    --warning:    255 170   0;   /* Neon amber */
   }
 
   html, body {
@@ -45,12 +45,21 @@
     transition: background-color 500ms ease, color 500ms ease;
   }
 
+  /* Day: warm wood-bark grain with a subtle knot. */
   body {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Crect width='160' height='160' fill='none'/%3E%3Cpath d='M8,0 C12,40 2,80 10,120 C4,140 15,160 6,160 M28,0 C22,50 35,110 24,160 M52,0 C42,60 58,110 46,160 M78,0 C85,50 68,110 80,160 M102,0 C92,55 110,115 98,160 M128,0 C135,50 120,110 132,160 M152,0 C144,50 155,100 148,160' stroke='%232c1e11' stroke-width='1.2' fill='none'/%3E%3Cpath d='M18,0 C12,50 25,110 14,160 M38,0 C45,65 30,120 42,160 M68,0 C58,50 78,110 60,160 M90,0 Q105,75 88,160 M115,0 Q98,80 118,160 M142,0 Q148,70 138,160 M160,0 C155,45 165,95 158,160' stroke='%23382717' stroke-width='0.8' fill='none'/%3E%3Cpath d='M4,10 L6,50 M12,120 L10,155 M32,30 L30,80 M56,90 L58,140 M72,20 L75,70 M92,100 L90,150 M110,40 L112,90 M135,80 L132,130 M148,15 L145,60' stroke='%231f1309' stroke-width='0.6' fill='none'/%3E%3Cpath d='M12,30 Q16,65 10,95 M44,110 Q50,135 42,160 M82,60 Q88,95 80,125 M122,100 Q128,130 120,160 M148,80 Q152,110 144,140' stroke='%235d452d' stroke-width='0.5' fill='none'/%3E%3Cpath d='M22,10 Q18,40 26,80 M60,50 Q66,85 58,120 M98,10 Q104,45 96,80 M138,40 Q144,75 136,110' stroke='%236e5237' stroke-width='0.4' fill='none'/%3E%3C/svg%3E") !important;
-    background-size: 160px 160px !important;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'%3E%3Crect width='200' height='200' fill='none'/%3E%3Cpath d='M10,0 C18,45 4,95 16,140 C6,170 22,200 10,200 M34,0 C26,55 42,110 28,160 C36,185 24,200 34,200 M60,0 C50,60 66,115 52,165 M86,0 C96,55 78,110 92,160 M112,0 C102,60 120,115 106,165 M140,0 C150,55 132,110 146,160 M166,0 C156,60 174,110 160,160 M190,0 C182,50 196,100 188,160' stroke='%232c1e11' stroke-width='1.4' fill='none'/%3E%3Cpath d='M22,0 C16,60 30,120 20,200 M48,0 C56,70 40,130 50,200 M74,0 C66,65 82,125 72,200 M100,0 Q118,90 98,200 M126,0 Q108,95 128,200 M154,0 Q162,85 150,200 M180,0 C174,55 186,105 178,200' stroke='%23382717' stroke-width='0.9' fill='none'/%3E%3Ccircle cx='100' cy='100' r='14' stroke='%233d2a18' stroke-width='1' fill='none'/%3E%3Ccircle cx='100' cy='100' r='22' stroke='%233d2a18' stroke-width='0.6' fill='none' opacity='0.6'/%3E%3Ccircle cx='100' cy='100' r='30' stroke='%233d2a18' stroke-width='0.4' fill='none' opacity='0.4'/%3E%3Cpath d='M6,20 L10,60 M20,140 L16,190 M40,40 L36,90 M64,110 L68,160 M90,30 L94,80 M118,120 L114,170 M144,50 L148,100 M172,90 L168,140' stroke='%231f1309' stroke-width='0.5' fill='none'/%3E%3C/svg%3E") !important;
+    background-size: 200px 200px !important;
+  }
+
+  /* Night: faint cyan/violet circuit-grid — a digital network, not dim wood. */
+  .dark body {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cpath d='M0,30 H120 M0,90 H120 M30,0 V120 M90,0 V120' stroke='%2300e5ff' stroke-width='0.4' fill='none' opacity='0.5'/%3E%3Cpath d='M0,0 L120,120 M120,0 L0,120' stroke='%23b05cff' stroke-width='0.25' fill='none' opacity='0.18'/%3E%3Ccircle cx='30' cy='30' r='1.6' fill='%2300e5ff' opacity='0.6'/%3E%3Ccircle cx='90' cy='90' r='1.6' fill='%23b05cff' opacity='0.6'/%3E%3Ccircle cx='90' cy='30' r='1.2' fill='%2300e5ff' opacity='0.4'/%3E%3Ccircle cx='30' cy='90' r='1.2' fill='%23b05cff' opacity='0.4'/%3E%3C/svg%3E") !important;
+    background-size: 120px 120px !important;
   }
 
   h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 700; letter-spacing: -0.01em; }
+  /* Night headers break from day's old-money serif — bold geometric sans, no extra font load. */
+  .dark h1, .dark h2, .dark h3, .dark h4 { font-family: var(--font-sans); font-weight: 800; letter-spacing: 0.01em; }
 
   .font-data, .number {
     font-family: var(--font-mono);
@@ -77,37 +86,47 @@
 
 @layer components {
   /* Glass tiers — see Part 2.5 for the rules on when to use which */
-  .glass-flat { 
-    background-color: rgb(var(--surface-2)); 
-    border: 1px solid rgb(var(--text) / 0.08); 
+  .glass-flat {
+    background-color: rgb(var(--surface-2));
+    border: 1px solid rgb(var(--text) / 0.08);
   }
   .glass-1 {
     backdrop-filter: blur(8px) saturate(140%); -webkit-backdrop-filter: blur(8px) saturate(140%);
-    background-color: rgb(var(--surface) / 0.55); 
+    background-color: rgb(var(--surface) / 0.55);
     border: 1px solid rgb(var(--text) / 0.10);
   }
   .glass-2 {
     backdrop-filter: blur(16px) saturate(160%); -webkit-backdrop-filter: blur(16px) saturate(160%);
-    background-color: rgb(var(--surface) / 0.62); 
+    background-color: rgb(var(--surface) / 0.62);
     border: 1px solid rgb(var(--text) / 0.12);
     box-shadow: 0 8px 32px rgba(0,0,0, var(--shadow-strength, 0.18));
   }
   .glass-3 {
     backdrop-filter: blur(28px) saturate(180%); -webkit-backdrop-filter: blur(28px) saturate(180%);
-    background-color: rgb(var(--surface) / 0.72); 
+    background-color: rgb(var(--surface) / 0.72);
     border: 1px solid rgb(var(--text) / 0.16);
     box-shadow: 0 24px 64px rgba(0,0,0, var(--shadow-strength, 0.32));
   }
 
+  /* Day: fine banknote-paper fiber texture tinted tweed-beige. */
   .glass,
   .glass-flat,
   .glass-1,
   .glass-2,
   .glass-3 {
     background-color: rgb(var(--surface) / 0.96) !important;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.18 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E") !important;
-    background-size: 120px 120px !important;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='fiber'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.85  0 0 0 0 0.79  0 0 0 0 0.63  0 0 0 0.14 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23fiber)'/%3E%3C/svg%3E") !important;
+    background-size: 140px 140px !important;
     border-color: rgb(var(--text) / 0.32) !important;
+  }
+  /* Night: faint cyan/violet circuit-lattice instead of paper grain. */
+  .dark .glass,
+  .dark .glass-flat,
+  .dark .glass-1,
+  .dark .glass-2,
+  .dark .glass-3 {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Cpath d='M0,50 H100 M50,0 V100' stroke='%2300e5ff' stroke-width='0.3' opacity='0.3'/%3E%3Cpath d='M0,0 L100,100 M100,0 L0,100' stroke='%23b05cff' stroke-width='0.2' opacity='0.14'/%3E%3C/svg%3E") !important;
+    background-size: 100px 100px !important;
   }
   .dark .glass-2, .dark .glass-3 { --shadow-strength: 0.5; }
   [data-performance="lite"] .glass-1, [data-performance="lite"] .glass-2, [data-performance="lite"] .glass-3 {
@@ -117,9 +136,18 @@
     .glass-1, .glass-2, .glass-3 { background: rgb(var(--surface)); }
   }
 
-  /* Shape vocabulary — see Part 2.4 for scope/exemptions before applying these */
+  /* Shape vocabulary — distinctive but provably text-safe. Pick by content type:
+     - shape-tag: default for ALL text-bearing pills/badges/chips.
+     - shape-facet: decorative large-panel corner notch; pair with .shape-facet-safe-pad
+       on the inner content so text never sits in the clipped corner.
+     - shape-facet-sm: icon-only/decorative chrome ONLY — never a text container.
+     - shape-node: true hexagon for icon/avatar containers (fixed square aspect, no text).
+     - shape-ledger/-squircle/-hex/-seal: plain rounded-rect variants for general cards. */
+  .shape-tag { clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%); }
   .shape-facet { clip-path: polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%); }
+  .shape-facet-safe-pad { padding-bottom: 1.5rem; padding-right: 1.5rem; }
   .shape-facet-sm { clip-path: polygon(0 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%); }
+  .shape-node { clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%); }
   .shape-ledger { border-radius: 8px; }
   .shape-squircle { border-radius: 20px; }
   .shape-hex { border-radius: 12px; }
@@ -131,9 +159,20 @@
   }
   .tilt { transform-style: preserve-3d; transition: transform var(--dur-hover) var(--ease-glide); }
 
-  /* Dark Mode black-on-black border overrides */
+  /* Tactile hover-lift for cards/nav/buttons — CSS-only, no animation library. */
+  .interactive-lift {
+    transition: transform var(--dur-hover) var(--ease-glide), box-shadow var(--dur-hover) var(--ease-glide), border-color var(--dur-hover) var(--ease-glide);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .interactive-lift:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 28px rgba(0,0,0,0.18);
+    }
+  }
+
+  /* Dark Mode black-on-black border overrides, retuned to the violet/cyan accent pair */
   .dark .glass, .dark .glass-flat, .dark .glass-1, .dark .glass-2, .dark .glass-3 {
-    border-color: rgba(0, 229, 255, 0.22) !important;
+    border-color: rgba(176, 92, 255, 0.22) !important;
     box-shadow: 0 0 12px rgba(0, 229, 255, 0.15), 0 8px 32px rgba(0,0,0,0.85) !important;
   }
   .dark .border, .dark .border-border, .dark [class*="border-text/"] {
@@ -159,6 +198,13 @@
   100% { transform: translateY(0px); }
 }
 .animate-float { animation: float 6s ease-in-out infinite; }
+
+@keyframes seal-press {
+  0% { transform: scale(0.92); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(0.92); }
+}
+.animate-seal-press { animation: seal-press 1.6s var(--ease-glide) infinite; }
 
 /* Block and hide Next.js developer compilation portal indicators in custom shadow elements */
 nextjs-dev-indicator,

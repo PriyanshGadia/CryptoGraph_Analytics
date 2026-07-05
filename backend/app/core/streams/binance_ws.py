@@ -101,6 +101,29 @@ def get_global_market_state() -> Dict[str, Dict]:
     """Returns the Single Source of Truth market state for all tracked assets."""
     return GLOBAL_MARKET_STATE
 
+def refresh_predictions_in_ssot(db: Session):
+    """
+    Re-reads the latest predictions from the DB and patches the SSOT in place.
+    Call this after the inference pipeline writes new predictions so that
+    /api/assets, /api/screener, and any other SSOT-consuming endpoint
+    immediately reflect the fresh confidence scores without a server restart.
+    """
+    from app.db.models_sqla import Asset, Prediction
+    assets = db.query(Asset).all()
+    for asset in assets:
+        if asset.symbol not in GLOBAL_MARKET_STATE:
+            continue
+        pred = db.query(Prediction).filter(
+            Prediction.asset_id == asset.id
+        ).order_by(desc(Prediction.predicted_at)).first()
+        if pred:
+            GLOBAL_MARKET_STATE[asset.symbol]["predicted_direction"] = pred.direction or "neutral"
+            GLOBAL_MARKET_STATE[asset.symbol]["confidence"] = pred.confidence if pred.confidence is not None else 0.0
+            GLOBAL_MARKET_STATE[asset.symbol]["confidence_interval"] = (
+                [pred.confidence_interval_lower, pred.confidence_interval_upper]
+                if pred.confidence_interval_lower is not None else None
+            )
+
 async def binance_ws_loop(symbols: List[str]):
     # Build list of streams mapped to Binance and exclude delisted ones
     ws_symbols = []

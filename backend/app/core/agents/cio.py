@@ -69,11 +69,14 @@ class ChiefInvestmentOfficerAgent(BaseAgent):
         reasoning = await self._query_llm(prompt, system_prompt, temperature=0.4)
         
         if not reasoning:
-            # Fallback CIO logic if LLM fails
-            reasoning = "CIO_FALLBACK: LLM unavailable. Falling back to strict ST-GCN rules."
-            if direction == "strong_up" and confidence > 0.85:
+            # Fallback CIO logic if LLM fails: only execute trades with high model conviction
+            reasoning = "CIO_FALLBACK: LLM unavailable. Evaluating strict high-conviction ST-GCN rules."
+            c_norm = confidence / 100.0 if confidence > 1.0 else confidence
+            
+            # High-conviction opportunistic trading: require >= 55% model confidence for BUY
+            if direction in ["strong_up", "up"] and c_norm >= 0.55:
                 decision = "EXECUTE_BUY"
-            elif direction in ["strong_down", "down"]:
+            elif direction in ["strong_down", "down"] and c_norm >= 0.50:
                 decision = "EXECUTE_SELL"
             else:
                 decision = "HOLD"

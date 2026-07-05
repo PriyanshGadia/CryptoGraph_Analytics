@@ -49,7 +49,7 @@ class BaseAgent:
         try:
             import httpx
             print(f"[{self.name}] Rerouting to local Ollama LLaMA-3 fallback at localhost:11434...")
-            async with httpx.AsyncClient(timeout=2.0) as client:
+            async with httpx.AsyncClient(timeout=0.5) as client:
                 response = await client.post(
                     "http://127.0.0.1:11434/v1/chat/completions",
                     json={

@@ -118,19 +118,74 @@ async def execute_daily_trades():
         # Process new signals
         total_cash = portfolio.cash_balance
         new_trades = []
-        
-        # Collect all actionable signals
-        signals_to_evaluate = []
+        sor = SmartOrderRouter()
+
+        # ── AUTOMATED RISK CIRCUIT BREAKER (Stop-Loss -6.0% & Take-Profit +12.0%) ──
+        for asset in assets:
+            h = holdings.get(asset.symbol, {})
+            qty_held = h.get("qty", 0.0)
+            total_invested = h.get("total_invested", 0.0)
+            if qty_held > 0 and total_invested > 0:
+                latest_p = db.query(OHLCV).filter(OHLCV.asset_id == asset.id).order_by(desc(OHLCV.timestamp)).first()
+                if latest_p and latest_p.close:
+                    curr_val = qty_held * latest_p.close
+                    pnl_pct = (curr_val - total_invested) / total_invested
+                    
+                    circuit_triggered = None
+                    if pnl_pct <= -0.06:
+                        circuit_triggered = f"AUTOMATED STOP-LOSS CIRCUIT BREAKER: Trailing drawdown ({pnl_pct*100:.1f}%) reached threshold (-6.0%)."
+                    elif pnl_pct >= 0.12:
+                        circuit_triggered = f"AUTOMATED TAKE-PROFIT CIRCUIT BREAKER: Profit gain (+{pnl_pct*100:.1f}%) reached target (+12.0%)."
+                        
+                    if circuit_triggered:
+                        route = sor.calculate_best_route(asset.symbol, "sell", curr_val, latest_p.close)
+                        avg_fill = route["average_fill_price"]
+                        gross_val = qty_held * avg_fill
+                        net_val = gross_val * (1.0 - route["slippage_pct"])
+                        realized_pnl = net_val - total_invested
+                        
+                        import uuid
+                        t_ref = f"REF-{uuid.uuid4().hex[:12].upper()}"
+                        
+                        sl_trade = TradeHistory(
+                            symbol=asset.symbol,
+                            side="sell",
+                            quantity=qty_held,
+                            price=avg_fill,
+                            total_usd=net_val,
+                            pnl=realized_pnl,
+                            reason=f"{circuit_triggered} | Executed via {route['exchange']}. Ref: {t_ref}",
+                            confidence=99.0,
+                            status="EXECUTED"
+                        )
+                        new_trades.append(sl_trade)
+                        total_cash += net_val
+                        holdings[asset.symbol] = {"qty": 0.0, "avg_price": 0.0, "total_invested": 0.0}
+                        print(f"[TradingAgent] {circuit_triggered} Sold {asset.symbol} for ${net_val:,.2f} (Realized PnL: ${realized_pnl:,.2f})")
+
+        # Collect and prioritize actionable signals (all active holdings + top 5 highest edge predictions)
+        candidate_signals = []
         for asset in assets:
             pred = db.query(Prediction).filter(Prediction.asset_id == asset.id).order_by(desc(Prediction.predicted_at)).first()
             if not pred:
                 continue
-            
-            # For efficiency and to save API tokens, we only let the swarm debate on strong signals
-            # or if we currently hold the asset and need to decide whether to sell.
             qty_held = holdings.get(asset.symbol, {}).get("qty", 0.0)
-            if (pred.direction in ["strong_up", "strong_down"]) or (qty_held > 0):
-                signals_to_evaluate.append((asset, pred))
+            candidate_signals.append((asset, pred, qty_held))
+
+        held_signals = [(asset, pred) for asset, pred, qty in candidate_signals if qty > 0]
+        high_conviction_unheld = []
+        for asset, pred, qty in candidate_signals:
+            if qty == 0:
+                c_norm = pred.confidence / 100.0 if pred.confidence > 1.0 else pred.confidence
+                if pred.direction in ["up", "strong_up"] and c_norm >= 0.62:
+                    high_conviction_unheld.append((asset, pred))
+                    
+        high_conviction_unheld.sort(key=lambda x: (x[1].confidence if x[1].confidence > 1.0 else x[1].confidence * 100.0), reverse=True)
+        signals_to_evaluate = held_signals + high_conviction_unheld[:5]
+
+        if not signals_to_evaluate:
+            print("[TradingAgent] No high-conviction trade opportunities detected (confidence >= 62%). Portfolio remaining in HOLD state.")
+            return new_trades
 
         # Run Swarm
         swarm_decisions = await _run_swarm_evaluations(db, signals_to_evaluate)
@@ -190,7 +245,7 @@ async def execute_daily_trades():
                     total_cash -= allocation_target
                     
             elif cio_decision == "EXECUTE_SELL" and qty_held > 0:
-                # SELL Signal: Liquidate position via SOR
+                # SELL Signal: Liquidate position via SOR and calculate realized PnL
                 route = sor.calculate_best_route(asset.symbol, "sell", qty_held * current_price, current_price)
                 avg_fill_price = route["average_fill_price"]
                 exchange_used = route["exchange"]
@@ -198,6 +253,9 @@ async def execute_daily_trades():
                 gross_sell_value = qty_held * avg_fill_price
                 fee_and_slippage = gross_sell_value * route["slippage_pct"]
                 net_sell_value = gross_sell_value - fee_and_slippage
+                
+                total_invested = holdings.get(asset.symbol, {}).get("total_invested", 0.0)
+                realized_pnl = net_sell_value - total_invested
                 
                 import uuid
                 trade_ref = f"REF-{uuid.uuid4().hex[:12].upper()}"
@@ -208,6 +266,7 @@ async def execute_daily_trades():
                     quantity=qty_held,
                     price=avg_fill_price,
                     total_usd=net_sell_value, # Total added to cash
+                    pnl=realized_pnl,
                     reason=f"CIO Verdict: {verdict['reasoning'][:150]}... | Routed via {exchange_used} CEX. | Trade Ref: {trade_ref}",
                     confidence=pred.confidence,
                     status="EXECUTED"

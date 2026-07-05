@@ -31,7 +31,13 @@ export default function RootLayout({
           <CurrencyProvider>
             {/* Background Texture Overlay */}
             <div className="fixed inset-0 z-[-1] pointer-events-none opacity-[0.03] dark:opacity-[0.05] bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPjxyZWN0IHdpZHRoPSI0IiBoZWlnaHQ9IjQiIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wMSIvPjxwYXRoIGQ9Ik0wIDBMMCA0TDEgNEwxIDBaTTAgM0w0IDNMNCA0TDAgNFoiIGZpbGw9IiMwMDAiIGZpbGwtb3BhY2l0eT0iMC4wNSIvPjwvc3ZnPg==')] mix-blend-overlay"></div>
-            
+
+            {/* Night-only ambient neon glow — the "digital realm" atmosphere behind every page */}
+            <div className="fixed inset-0 z-[-1] pointer-events-none hidden dark:block overflow-hidden">
+              <div className="absolute top-[-10%] left-[-5%] w-[45vw] h-[45vw] bg-accent/[0.07] rounded-full blur-[140px]" />
+              <div className="absolute bottom-[-10%] right-[-5%] w-[45vw] h-[45vw] bg-accent-2/[0.07] rounded-full blur-[140px]" />
+            </div>
+
             <div className="flex h-screen overflow-hidden bg-transparent transition-colors duration-500 p-3 pb-20 md:p-3 md:pl-20">
               {/* Sidebar: Floating */}
               <Console />

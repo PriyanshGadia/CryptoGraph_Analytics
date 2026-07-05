@@ -10,35 +10,20 @@ import Link from "next/link";
 import useSWR from "swr";
 import { fetcher } from "@/lib/api";
 import { GlassCard } from "@/components/ui/GlassCard";
+import { DirectionBadge } from "@/components/ui/DirectionBadge";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const WS_BASE = BASE.replace(/^http/, "ws");
 
-function DirectionBadge({ dir }: { dir: string }) {
-  const config: Record<string, {bg: string, text: string, label: string, border: string, shadow: string}> = {
-    strong_up:   {bg:"bg-success/10",  text:"text-success", label:"STRONG BUY", border:"border-success/30", shadow:"shadow-[0_0_10px_rgba(34,197,94,0.2)]"},
-    up:          {bg:"bg-success/5",  text:"text-success", label:"BUY", border:"border-success/20", shadow:""},
-    neutral:     {bg:"bg-text/5",   text:"text-text-muted",  label:"NEUTRAL", border:"border-text/10", shadow:""},
-    down:        {bg:"bg-danger/5",    text:"text-danger",   label:"SELL", border:"border-danger/20", shadow:""},
-    strong_down: {bg:"bg-danger/10",    text:"text-danger",   label:"STRONG SELL", border:"border-danger/30", shadow:"shadow-[0_0_10px_rgba(239,68,68,0.2)]"},
-  }
-  const c = config[dir] || config["neutral"]
-  return (
-    <span className={`inline-flex items-center justify-center px-3 py-1 rounded-sm text-[10px] font-black uppercase tracking-widest border ${c.bg} ${c.text} ${c.border} ${c.shadow}`}>
-      {c.label}
-    </span>
-  )
-}
-
 function VolatilityChip({ regime }: { regime: string }) {
   const colors: Record<string,string> = {
-    low:"bg-success/10 text-success border-success/20 shadow-[0_0_5px_rgba(34,197,94,0.2)]", 
+    low:"bg-success/10 text-success border-success/20 shadow-[0_0_5px_rgba(34,197,94,0.2)]",
     medium:"bg-accent/10 text-accent border-accent/20 shadow-[0_0_5px_rgba(var(--accent),0.2)]",
-    high:"bg-orange-500/10 text-orange-400 border-orange-500/20 shadow-[0_0_5px_rgba(249,115,22,0.2)]", 
+    high:"bg-orange-500/10 text-orange-400 border-orange-500/20 shadow-[0_0_5px_rgba(249,115,22,0.2)]",
     extreme:"bg-danger/10 text-danger border-danger/20 shadow-[0_0_5px_rgba(239,68,68,0.2)]"
   }
   return (
-    <span className={`px-2 py-0.5 rounded-sm text-[10px] border font-black uppercase tracking-widest ${colors[regime] || colors.medium}`}>
+    <span className={`px-2 py-0.5 shape-tag text-[10px] border font-black uppercase tracking-widest ${colors[regime] || colors.medium}`}>
       {regime}
     </span>
   )
@@ -419,15 +404,18 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
                 <div className="flex items-center gap-4 glass bg-surface/50 border border-text/10 rounded-sm p-4 w-full md:w-auto justify-between shadow-inner">
                     <div className="flex items-center gap-3">
                         <span className="text-[9px] text-text-muted uppercase font-black tracking-widest">Latest Signal</span>
-                        <DirectionBadge dir={latestPred.direction || "neutral"} />
+                        <DirectionBadge direction={latestPred.direction || "neutral"} />
                     </div>
                     <div className="w-px h-6 bg-text/10 hidden md:block" />
                     <div className="flex flex-col items-end">
-                        <span className="text-[9px] text-text-muted uppercase tracking-widest mb-1.5 font-black">Confidence</span>
-                        <div className="w-24 h-1.5 bg-black/50 rounded-full overflow-hidden border border-text/5">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-[9px] text-text-muted uppercase tracking-widest font-black">Confidence</span>
+                          <span className="text-xs font-mono font-bold text-text">{(latestPred.confidence || 0).toFixed(1)}%</span>
+                        </div>
+                        <div className="w-28 h-1.5 bg-black/50 rounded-full overflow-hidden border border-text/5">
                         <div 
                             className="h-full bg-accent shadow-[0_0_5px_rgba(var(--accent),0.5)]" 
-                            style={{ width: `${latestPred.confidence || 0}%` }}
+                            style={{ width: `${Math.min(100, Math.max(0, latestPred.confidence || 0))}%` }}
                         />
                         </div>
                     </div>
@@ -599,14 +587,14 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
                       <span className="text-[10px] text-text-muted uppercase tracking-widest font-mono font-black">RSI (14)</span>
                       <div className="flex items-center gap-4">
                           <span className="font-mono font-black text-text text-xl">{liveRSI.toFixed(2)}</span>
-                          <DirectionBadge dir={liveRSI > 60 ? "down" : liveRSI < 40 ? "up" : "neutral"} />
+                          <DirectionBadge direction={liveRSI > 60 ? "down" : liveRSI < 40 ? "up" : "neutral"} />
                       </div>
                   </div>
                   <div className="flex justify-between items-center glass bg-black/40 p-4 rounded-sm border border-text/5 hover:border-text/20 transition-colors shadow-inner">
                       <span className="text-[10px] text-text-muted uppercase tracking-widest font-mono font-black">MACD Div</span>
                       <div className="flex items-center gap-4">
                           <span className="font-mono font-black text-text text-xl">{liveMACD.toFixed(4)}</span>
-                          <DirectionBadge dir={liveMACD > 0 ? "up" : "down"} />
+                          <DirectionBadge direction={liveMACD > 0 ? "up" : "down"} />
                       </div>
                   </div>
                   <div className="flex justify-between items-center glass bg-black/40 p-4 rounded-sm border border-text/5 hover:border-text/20 transition-colors shadow-inner">
@@ -676,7 +664,7 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
                   </div>
                   <div className="flex items-center gap-3 bg-text/5 px-4 py-2 rounded-sm border border-text/10">
                     <span className="text-2xl font-mono font-black text-accent drop-shadow-[0_0_10px_rgba(var(--accent),0.5)]">{history.summary.accuracy_pct.toFixed(0)}%</span>
-                    <span className="text-[8px] uppercase tracking-widest font-black text-text-muted">accuracy</span>
+                    <span className="text-[9px] uppercase tracking-widest font-black text-text-muted">accuracy</span>
                   </div>
                 </div>
               </div>
@@ -687,8 +675,8 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
                     <div key={i} className={`flex items-center justify-between p-4 rounded-sm border transition-colors ${i % 2 === 0 ? "glass bg-text/5 border-text/5 hover:border-text/10" : "bg-transparent border-transparent hover:bg-text/[0.02]"}`}>
                       <div className="flex items-center gap-4">
                         <span className="text-[10px] font-mono font-bold text-text-muted w-28">{p.date}</span>
-                        <div className="w-28"><DirectionBadge dir={p.direction} /></div>
-                        <span className="text-[10px] font-mono font-black text-text-muted/60 w-12">{p.confidence ? p.confidence.toFixed(0) : 0}%</span>
+                        <div className="w-28"><DirectionBadge direction={p.direction} /></div>
+                        <span className="text-[10px] font-mono font-bold text-text-muted/80 w-14 font-numeric">{(p.confidence || 0).toFixed(1)}%</span>
                       </div>
                       <div className="flex items-center gap-4">
                         <span className={`text-sm font-mono font-black ${p.actual_return > 0 ? "text-success drop-shadow-[0_0_5px_rgba(34,197,94,0.5)]" : p.actual_return < 0 ? "text-danger drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]" : "text-text-muted"}`}>
@@ -716,7 +704,7 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
               <div className="flex-1 p-8">
                 <div className="space-y-2">
                   {correlations?.map((c: any, i: number) => (
-                    <Link href={`/coin/${c.symbol}`} key={c.symbol} className="flex items-center justify-between p-4 glass bg-surface/30 hover:bg-text/5 rounded-sm border border-text/10 hover:border-text/20 transition-all group shadow-inner">
+                    <Link href={`/coin/${c.symbol}`} key={c.symbol} className="flex items-center justify-between p-4 glass bg-surface/30 hover:bg-text/5 rounded-sm border border-text/10 hover:border-text/20 interactive-lift transition-all group shadow-inner">
                       <div className="flex items-center gap-4 w-1/3">
                         <span className="text-[10px] text-text-muted font-mono font-black opacity-50">#{String(i + 1).padStart(2, '0')}</span>
                         <span className="font-mono font-black text-text group-hover:text-accent transition-colors text-lg tracking-tight">{c.symbol}</span>

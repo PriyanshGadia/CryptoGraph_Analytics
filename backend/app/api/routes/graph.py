@@ -20,9 +20,91 @@ def _compute_correlation_graph(db: Session, top_n_edges: int = 100, mode: str = 
     mode="historical_30" (last 30 days historical), mode="projected" (30 day forecast),
     mode="projected_15" (15 day forecast).
     """
-    corr_matrix = None
-    if mode.startswith("projected"):
-        # Load forecasts for all assets
+    # 1. Fetch live 30-day returns to construct the canonical graph topology (so all modes share the exact same edges)
+    since_live = datetime.now(timezone.utc) - timedelta(days=30)
+    tech_query = text("""
+        SELECT asset_id, timestamp, returns_1d
+        FROM technical_features
+        WHERE timestamp >= :since
+        ORDER BY timestamp ASC
+    """)
+    rows_live = db.execute(tech_query, {"since": since_live.isoformat()}).fetchall()
+
+    if not rows_live:
+        return [], []
+
+    df_live = pd.DataFrame(rows_live, columns=["asset_id", "timestamp", "returns_1d"])
+    df_live["date"] = df_live["timestamp"].apply(lambda x: str(x).split("T")[0] if isinstance(x, str) else str(x)[:10])
+    pivot_live = df_live.pivot_table(index="date", columns="asset_id", values="returns_1d")
+    pivot_live = pivot_live.dropna(axis=1, thresh=max(1, len(pivot_live) // 2))
+
+    if pivot_live.shape[1] < 2:
+        return [], []
+
+    live_corr = pivot_live.corr(method="pearson").fillna(0.0)
+
+    # Build upper triangle of live correlations
+    mask = np.triu(np.ones_like(live_corr, dtype=bool), k=1)
+    all_pairs = []
+    for i, aid_a in enumerate(live_corr.columns):
+        for j, aid_b in enumerate(live_corr.columns):
+            if mask[i][j]:
+                val = float(live_corr.iloc[i, j])
+                if not np.isnan(val):
+                    all_pairs.append((aid_a, aid_b, val))
+
+    # Ensure all nodes are connected (degree >= 1)
+    connected_pairs = []
+    seen_keys = set()
+    asset_strongest = {}
+    for aid_a, aid_b, val in all_pairs:
+        if aid_a not in asset_strongest or abs(val) > abs(asset_strongest[aid_a][2]):
+            asset_strongest[aid_a] = (aid_a, aid_b, val)
+        if aid_b not in asset_strongest or abs(val) > abs(asset_strongest[aid_b][2]):
+            asset_strongest[aid_b] = (aid_a, aid_b, val)
+
+    for aid, edge in asset_strongest.items():
+        key = tuple(sorted([edge[0], edge[1]]))
+        if key not in seen_keys:
+            seen_keys.add(key)
+            connected_pairs.append((edge[0], edge[1]))
+
+    # Fill remaining edge slots up to top_n_edges with top positive and negative correlations
+    remaining_pairs = [p for p in all_pairs if tuple(sorted([p[0], p[1]])) not in seen_keys]
+    pos_rem = [p for p in remaining_pairs if p[2] >= 0]
+    neg_rem = [p for p in remaining_pairs if p[2] < 0]
+    pos_rem.sort(key=lambda x: x[2], reverse=True)
+    neg_rem.sort(key=lambda x: x[2])  # Most negative first
+
+    slots_left = max(0, top_n_edges - len(connected_pairs))
+    n_pos = int(slots_left * 0.75)
+    n_neg = slots_left - n_pos
+
+    canonical_edge_pairs = list(connected_pairs)
+    for p in pos_rem[:n_pos]:
+        canonical_edge_pairs.append((p[0], p[1]))
+    for p in neg_rem[:n_neg]:
+        canonical_edge_pairs.append((p[0], p[1]))
+    if len(canonical_edge_pairs) < top_n_edges:
+        for p in pos_rem[n_pos : n_pos + (top_n_edges - len(canonical_edge_pairs))]:
+            canonical_edge_pairs.append((p[0], p[1]))
+
+    # 2. Compute mode-specific correlation matrix
+    target_corr = live_corr.copy()
+
+    if mode in ["historical", "historical_30"]:
+        days_lookback = 90 if mode == "historical" else 30
+        since = datetime.now(timezone.utc) - timedelta(days=days_lookback)
+        rows_hist = db.execute(tech_query, {"since": since.isoformat()}).fetchall()
+        if rows_hist:
+            df_h = pd.DataFrame(rows_hist, columns=["asset_id", "timestamp", "returns_1d"])
+            df_h["date"] = df_h["timestamp"].apply(lambda x: str(x).split("T")[0] if isinstance(x, str) else str(x)[:10])
+            p_h = df_h.pivot_table(index="date", columns="asset_id", values="returns_1d")
+            p_h = p_h.dropna(axis=1, thresh=max(1, len(p_h) // 2))
+            if p_h.shape[1] >= 2:
+                target_corr = p_h.corr(method="pearson").fillna(0.0)
+
+    elif mode.startswith("projected"):
         import json
         forecast_rows = db.query(SQLAForecast).all()
         if forecast_rows:
@@ -35,48 +117,20 @@ def _compute_correlation_graph(db: Session, top_n_edges: int = 100, mode: str = 
                     except Exception:
                         continue
                 if isinstance(prices, list) and len(prices) > 1:
-                    if mode == "projected_15":
-                        proj_data[f.asset_id] = prices[:15]
-                    else:
-                        proj_data[f.asset_id] = prices[:30]
+                    limit = 15 if mode == "projected_15" else 30
+                    proj_data[f.asset_id] = prices[:limit]
 
             if len(proj_data) >= 2:
                 df_proj = pd.DataFrame(proj_data)
                 df_returns = df_proj.pct_change().dropna()
                 if len(df_returns) >= 2:
-                    corr_matrix = df_returns.corr(method="pearson").fillna(0.0)
-
-        if corr_matrix is None:
-            return [], []
-
-    if corr_matrix is None:
-        # Historical and live modes, also fallback when projected data is insufficient
-        days_map = {"historical": 90, "historical_30": 30, "live": 30}
-        days_lookback = days_map.get(mode, 30)
-        since = datetime.now(timezone.utc) - timedelta(days=days_lookback)
-
-        # Batched query: get all daily returns from technical_features
-        tech_query = text("""
-            SELECT asset_id, timestamp, returns_1d
-            FROM technical_features
-            WHERE timestamp >= :since
-            ORDER BY timestamp ASC
-        """)
-        rows = db.execute(tech_query, {"since": since.isoformat()}).fetchall()
-
-        if not rows:
-            return [], []
-
-        # Build a pivot table: date x asset_id -> returns_1d
-        df = pd.DataFrame(rows, columns=["asset_id", "timestamp", "returns_1d"])
-        df["date"] = df["timestamp"].apply(lambda x: str(x).split("T")[0] if isinstance(x, str) else str(x)[:10])
-        pivot = df.pivot_table(index="date", columns="asset_id", values="returns_1d")
-        pivot = pivot.dropna(axis=1, thresh=max(1, len(pivot) // 2))
-
-        if pivot.shape[1] < 2:
-            return [], []
-
-        corr_matrix = pivot.corr(method="pearson").fillna(0.0)
+                    p_proj_corr = df_returns.corr(method="pearson")
+                    for col in target_corr.columns:
+                        for row_idx in target_corr.index:
+                            if col in p_proj_corr.columns and row_idx in p_proj_corr.index:
+                                val = p_proj_corr.loc[row_idx, col]
+                                if not np.isnan(val) and val != 0.0:
+                                    target_corr.loc[row_idx, col] = float(val)
 
     # Load asset metadata
     assets = db.query(Asset).all()
@@ -110,56 +164,7 @@ def _compute_correlation_graph(db: Session, top_n_edges: int = 100, mode: str = 
             confidence=pred.confidence if pred else 0.0,
         )
 
-    # Build edges from upper triangle of correlation matrix
-    mask = np.triu(np.ones_like(corr_matrix, dtype=bool), k=1)
-    pairs = []
-    for i, aid_a in enumerate(corr_matrix.columns):
-        for j, aid_b in enumerate(corr_matrix.columns):
-            if mask[i][j]:
-                val = corr_matrix.iloc[i, j]
-                if not np.isnan(val) and abs(val) > 0.1:
-                    pairs.append((aid_a, aid_b, float(val)))
-
-    # Ensure all nodes are connected (degree >= 1) by finding the strongest link for each asset first
-    connected_pairs = []
-    seen_pairs = set()
-    
-    asset_strongest = {}
-    for aid_a, aid_b, val in pairs:
-        if aid_a not in asset_strongest or abs(val) > abs(asset_strongest[aid_a][2]):
-            asset_strongest[aid_a] = (aid_a, aid_b, val)
-        if aid_b not in asset_strongest or abs(val) > abs(asset_strongest[aid_b][2]):
-            asset_strongest[aid_b] = (aid_a, aid_b, val)
-            
-    for aid, edge in asset_strongest.items():
-        key = tuple(sorted([edge[0], edge[1]]))
-        if key not in seen_pairs:
-            seen_pairs.add(key)
-            connected_pairs.append(edge)
-            
-    # Separate remaining pairs to mix positive and negative correlations (green and red edges)
-    remaining_pairs = [p for p in pairs if tuple(sorted([p[0], p[1]])) not in seen_pairs]
-    pos_remaining = [p for p in remaining_pairs if p[2] >= 0]
-    neg_remaining = [p for p in remaining_pairs if p[2] < 0]
-    
-    pos_remaining.sort(key=lambda x: x[2], reverse=True)
-    neg_remaining.sort(key=lambda x: x[2]) # Most negative first
-    
-    slots_left = max(0, top_n_edges - len(connected_pairs))
-    n_pos = int(slots_left * 0.75)
-    n_neg = slots_left - n_pos
-    
-    extra_pairs = []
-    extra_pairs.extend(pos_remaining[:n_pos])
-    extra_pairs.extend(neg_remaining[:n_neg])
-    
-    if len(extra_pairs) < slots_left:
-        deficit = slots_left - len(extra_pairs)
-        extra_pairs.extend(pos_remaining[n_pos : n_pos + deficit])
-        
-    pairs = connected_pairs + extra_pairs
-
-    # Load latest technical features for Motif Mining (Structural Similarity)
+    # Load latest technical features for Motif Mining
     latest_tech_query = text("""
         SELECT t1.asset_id, t1.returns_1d, t1.volatility_7d, t1.rsi_14, t1.macd, t1.macd_signal
         FROM technical_features t1
@@ -170,7 +175,7 @@ def _compute_correlation_graph(db: Session, top_n_edges: int = 100, mode: str = 
         ) t2 ON t1.asset_id = t2.asset_id AND t1.timestamp = t2.max_ts
     """)
     latest_tech_rows = db.execute(latest_tech_query).fetchall()
-    
+
     tech_vectors = {}
     for r in latest_tech_rows:
         aid = r[0]
@@ -183,18 +188,28 @@ def _compute_correlation_graph(db: Session, top_n_edges: int = 100, mode: str = 
         norm = np.linalg.norm(vec)
         tech_vectors[aid] = vec / norm if norm > 0 else np.zeros(5)
 
+    # Build edges using canonical topology
     edges = []
-    for aid_a, aid_b, weight in pairs:
+    for aid_a, aid_b in canonical_edge_pairs:
         a = asset_map.get(aid_a)
         b = asset_map.get(aid_b)
         if a and b:
-            edge_type = "positive_correlation" if weight > 0 else "negative_correlation"
-            
-            # Motif Similarity
+            if aid_a in target_corr.index and aid_b in target_corr.columns:
+                weight = float(target_corr.loc[aid_a, aid_b])
+            elif aid_b in target_corr.index and aid_a in target_corr.columns:
+                weight = float(target_corr.loc[aid_b, aid_a])
+            else:
+                weight = float(live_corr.loc[aid_a, aid_b]) if (aid_a in live_corr.index and aid_b in live_corr.columns) else 0.0
+
+            if np.isnan(weight):
+                weight = 0.0
+
+            edge_type = "positive_correlation" if weight >= 0 else "negative_correlation"
+
             vec_a = tech_vectors.get(aid_a, np.zeros(5))
             vec_b = tech_vectors.get(aid_b, np.zeros(5))
             motif_sim = float(np.dot(vec_a, vec_b))
-            
+
             edges.append(GraphEdge(
                 source=a.symbol,
                 target=b.symbol,

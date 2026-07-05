@@ -137,25 +137,48 @@ def get_coin_prediction_history(symbol: str, db: Session = Depends(get_db)):
         date_str = r[0].split("T")[0]
         price_map[date_str] = r[1]
         
+    latest_ohlcv = db.execute(text("SELECT close FROM ohlcv WHERE asset_id = :asset_id ORDER BY timestamp DESC LIMIT 1"), {"asset_id": asset.id}).fetchone()
+    latest_price = latest_ohlcv[0] if latest_ohlcv else None
+
+    # Try live websocket state for ultra-recent predictions
+    try:
+        from app.core.streams.binance_ws import get_global_market_state
+        m_state = get_global_market_state()
+        if asset.symbol in m_state and m_state[asset.symbol].get("current_price"):
+            latest_price = m_state[asset.symbol]["current_price"]
+    except Exception:
+        pass
+
     results = []
     correct_count = 0
     total_scored = 0
     conf_sum = 0
     
     for p in preds_res:
-        date_str = p[0].split("T")[0]
+        raw_ts = p[0]
+        date_str = raw_ts.split("T")[0] if "T" in raw_ts else raw_ts[:10]
         pred_date = datetime.strptime(date_str, "%Y-%m-%d")
         next_day_str = (pred_date + timedelta(days=1)).strftime("%Y-%m-%d")
         
         actual_return = None
         was_correct = None
         
-        if date_str in price_map and next_day_str in price_map:
-            close_today = price_map[date_str]
-            close_next = price_map[next_day_str]
+        close_today = price_map.get(date_str)
+        close_next = price_map.get(next_day_str)
+
+        if close_today and not close_next:
+            if latest_price and latest_price > 0:
+                close_next = latest_price
+        elif not close_today:
+            if price_map:
+                sorted_dates = sorted(price_map.keys())
+                close_today = price_map[sorted_dates[0]]
+                close_next = latest_price or price_map[sorted_dates[-1]]
+
+        if close_today and close_next and close_today > 0:
             actual_return = (close_next - close_today) / close_today
             
-            direction = p[1]
+            direction = p[1] or "neutral"
             if direction in ["up", "strong_up"] and actual_return > 0:
                 was_correct = True
             elif direction in ["down", "strong_down"] and actual_return < 0:

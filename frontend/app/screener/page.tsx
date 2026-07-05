@@ -11,20 +11,14 @@ import {
 import { TableSkeleton } from "@/components/PageSkeleton";
 import { useCurrency, CURRENCY_SYMBOLS } from "@/components/CurrencyContext";
 import { GlassCard } from "@/components/ui/GlassCard";
-import { DIRECTION_TOKENS, Direction } from "@/lib/design-tokens";
-
-const DirectionBadge = ({ direction }: { direction: string }) => {
-  const safeDirection = (direction in DIRECTION_TOKENS ? direction : "neutral") as Direction;
-  const t = DIRECTION_TOKENS[safeDirection];
-  return <span className={`text-[10px] uppercase px-3 py-1 shape-facet-sm font-bold tracking-widest border ${t.bgClass} ${t.textClass} ${t.borderClass}`} style={{ boxShadow: t.glow !== 'none' ? t.glow : undefined }}>{t.label}</span>;
-};
+import { DirectionBadge } from "@/components/ui/DirectionBadge";
 
 const VolatilityChip = ({ level }: { level: string }) => {
   const v = level?.toLowerCase() || "medium";
-  if (v === "extreme") return <span className="bg-danger/20 text-danger border border-danger/30 text-[9px] uppercase px-2 py-0.5 rounded font-black tracking-widest shadow-[0_0_5px_rgba(239,68,68,0.2)]">EXTREME</span>;
-  if (v === "high") return <span className="bg-warning/10 text-warning border border-warning/30 text-[9px] uppercase px-2 py-0.5 rounded font-bold tracking-widest">HIGH</span>;
-  if (v === "low") return <span className="bg-info/10 text-info border border-info/30 text-[9px] uppercase px-2 py-0.5 rounded font-bold tracking-widest">LOW</span>;
-  return <span className="bg-text/5 text-text-muted border border-text/10 text-[9px] uppercase px-2 py-0.5 rounded font-bold tracking-widest">MEDIUM</span>;
+  if (v === "extreme") return <span className="bg-danger/20 text-danger border border-danger/30 text-[9px] uppercase px-2 py-0.5 shape-tag font-black tracking-widest shadow-[0_0_5px_rgba(239,68,68,0.2)]">EXTREME</span>;
+  if (v === "high") return <span className="bg-warning/10 text-warning border border-warning/30 text-[9px] uppercase px-2 py-0.5 shape-tag font-bold tracking-widest">HIGH</span>;
+  if (v === "low") return <span className="bg-info/10 text-info border border-info/30 text-[9px] uppercase px-2 py-0.5 shape-tag font-bold tracking-widest">LOW</span>;
+  return <span className="bg-text/5 text-text-muted border border-text/10 text-[9px] uppercase px-2 py-0.5 shape-tag font-bold tracking-widest">MEDIUM</span>;
 };
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -41,7 +35,7 @@ function useDebounceLocal<T>(value: T, delay: number): T {
 const PresetCard = ({ icon: Icon, title, desc, onClick }: any) => (
   <button 
     onClick={onClick}
-    className="glass-flat shape-ledger hover:bg-text/5 p-5 border border-text/5 hover:border-text/20 text-left transition-all duration-[var(--dur-hover)] ease-glide flex items-start gap-4 w-full group relative overflow-hidden"
+    className="glass-flat shape-ledger interactive-lift hover:bg-text/5 p-5 border border-text/5 hover:border-text/20 text-left transition-all duration-[var(--dur-hover)] ease-glide flex items-start gap-4 w-full group relative overflow-hidden"
   >
     <div className="absolute top-0 left-0 w-full h-1 bg-text/5 group-hover:bg-accent/50 transition-colors" />
     <div className="glass bg-accent/10 text-accent p-3 rounded-sm shadow-inner group-hover:scale-110 transition-transform">
@@ -436,7 +430,7 @@ export default function ScreenerPage() {
                       <div className="flex flex-col gap-1.5 w-32">
                         <div className="flex justify-between items-center text-[10px] text-text font-mono font-bold">
                             <span>CONFIDENCE</span>
-                            <span>{(row.confidence).toFixed(0)}%</span>
+                            <span>{(row.confidence).toFixed(1)}%</span>
                         </div>
                         <div className="w-full bg-background h-1.5 rounded-full overflow-hidden border border-text/5">
                           <div className="bg-accent h-full shadow-[0_0_10px_currentColor] transition-all" style={{ width: `${row.confidence}%` }}></div>
@@ -446,8 +440,8 @@ export default function ScreenerPage() {
                     <td className="px-6 py-4 font-mono font-bold text-xs">
                       <div className="flex items-center gap-2">
                         <span className="text-text">{row.rsi_14?.toFixed(1) || 'N/A'}</span>
-                        {row.rsi_14 < 30 && <span className="text-[8px] bg-success/10 text-success px-1.5 py-0.5 rounded-sm border border-success/30 uppercase tracking-widest">OVS</span>}
-                        {row.rsi_14 > 70 && <span className="text-[8px] bg-danger/10 text-danger px-1.5 py-0.5 rounded-sm border border-danger/30 uppercase tracking-widest">OVB</span>}
+                        {row.rsi_14 < 30 && <span className="text-[9px] bg-success/10 text-success px-1.5 py-0.5 shape-tag border border-success/30 uppercase tracking-widest">OVS</span>}
+                        {row.rsi_14 > 70 && <span className="text-[9px] bg-danger/10 text-danger px-1.5 py-0.5 shape-tag border border-danger/30 uppercase tracking-widest">OVB</span>}
                       </div>
                     </td>
                     <td className={`px-6 py-4 font-mono font-black text-xs ${row.returns_7d > 0 ? "text-success" : "text-danger"}`}>
