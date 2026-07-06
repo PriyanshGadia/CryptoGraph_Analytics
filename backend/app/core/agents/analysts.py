@@ -12,21 +12,23 @@ class MacroEconomistAgent(BaseAgent):
         super().__init__(db, "MacroEconomistAgent")
         
     async def analyze(self, symbol: str) -> str:
-        # Query the latest real macroeconomic indicators from the database
-        fed_rate = 5.25
-        vix = 14.5
-        cpi = 3.1
-        inflation = 2.5
         try:
             # Query table dynamically to avoid requiring model imports
             res = self.db.execute(text("SELECT fed_rate, vix, cpi, inflation FROM macro_indicators ORDER BY timestamp DESC LIMIT 1")).fetchone()
-            if res:
-                fed_rate = res[0] if res[0] is not None else fed_rate
-                vix = res[1] if res[1] is not None else vix
-                cpi = res[2] if res[2] is not None else cpi
-                inflation = res[3] if res[3] is not None else inflation
+            if not res:
+                return "MACRO_FALLBACK: No macroeconomic data available in the system."
+                
+            fed_rate = res[0]
+            vix = res[1]
+            cpi = res[2]
+            inflation = res[3]
+            
+            if None in (fed_rate, vix, cpi, inflation):
+                return "MACRO_FALLBACK: Incomplete macroeconomic data available in the system."
+                
         except Exception as e:
             print(f"[MacroEconomistAgent] Database query error: {e}")
+            return "MACRO_FALLBACK: Macroeconomic data query failed."
             
         system_prompt = (
             "You are a seasoned Macroeconomist. You evaluate systemic risk "

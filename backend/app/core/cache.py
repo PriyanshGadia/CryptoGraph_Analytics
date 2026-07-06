@@ -1,8 +1,9 @@
 import time
 from functools import wraps
 from typing import Any, Callable
+from cachetools import LRUCache
 
-_cache: dict[str, tuple[Any, float]] = {}
+_cache = LRUCache(maxsize=1000)
 
 def cached(ttl_seconds: int = 60):
     """Simple TTL cache for API responses."""

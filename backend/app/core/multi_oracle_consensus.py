@@ -65,19 +65,15 @@ class MultiOracleConsensus:
         coinbase = self._fetch_coinbase_price(symbol)
         kraken = self._fetch_kraken_price(symbol)
         
-        prices = [p for p in [primary_price, binance, coinbase, kraken] if p is not None]
+        oracle_prices = [p for p in [binance, coinbase, kraken] if p is not None]
         
-        if len(prices) < 2:
+        if len(oracle_prices) < 2:
             print(f"[Consensus] WARNING: Insufficient oracle availability for {symbol}. Trading unsafe.")
             return False
             
-        # Calculate median price
-        prices.sort()
-        if len(prices) % 2 == 1:
-            median_price = prices[len(prices) // 2]
-        else:
-            mid = len(prices) // 2
-            median_price = (prices[mid - 1] + prices[mid]) / 2.0
+        # Calculate median price of ORACLES ONLY (excluding primary_price to avoid circular validation)
+        import statistics
+        median_price = statistics.median(oracle_prices)
             
         # Check deviation of primary against median
         deviation = abs(primary_price - median_price) / median_price

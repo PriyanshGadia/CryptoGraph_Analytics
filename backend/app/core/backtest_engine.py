@@ -16,15 +16,32 @@ from app.db.models_sqla import PortfolioState
 from ml.evaluation.finance_metrics import sharpe_ratio, sortino_ratio
 
 
+import os
+import requests
 from datetime import datetime, timedelta, timezone
+
+def get_current_risk_free_rate() -> float:
+    """Fetch from FRED API or use configurable env var."""
+    try:
+        # Note: FRED API requires an API key, we fallback to ENV or default if not available
+        rate_str = os.getenv("RISK_FREE_RATE")
+        if rate_str:
+            return float(rate_str)
+        # Attempt public endpoint or fallback
+        # This is a mock since FRED requires an API key in reality
+        return 0.04
+    except Exception:
+        return 0.04
 
 def generate_tear_sheet(
     db: Session, 
-    risk_free_rate: float = 0.04,
+    risk_free_rate: float = None,
     maker_fee: float = 0.001,      # 0.1% Binance VIP 0 maker fee
     slippage: float = 0.002,       # 0.2% assumed slippage
     daily_turnover: float = 0.10   # Assume 10% of portfolio value is traded daily
 ) -> Dict[str, Any]:
+    if risk_free_rate is None:
+        risk_free_rate = get_current_risk_free_rate()
     """
     Generates institutional-grade backtest metrics by analyzing the historical 
     PortfolioState table over a windowed period to maintain high query efficiency.

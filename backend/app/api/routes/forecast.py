@@ -51,12 +51,12 @@ async def get_forecast(request: Request, symbol: str, db: Session = Depends(get_
         OHLCV.timestamp >= since
     ).order_by(OHLCV.timestamp.asc()).all()
     
-    if not ohlcv_rows or len(ohlcv_rows) < 10:
+    if not ohlcv_rows or len(ohlcv_rows) < 30:
         return {
             "symbol": symbol.upper(),
             "error": f"Not enough data for {symbol} — only "
                      f"{len(ohlcv_rows or [])} days available. "
-                     f"Need at least 10 days.",
+                     f"Need at least 30 days.",
             "historical": [], "forecast_prices": [], "forecast_dates": [], "lower_bound": [], "upper_bound": [],
             "model_used": "unavailable", "dl_direction": "neutral", "dl_change_pct": 0.0,
             "stgcn_direction": "neutral", "stgcn_confidence": 0.0, "stgcn_volatility": "unknown",
@@ -85,6 +85,7 @@ async def get_forecast(request: Request, symbol: str, db: Session = Depends(get_
     ssot_state = get_global_market_state().get(symbol.upper(), {})
     live_price = float(ssot_state.get("current_price", 0.0))
     last_price = live_price if live_price > 0 else db_last_price
+    ssot_updated_at = ssot_state.get("updated_at", "unknown")
     
     # 3. Get ST-GCN model prediction (SSOT flagship model)
     pred = db.query(SQLAPrediction).filter(SQLAPrediction.asset_id == asset_id).order_by(desc(SQLAPrediction.predicted_at)).first()
@@ -99,7 +100,8 @@ async def get_forecast(request: Request, symbol: str, db: Session = Depends(get_
     stgcn_conf = stgcn_pred["confidence"]
 
     # 4. Cache-aware Real PyTorch LSTM / Ensemble Forecast
-    cache_key = f"{symbol}_{dates.iloc[-1].strftime('%Y-%m-%d')}_{stgcn_dir}_{round(stgcn_conf, 1)}_{round(last_price, 2)}"
+    # Includes ssot_updated_at in the key to invalidate whenever new tick arrives
+    cache_key = f"{symbol}_{dates.iloc[-1].strftime('%Y-%m-%d')}_{stgcn_dir}_{round(stgcn_conf, 1)}_{round(last_price, 2)}_{ssot_updated_at}"
     if cache_key in ml_forecast_cache:
         forecast = ml_forecast_cache[cache_key]
     else:

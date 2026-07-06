@@ -27,9 +27,12 @@ def _filter_numeric_shap(shap_values: dict) -> dict:
     result = {}
     for k, v in shap_values.items():
         fval = _safe_float(v)
-        if fval != 0.0 or v == 0 or v == 0.0:
+        if fval != 0.0:
             result[k] = fval
-    return result
+    # Sort by absolute importance
+    sorted_items = sorted(result.items(), key=lambda x: abs(x[1]), reverse=True)
+    # Return top 10
+    return dict(sorted_items[:10])
 
 
 def generate_system_explanation(symbol: str, direction: str, confidence: float,

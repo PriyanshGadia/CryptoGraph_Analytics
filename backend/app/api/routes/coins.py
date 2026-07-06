@@ -37,23 +37,22 @@ def get_coin_ohlcv(
     except Exception as e:
         print(f"Error fetching OHLCV from Binance: {e}")
         # Fallback to SQLite if Binance API fails
-        since = datetime.now(timezone.utc) - timedelta(days=365)
-        since_str = since.isoformat()
-        
         res = db.execute(text("""
             SELECT timestamp, open, high, low, close, volume
-            FROM ohlcv
-            WHERE asset_id = :asset_id AND timestamp >= :since
+            FROM (
+                SELECT timestamp, open, high, low, close, volume
+                FROM ohlcv
+                WHERE asset_id = :asset_id
+                ORDER BY timestamp DESC
+                LIMIT 1500
+            ) sub
             ORDER BY timestamp ASC
-        """), {"asset_id": asset.id, "since": since_str}).fetchall()
+        """), {"asset_id": asset.id}).fetchall()
             
         data = []
-        seen = set()
         for row in res:
-            raw_ts = int(datetime.fromisoformat(row[0]).timestamp())
-            ts = (raw_ts // 60) * 60
-            if ts in seen: continue
-            seen.add(ts)
+            # Match Binance exact structure (which provides timestamps in ms)
+            ts = int(datetime.fromisoformat(row[0]).timestamp() * 1000)
             data.append({
                 "time": ts,
                 "open": float(row[1]),
