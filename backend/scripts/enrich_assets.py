@@ -1,7 +1,16 @@
 import sqlite3
 import yfinance as yf
-import pandas as pd
 import time
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+
+@retry(
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type(Exception)
+)
+def fetch_asset_info(yf_symbol: str) -> dict:
+    ticker = yf.Ticker(yf_symbol)
+    return ticker.info
 
 def enrich_assets():
     print("Connecting to database...")
@@ -17,8 +26,7 @@ def enrich_assets():
         yf_symbol = f"{symbol}-USD"
         print(f"Fetching {yf_symbol}...")
         try:
-            ticker = yf.Ticker(yf_symbol)
-            info = ticker.info
+            info = fetch_asset_info(yf_symbol)
             
             mcap = info.get("marketCap", 0.0)
             if not mcap:

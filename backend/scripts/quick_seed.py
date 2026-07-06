@@ -119,6 +119,20 @@ def main():
     except Exception as e:
         print(f"Failed to run real prediction pipeline: {e}")
 
+    # --- Validation Layer ---
+    print("Validating seed integrity...")
+    conn = sqlite3.connect(db_path)
+    c = conn.cursor()
+    c.execute("SELECT COUNT(*) FROM assets")
+    asset_count = c.fetchone()[0]
+    c.execute("SELECT COUNT(*) FROM ohlcv")
+    ohlcv_count = c.fetchone()[0]
+    conn.close()
+
+    assert asset_count > 0, "CRITICAL ERROR: No assets were seeded into the database."
+    assert ohlcv_count > 0, "CRITICAL ERROR: No OHLCV data was seeded into the database."
+
+    print(f"Validation successful. {asset_count} assets and {ohlcv_count} OHLCV rows present.")
     print("Rapid seed complete. Frontend has true, live data!")
 
 if __name__ == "__main__":

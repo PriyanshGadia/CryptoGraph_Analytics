@@ -90,7 +90,19 @@ async def lifespan(app: FastAPI):
                 logger.info("[Scheduler] Auto-running hourly full data refresh...")
                 try:
                     db = SessionLocal()
-                    # 1. Refresh live technicals
+                    
+                    # 1a. Enrich Asset Metadata
+                    try:
+                        import sys
+                        import os
+                        scripts_path = os.path.join(os.path.dirname(__file__), "..", "..", "scripts")
+                        sys.path.append(scripts_path)
+                        from enrich_assets import enrich_assets
+                        enrich_assets()
+                    except Exception as e:
+                        logger.error(f"[Scheduler] Asset enrichment error: {e}")
+                    
+                    # 1b. Refresh live technicals
                     try:
                         from app.api.routes.screener import refresh_live_technicals
                         refresh_live_technicals(db=db)

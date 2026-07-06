@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.db.database import get_db
+from app.api.deps import verify_api_key
 from app.db.models_sqla import AppSetting
 from app.core.security import encrypt_secret, decrypt_secret
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
 
-router = APIRouter(prefix="/settings", tags=["settings"])
+router = APIRouter(prefix="/settings", tags=["settings"], dependencies=[Depends(verify_api_key)])
 
 SENSITIVE_KEYWORDS = ["key", "secret", "dsn", "password", "token"]
 

@@ -18,10 +18,17 @@ from ml.evaluation.finance_metrics import sharpe_ratio, sortino_ratio
 
 from datetime import datetime, timedelta, timezone
 
-def generate_tear_sheet(db: Session, risk_free_rate: float = 0.04) -> Dict[str, Any]:
+def generate_tear_sheet(
+    db: Session, 
+    risk_free_rate: float = 0.04,
+    maker_fee: float = 0.001,      # 0.1% Binance VIP 0 maker fee
+    slippage: float = 0.002,       # 0.2% assumed slippage
+    daily_turnover: float = 0.10   # Assume 10% of portfolio value is traded daily
+) -> Dict[str, Any]:
     """
     Generates institutional-grade backtest metrics by analyzing the historical 
     PortfolioState table over a windowed period to maintain high query efficiency.
+    Incorporates realistic trading costs (fees + slippage) applied to daily turnover.
     """
     ninety_days_ago = datetime.now(timezone.utc) - timedelta(days=90)
     states = db.query(PortfolioState).filter(
@@ -48,7 +55,12 @@ def generate_tear_sheet(db: Session, risk_free_rate: float = 0.04) -> Dict[str, 
     df.set_index("date", inplace=True)
     
     # Calculate daily returns
-    df['portfolio_return'] = df['total_value'].pct_change()
+    raw_returns = df['total_value'].pct_change()
+    
+    # Apply Realistic Trading Costs (Fees + Slippage on turned-over capital)
+    daily_trading_cost_pct = daily_turnover * (maker_fee + slippage)
+    df['portfolio_return'] = raw_returns - daily_trading_cost_pct
+    
     df['btc_return'] = df['btc_benchmark'].pct_change()
     df = df.dropna()
     
@@ -61,7 +73,8 @@ def generate_tear_sheet(db: Session, risk_free_rate: float = 0.04) -> Dict[str, 
     if days < 1:
         days = 1 # Prevent division by zero for intraday testing
         
-    total_return = (df['total_value'].iloc[-1] / df['total_value'].iloc[0]) - 1
+    # Recalculate total return from the friction-adjusted daily returns
+    total_return = (1 + df['portfolio_return']).prod() - 1
     annualized_return = (1 + total_return) ** (365 / days) - 1
     
     btc_total_return = (df['btc_benchmark'].iloc[-1] / df['btc_benchmark'].iloc[0]) - 1
