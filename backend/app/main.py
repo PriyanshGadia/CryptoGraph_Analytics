@@ -8,87 +8,44 @@ from sentry_sdk.integrations.fastapi import FastApiIntegration
 from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
 
-from app.core.config import settings
 from app.api.routes import (
     assets, predictions, graph, risk, explain,
     forecast, status, coins, performance,
     correlations, sentiment_data, screener, settings as app_settings_route,
     portfolio, stream
 )
-from app.db.database import engine, SessionLocal
-from app.db.models_sqla import Base, AppSetting
+from app.db.database import SessionLocal
+from app.db.models_sqla import AppSetting
 from app.api.routes.forecast import limiter
-from sqlalchemy import text
 
-# Explicitly create technical_features to prevent Silent ORM failures on Android Termux
-try:
-    with engine.begin() as conn:
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS technical_features (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                asset_id VARCHAR NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
-                timestamp DATETIME NOT NULL,
-                rsi_14 FLOAT,
-                returns_1d FLOAT,
-                returns_7d FLOAT,
-                volatility_7d FLOAT,
-                macd FLOAT,
-                macd_signal FLOAT,
-                atr_14 FLOAT,
-                bb_width FLOAT,
-                CONSTRAINT _tech_asset_timestamp_uc UNIQUE(asset_id, timestamp)
-            )
-        """))
-        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_technical_features_timestamp ON technical_features (timestamp)"))
-        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_technical_features_id ON technical_features (id)"))
-except Exception as e:
-    print(f"Error ensuring technical_features table: {e}")
+import logging
+import asyncio
+from contextlib import asynccontextmanager
 
-# SQLite migration: ensure all predictions columns exist (e.g. baseline_probability, t_shap_attributions, attestation_hash)
-try:
-    with engine.begin() as conn:
-        table_exists = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='predictions'")).fetchone()
-        if table_exists:
-            columns = conn.execute(text("PRAGMA table_info(predictions)")).fetchall()
-            column_names = [col[1] for col in columns]
-            if "zk_snark_proof" in column_names and "attestation_hash" not in column_names:
-                print("[Migration] Renaming predictions.zk_snark_proof to attestation_hash...")
-                conn.execute(text("ALTER TABLE predictions RENAME COLUMN zk_snark_proof TO attestation_hash"))
-            if "baseline_probability" not in column_names:
-                print("[Migration] Adding missing baseline_probability column to predictions table...")
-                conn.execute(text("ALTER TABLE predictions ADD COLUMN baseline_probability FLOAT DEFAULT 0.3333"))
-            if "t_shap_attributions" not in column_names:
-                print("[Migration] Adding missing t_shap_attributions column to predictions table...")
-                conn.execute(text("ALTER TABLE predictions ADD COLUMN t_shap_attributions TEXT"))
-            if "attestation_hash" not in column_names:
-                print("[Migration] Adding missing attestation_hash column to predictions table...")
-                conn.execute(text("ALTER TABLE predictions ADD COLUMN attestation_hash VARCHAR"))
-except Exception as e:
-    print(f"Error checking/migrating predictions columns: {e}")
+from app.core.config import settings, get_setting
 
-# Initialize Database
-Base.metadata.create_all(bind=engine)
+# Set up structured logging
+logging.basicConfig(
+    level=logging.INFO if settings.environment == "production" else logging.DEBUG,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+logger = logging.getLogger("cryptograph")
 
 # Initialize Sentry safely
-if getattr(settings, 'sentry_dsn', None):
+if getattr(settings, 'sentry_dsn', None) and settings.sentry_dsn.strip():
     dsn_str = settings.sentry_dsn.strip()
-    if dsn_str and "project_id" not in dsn_str and "your_sentry_dsn" not in dsn_str:
+    if "your_sentry_dsn" not in dsn_str:
         try:
             sentry_sdk.init(
                 dsn=dsn_str,
                 integrations=[FastApiIntegration()],
                 traces_sample_rate=0.1
             )
+            logger.info("Sentry initialized successfully.")
         except Exception as e:
-            print(f"Warning: Sentry initialization failed: {e}")
+            logger.error(f"Sentry initialization failed: {e}")
     else:
-        print("Sentry initialization skipped (DSN is placeholder or empty).")
-
-# Initialize LangSmith tracing
-os.environ["LANGCHAIN_TRACING_V2"]  = settings.langchain_tracing_v2
-if getattr(settings, 'langchain_api_key', None):
-    os.environ["LANGCHAIN_API_KEY"] = settings.langchain_api_key
-os.environ["LANGCHAIN_PROJECT"]     = settings.langchain_project
+        logger.info("Sentry initialization skipped (DSN is placeholder).")
 
 from contextlib import asynccontextmanager
 
@@ -101,80 +58,70 @@ async def lifespan(app: FastAPI):
     from app.core.config import get_setting
     
     # Startup Security Validation: Ensure API_KEY is set or fail closed
-    api_key_configured = get_setting("api_key") or getattr(settings, "api_key", None)
-    if settings.environment == "production" and not api_key_configured:
-        raise RuntimeError("[SECURITY ERROR] API_KEY is not configured in production. Server startup aborted to prevent vulnerabilities.")
-    elif not api_key_configured:
-        print("[SECURITY WARNING] API_KEY is not configured. Protected API endpoints will fail-closed (reject all calls with 403).")
+    api_key_configured = get_setting("api_key")
+    if not api_key_configured:
+        logger.error("[SECURITY ERROR] API_KEY is not configured. Server startup aborted to prevent vulnerabilities.")
+        raise RuntimeError("API_KEY must be configured to start the server.")
     
-    # Dynamic CORS Origin Fetch inside lifespan after DB initialization
-    try:
-        db = SessionLocal()
-        frontend_url_record = db.query(AppSetting).filter(AppSetting.setting_key == "FRONTEND_URL").first()
-        frontend_url = frontend_url_record.setting_value if frontend_url_record and frontend_url_record.setting_value else "http://localhost:3000"
-        db.close()
-    except Exception:
-        frontend_url = "http://localhost:3000"
-
-    dynamic_origins = ["*"] if settings.environment == "development" else [frontend_url]
-    for middleware in app.user_middleware:
-        if middleware.cls == CORSMiddleware:
-            if hasattr(middleware, "kwargs"):
-                middleware.kwargs["allow_origins"] = dynamic_origins
-
     # Populate static cache using our synchronous DB session setup
     try:
         db = SessionLocal()
         populate_static_features(db, SYMBOLS)
         db.close()
     except Exception as e:
-        print(f"Error populating static features: {e}")
+        logger.error(f"Error populating static features: {e}", exc_info=True)
         
     if os.getenv("TESTING") == "True":
         print("[Lifespan] WebSocket background tasks bypassed in testing mode.")
         yield
         return
         
+    refresh_lock = asyncio.Lock()
     async def auto_refresh_loop():
         """Background task to run the scheduler automatically every hour."""
         while True:
             await asyncio.sleep(3600)  # Sleep for 1 hour
-            print("[Scheduler] Auto-running hourly full data refresh...")
-            try:
-                db = SessionLocal()
-                # 1. Refresh live technicals
-                try:
-                    from app.api.routes.screener import refresh_live_technicals
-                    refresh_live_technicals(db=db)
-                except Exception as e:
-                    print(f"[Scheduler] Technicals error: {e}")
+            
+            if refresh_lock.locked():
+                logger.warning("[Scheduler] Previous refresh is still running. Skipping this iteration to prevent overlap.")
+                continue
                 
-                # 2. Clear response cache
+            async with refresh_lock:
+                logger.info("[Scheduler] Auto-running hourly full data refresh...")
                 try:
-                    from app.core.cache import _cache
-                    _cache.clear()
-                except Exception as e:
-                    print(f"[Scheduler] Cache error: {e}")
+                    db = SessionLocal()
+                    # 1. Refresh live technicals
+                    try:
+                        from app.api.routes.screener import refresh_live_technicals
+                        refresh_live_technicals(db=db)
+                    except Exception as e:
+                        logger.error(f"[Scheduler] Technicals error: {e}")
                     
-                # 3. Trigger prediction broadcast
-                try:
-                    from app.api.routes.stream import FORCE_PREDICTION_BROADCAST
-                    import app.api.routes.stream as stream_module
-                    stream_module.FORCE_PREDICTION_BROADCAST = True
-                except Exception as e:
-                    print(f"[Scheduler] Broadcast error: {e}")
+                    # 2. Clear response cache
+                    try:
+                        from app.core.cache import _cache
+                        _cache.clear()
+                    except Exception as e:
+                        logger.error(f"[Scheduler] Cache error: {e}")
+                        
+                    # 3. Trigger prediction broadcast
+                    try:
+                        from app.api.routes.stream import get_refresh_event
+                        get_refresh_event().set()
+                    except Exception as e:
+                        logger.error(f"[Scheduler] Broadcast error: {e}")
 
-                # 3b. Refresh SSOT prediction cache so /api/assets reflects fresh confidence
-                try:
-                    from app.core.streams.binance_ws import refresh_predictions_in_ssot
-                    refresh_predictions_in_ssot(db)
-                    print("[Scheduler] SSOT prediction cache refreshed.")
+                    # 3b. Refresh SSOT prediction cache so /api/assets reflects fresh confidence
+                    try:
+                        from app.core.streams.binance_ws import refresh_predictions_in_ssot
+                        refresh_predictions_in_ssot(db)
+                        logger.info("[Scheduler] SSOT prediction cache refreshed.")
+                    except Exception as e:
+                        logger.error(f"[Scheduler] SSOT refresh error: {e}")
                 except Exception as e:
-                    print(f"[Scheduler] SSOT refresh error: {e}")
-            except Exception as e:
-                print(f"[Scheduler] Database session error: {e}")
-            finally:
-                db.close()
+                    logger.error(f"[Scheduler] Database session error: {e}")
+                finally:
+                    db.close()
 
     # Start tasks
     binance_task = asyncio.create_task(binance_ws_loop(SYMBOLS))
@@ -189,7 +136,12 @@ async def lifespan(app: FastAPI):
     prediction_task.cancel()
     screener_task.cancel()
     refresh_task.cancel()
-    await asyncio.gather(binance_task, prediction_task, screener_task, refresh_task, return_exceptions=True)
+    
+    for task in [binance_task, prediction_task, screener_task, refresh_task]:
+        try:
+            await asyncio.wait_for(task, timeout=3.0)
+        except (asyncio.CancelledError, asyncio.TimeoutError):
+            pass
 
 app = FastAPI(
     title="ST-GCN Crypto Forecasting API",
@@ -198,10 +150,12 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+dynamic_origins = ["*"] if settings.environment == "development" else [get_setting("FRONTEND_URL", "http://localhost:3000")]
+
 # Initialize CORS Middleware at module creation
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if settings.environment == "development" else ["http://localhost:3000"],
+    allow_origins=dynamic_origins,
     allow_methods=["*"],
     allow_headers=["*"]
 )
@@ -233,6 +187,16 @@ app.include_router(stream.router, prefix="/api")
 
 @app.get("/health")
 async def health():
-    """Health check endpoint. Returns 200 OK with timestamp."""
+    """Health check endpoint. Returns 200 OK with timestamp and DB status."""
     from datetime import datetime, timezone
-    return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
+    from sqlalchemy import text
+    try:
+        db = SessionLocal()
+        db.execute(text("SELECT 1"))
+        db.close()
+        db_status = "healthy"
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        db_status = "unhealthy"
+        
+    return {"status": "ok", "db": db_status, "timestamp": datetime.now(timezone.utc).isoformat()}

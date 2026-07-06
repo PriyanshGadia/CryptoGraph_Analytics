@@ -9,7 +9,13 @@ from app.core.streams.binance_ws import get_latest_features, LIVE_OHLCV_CACHE, g
 
 router = APIRouter(prefix="/stream", tags=["stream"])
 
-FORCE_PREDICTION_BROADCAST = False
+prediction_refresh_event: asyncio.Event = None
+
+def get_refresh_event() -> asyncio.Event:
+    global prediction_refresh_event
+    if prediction_refresh_event is None:
+        prediction_refresh_event = asyncio.Event()
+    return prediction_refresh_event
 
 # Discover SYMBOLS from local database dynamically
 def get_db_symbols() -> List[str]:
@@ -43,8 +49,7 @@ SYMBOLS = get_db_symbols()
 
 @router.post("/broadcast")
 async def trigger_broadcast():
-    global FORCE_PREDICTION_BROADCAST
-    FORCE_PREDICTION_BROADCAST = True
+    get_refresh_event().set()
     return {"status": "triggered"}
 
 @router.websocket("/ticker/{symbol}")
@@ -117,14 +122,15 @@ async def stream_predictions(websocket: WebSocket):
 
 async def prediction_broadcast_loop():
     """Background task to broadcast predictions directly from SQLite database."""
-    global FORCE_PREDICTION_BROADCAST
     
     while True:
-        for _ in range(60):
-            if FORCE_PREDICTION_BROADCAST:
-                FORCE_PREDICTION_BROADCAST = False
-                break
-            await asyncio.sleep(1.0)
+        try:
+            # Wait for event to be set, or timeout every 60 seconds
+            await asyncio.wait_for(get_refresh_event().wait(), timeout=60.0)
+            get_refresh_event().clear()
+        except asyncio.TimeoutError:
+            pass # Timeout reached, proceed with broadcast
+
         
         if not connected_clients:
             continue
