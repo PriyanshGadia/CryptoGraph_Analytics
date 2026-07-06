@@ -75,6 +75,8 @@ def run_lstm_forecast(
             for _ in range(forecast_days):
                 x_in = torch.tensor(window[-LOOKBACK:], dtype=torch.float32).unsqueeze(0).unsqueeze(-1)
                 next_val = model(x_in).item()
+                # Clamp prediction to prevent autoregressive explosion
+                next_val = max(-1.0, min(2.0, next_val))
                 forecast_norm.append(next_val)
                 window.append(next_val)
                 

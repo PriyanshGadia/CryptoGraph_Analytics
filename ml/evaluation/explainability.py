@@ -219,7 +219,7 @@ def explain_all_assets(
                         .first()
                     )
                     if pred:
-                        pred.shap_values = top_5
+                        pred.t_shap_attributions = top_5
                         db_session.commit()
             except Exception as e:
                 print(f"Error updating attributions in DB for {symbol}: {e}")

@@ -83,11 +83,42 @@ class MLOpsPipeline:
             df.index = pd.to_datetime(df.index).tz_localize(None)
             proc_features[sym] = df
             
+        # Collect all historical returns to compute dynamic percentiles
+        all_returns = []
+        for sym in available_symbols:
+            df = proc_features[sym]
+            if "returns_1d" in df.columns:
+                all_returns.extend(df["returns_1d"].dropna().tolist())
+                
+        import numpy as np
+        if all_returns:
+            p20, p40, p60, p80 = np.percentile(all_returns, [20, 40, 60, 80])
+        else:
+            p20, p40, p60, p80 = -0.03, -0.01, 0.01, 0.03
+            
+        # Persist these percentiles so the inference pipeline can decode them correctly
+        try:
+            db = SessionLocal()
+            from app.db.models_sqla import AppSetting
+            import json
+            perc_setting = db.query(AppSetting).filter(AppSetting.setting_key == "dynamic_return_percentiles").first()
+            perc_json = json.dumps({"p20": p20, "p40": p40, "p60": p60, "p80": p80})
+            if perc_setting:
+                perc_setting.setting_value = perc_json
+            else:
+                perc_setting = AppSetting(setting_key="dynamic_return_percentiles", setting_value=perc_json)
+                db.add(perc_setting)
+            db.commit()
+            db.close()
+            print(f"[MLOps] Persisted dynamic return percentiles: {perc_json}")
+        except Exception as e:
+            print(f"[MLOps] Error persisting percentiles to DB: {e}")
+            
         def classify_direction(ret):
-            if ret <= -0.03: return 0
-            if ret <= -0.01: return 1
-            if ret < 0.01: return 2
-            if ret < 0.03: return 3
+            if ret <= p20: return 0
+            if ret <= p40: return 1
+            if ret < p60: return 2
+            if ret < p80: return 3
             return 4
 
         def classify_volatility(vol):

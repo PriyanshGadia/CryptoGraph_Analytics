@@ -107,7 +107,10 @@ class RiskManagerCore:
             }
 
         q = 1.0 - p                        # Loss probability
-        b = self.payoff_ratio              # Win/Loss payoff ratio
+        
+        from app.core.trading_agent import get_asset_dynamic_risk_thresholds
+        sl, tp, _ = get_asset_dynamic_risk_thresholds(self.db, asset.id)
+        b = abs(tp / sl) if sl != 0 else self.payoff_ratio  # Dynamic Win/Loss payoff ratio
 
         raw_kelly = (p * b - q) / b if b > 0 else 0.0
         raw_kelly = max(0.0, raw_kelly)

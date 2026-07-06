@@ -26,11 +26,12 @@ class Settings(BaseSettings):
     environment: str = "development"
     api_key: str = ""
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
-        extra = "ignore"
-        protected_namespaces = ()
+    model_config = {
+        "env_file": ".env",
+        "case_sensitive": False,
+        "extra": "ignore",
+        "protected_namespaces": ()
+    }
 
 settings = Settings()
 

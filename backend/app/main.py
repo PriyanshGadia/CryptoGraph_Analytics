@@ -178,9 +178,12 @@ app.add_middleware(
 
 
 
+from slowapi.middleware import SlowAPIMiddleware
+
 # Rate Limiter
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 from fastapi import Depends
 from app.api.deps import verify_api_key

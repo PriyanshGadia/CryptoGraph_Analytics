@@ -25,13 +25,23 @@ def _compute_correlation_graph(db: Session, top_n_edges: int = 100, mode: str = 
     """
     # 1. Fetch live 30-day returns to construct the canonical graph topology (so all modes share the exact same edges)
     since_live = datetime.now(timezone.utc) - timedelta(days=30)
-    tech_query = text("""
+    # Limit to top 200 assets by market cap to prevent O(N^2) memory exhaustion
+    top_assets_query = text("SELECT id FROM assets ORDER BY market_cap_usd DESC LIMIT 200")
+    top_asset_ids = [str(r[0]) for r in db.execute(top_assets_query).fetchall()]
+    if not top_asset_ids:
+        return [], []
+
+    params = {"since": since_live.isoformat()}
+    for i, aid in enumerate(top_asset_ids):
+        params[f"aid_{i}"] = aid
+
+    tech_query = text(f"""
         SELECT asset_id, timestamp, returns_1d
         FROM technical_features
-        WHERE timestamp >= :since
+        WHERE timestamp >= :since AND asset_id IN ({','.join([f':aid_{i}' for i in range(len(top_asset_ids))])})
         ORDER BY timestamp ASC
     """)
-    rows_live = db.execute(tech_query, {"since": since_live.isoformat()}).fetchall()
+    rows_live = db.execute(tech_query, params).fetchall()
 
     if not rows_live:
         return [], []
@@ -98,7 +108,9 @@ def _compute_correlation_graph(db: Session, top_n_edges: int = 100, mode: str = 
     if mode in ["historical", "historical_30"]:
         days_lookback = 90 if mode == "historical" else 30
         since = datetime.now(timezone.utc) - timedelta(days=days_lookback)
-        rows_hist = db.execute(tech_query, {"since": since.isoformat()}).fetchall()
+        hist_params = params.copy()
+        hist_params["since"] = since.isoformat()
+        rows_hist = db.execute(tech_query, hist_params).fetchall()
         if rows_hist:
             df_h = pd.DataFrame(rows_hist, columns=["asset_id", "timestamp", "returns_1d"])
             df_h["date"] = df_h["timestamp"].apply(lambda x: str(x).split("T")[0] if isinstance(x, str) else str(x)[:10])
@@ -165,6 +177,7 @@ def _compute_correlation_graph(db: Session, top_n_edges: int = 100, mode: str = 
             market_cap_usd=asset.market_cap_usd,
             predicted_direction=pred.direction if pred else "neutral",
             confidence=pred.confidence if pred else 0.0,
+            confidence_interval=[pred.confidence_interval_lower, pred.confidence_interval_upper] if (pred and pred.confidence_interval_lower is not None and pred.confidence_interval_upper is not None) else None,
         )
 
     # Load latest technical features for Motif Mining

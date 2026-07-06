@@ -6,6 +6,7 @@ from app.db.database import get_db
 from app.db.models_sqla import Asset, Prediction, AppSetting, AssetNews
 from app.db.models import ExplainResponse
 from app.core.security import decrypt_secret
+from groq import Groq
 
 router = APIRouter(prefix="/explain", tags=["explain"])
 
@@ -311,8 +312,7 @@ Explain in exactly 3-4 sentences why the model made this prediction in plain lan
             prompt = f"The model predicts {symbol} will go {direction} with {confidence:.1f}% confidence based on recent price action and market conditions. Explain in 2-3 sentences what this means for a non-technical investor."
 
         try:
-            from groq import Groq
-            client = Groq(api_key=groq_api_key)
+            client = Groq(api_key=groq_api_key, timeout=10.0)
             completion = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[{"role": "user", "content": prompt}],

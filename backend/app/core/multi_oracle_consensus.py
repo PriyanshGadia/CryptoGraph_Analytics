@@ -9,7 +9,7 @@ from typing import Dict, List, Optional
 import ccxt
 
 class MultiOracleConsensus:
-    def __init__(self, deviation_threshold_pct: float = 0.5):
+    def __init__(self, deviation_threshold_pct: float = 1.5):
         self.deviation_threshold_pct = deviation_threshold_pct / 100.0
         # Initialize CCXT exchange instances once
         self.exchanges = {
@@ -86,7 +86,7 @@ class MultiOracleConsensus:
         return True
 
 if __name__ == "__main__":
-    oracle = MultiOracleConsensus(deviation_threshold_pct=0.5)
+    oracle = MultiOracleConsensus(deviation_threshold_pct=1.5)
     # Test with live prices
     is_valid = oracle.validate_price("BTC", 65000.0)
     print(f"Consensus valid for BTC: {is_valid}")

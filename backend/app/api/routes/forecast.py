@@ -17,7 +17,7 @@ from slowapi.util import get_remote_address
 from cachetools import TTLCache
 import json
 from pathlib import Path
-root_dir = Path(__file__).resolve().parents[3]
+root_dir = Path(__file__).resolve().parents[4]
 if str(root_dir) not in sys.path:
     sys.path.insert(0, str(root_dir))
 

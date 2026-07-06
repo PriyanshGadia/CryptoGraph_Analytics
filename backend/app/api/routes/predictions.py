@@ -97,7 +97,8 @@ async def get_predictions(
             volatility_regime=pred.volatility_regime or "medium",
             predicted_at=str(pred.predicted_at or ""),
             model_version=pred.model_version or "v1.0",
-            shap_values=sv
+            shap_values=sv,
+            confidence_interval=[pred.confidence_interval_lower, pred.confidence_interval_upper] if pred.confidence_interval_lower is not None and pred.confidence_interval_upper is not None else None
         ))
         
         if len(predictions) >= limit:
@@ -134,7 +135,8 @@ async def get_prediction_history(symbol: str, db: Session = Depends(get_db)):
             volatility_regime=row.volatility_regime or "medium",
             predicted_at=str(row.predicted_at or ""),
             model_version=row.model_version or "v1.0",
-            shap_values=sv
+            shap_values=sv,
+            confidence_interval=[row.confidence_interval_lower, row.confidence_interval_upper] if row.confidence_interval_lower is not None and row.confidence_interval_upper is not None else None
         ))
         
     return PredictionHistory(symbol=symbol, predictions=preds)
@@ -155,14 +157,8 @@ async def trigger_inference(background_tasks: BackgroundTasks, api_key: str = De
             print("[Scheduler] Refreshing live technicals...")
             refresh_live_technicals(db=db)
             print("[Scheduler] Running inference pipeline...")
-            import sys
-            import os
-            python_exec = sys.executable
-            # Ensure it runs from project root by moving up from backend
-            root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../.."))
-            env = os.environ.copy()
-            env["PYTHONPATH"] = root_dir
-            subprocess.run([python_exec, "ml/pipelines/inference_pipeline.py"], cwd=root_dir, env=env, check=True)
+            from ml.pipelines.inference_pipeline import main as run_inference_main
+            run_inference_main()
             print("[Scheduler] Inference completed.")
             
             # Refresh SSOT so /api/assets immediately reflects new confidence scores

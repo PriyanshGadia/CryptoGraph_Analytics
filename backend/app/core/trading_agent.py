@@ -378,12 +378,17 @@ async def _execute_daily_trades_core():
         # Simple benchmark calculation: assume we bought 100k of BTC at epoch
         # For a true benchmark, we'd store the BTC price when the portfolio was initialized.
         # Let's just track it from the previous state relative change.
+        # Simple benchmark calculation: assume we bought 100k of BTC at epoch
         old_btc_price = 1.0
         if btc and portfolio.btc_benchmark_value > 0:
-            # Not perfectly accurate without tracking the exact BTC price at init, but works for a rolling benchmark
-            # A better way is to see what BTC returned today and apply it.
-            btc_old_record = db.query(OHLCV).filter(OHLCV.asset_id == btc.id).order_by(desc(OHLCV.timestamp)).offset(1).first()
-            if btc_old_record:
+            from datetime import timedelta
+            yesterday = datetime.now(timezone.utc) - timedelta(days=1)
+            btc_old_record = db.query(OHLCV).filter(
+                OHLCV.asset_id == btc.id,
+                OHLCV.timestamp <= yesterday
+            ).order_by(desc(OHLCV.timestamp)).first()
+            
+            if btc_old_record and btc_old_record.close > 0:
                 old_btc_price = btc_old_record.close
                 btc_return = (btc_price - old_btc_price) / old_btc_price
                 new_benchmark = portfolio.btc_benchmark_value * (1 + btc_return)
