@@ -8,13 +8,13 @@ services:
     container_name: cryptograph_backend
     ports:
       - "8000:8000"
-    env_file:
-      - ./backend/.env
     environment:
       - ENVIRONMENT=production
-      - DATABASE_PATH=/app/database/cryptograph.db
+      - API_KEY=swarm_intelligence_default_key_123
+      - FRONTEND_URL=http://localhost:3000
+    # Use internal Docker volume for SQLite to avoid permission issues with bind mounts
     volumes:
-      - ./database:/app/database
+      - cryptograph_db_data:/app/database
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -30,11 +30,13 @@ services:
     container_name: cryptograph_frontend
     ports:
       - "3000:3000"
-    env_file:
-      - ./frontend/.env.local
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_API_KEY=swarm_intelligence_default_key_123
     depends_on:
       backend:
         condition: service_healthy
     restart: unless-stopped
+
+volumes:
+  cryptograph_db_data:

@@ -162,6 +162,9 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+from prometheus_fastapi_instrumentator import Instrumentator
+Instrumentator().instrument(app).expose(app)
+
 dynamic_origins = ["*"] if settings.environment == "development" else [get_setting("FRONTEND_URL", "http://localhost:3000")]
 
 # Initialize CORS Middleware at module creation
@@ -178,22 +181,25 @@ app.add_middleware(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Register routers
-app.include_router(assets.router,      prefix="/api")
-app.include_router(predictions.router, prefix="/api")
-app.include_router(graph.router,       prefix="/api")
-app.include_router(risk.router,        prefix="/api")
-app.include_router(explain.router,     prefix="/api")
-app.include_router(forecast.router,      prefix="/api")
-app.include_router(status.router,        prefix="/api")
-app.include_router(coins.router,         prefix="/api")
-app.include_router(performance.router,   prefix="/api")
-app.include_router(correlations.router,  prefix="/api")
-app.include_router(sentiment_data.router,prefix="/api")
-app.include_router(screener.router,      prefix="/api")
-app.include_router(app_settings_route.router, prefix="/api")
-app.include_router(portfolio.router, prefix="/api")
-app.include_router(stream.router, prefix="/api")
+from fastapi import Depends
+from app.api.deps import verify_api_key
+
+# Register routers with global authentication
+app.include_router(assets.router,      prefix="/api", dependencies=[Depends(verify_api_key)])
+app.include_router(predictions.router, prefix="/api", dependencies=[Depends(verify_api_key)])
+app.include_router(graph.router,       prefix="/api", dependencies=[Depends(verify_api_key)])
+app.include_router(risk.router,        prefix="/api", dependencies=[Depends(verify_api_key)])
+app.include_router(explain.router,     prefix="/api", dependencies=[Depends(verify_api_key)])
+app.include_router(forecast.router,    prefix="/api", dependencies=[Depends(verify_api_key)])
+app.include_router(status.router,      prefix="/api", dependencies=[Depends(verify_api_key)])
+app.include_router(coins.router,       prefix="/api", dependencies=[Depends(verify_api_key)])
+app.include_router(performance.router, prefix="/api", dependencies=[Depends(verify_api_key)])
+app.include_router(correlations.router,prefix="/api", dependencies=[Depends(verify_api_key)])
+app.include_router(sentiment_data.router,prefix="/api", dependencies=[Depends(verify_api_key)])
+app.include_router(screener.router,    prefix="/api", dependencies=[Depends(verify_api_key)])
+app.include_router(app_settings_route.router, prefix="/api", dependencies=[Depends(verify_api_key)])
+app.include_router(portfolio.router,   prefix="/api", dependencies=[Depends(verify_api_key)])
+app.include_router(stream.router,      prefix="/api", dependencies=[Depends(verify_api_key)])
 
 # Lifespan context manager runs tasks automatically. No on_event('startup') needed.
 

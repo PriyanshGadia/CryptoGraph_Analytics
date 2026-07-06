@@ -24,3 +24,5 @@ torch
 websockets
 neuralprophet>=0.8.0
 alembic
+prometheus-fastapi-instrumentator
+pytest
