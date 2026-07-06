@@ -103,8 +103,8 @@ async def get_forecast(request: Request, symbol: str, db: Session = Depends(get_
     if cache_key in ml_forecast_cache:
         forecast = ml_forecast_cache[cache_key]
     else:
-        # Run actual PyTorch LSTM time-series forecast model
-        raw_forecast_res = run_ensemble_forecast(prices, dates, forecast_days=30)
+        # Run actual PyTorch LSTM time-series forecast model in a separate thread
+        raw_forecast_res = await asyncio.to_thread(run_ensemble_forecast, prices, dates, 30)
         raw_f_prices = raw_forecast_res.get("forecast_prices", [])
         
         if not raw_f_prices or raw_forecast_res.get("model_used") == "unavailable":

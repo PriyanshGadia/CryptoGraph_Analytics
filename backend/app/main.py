@@ -98,14 +98,14 @@ async def lifespan(app: FastAPI):
                         scripts_path = os.path.join(os.path.dirname(__file__), "..", "..", "scripts")
                         sys.path.append(scripts_path)
                         from enrich_assets import enrich_assets
-                        enrich_assets()
+                        await asyncio.to_thread(enrich_assets)
                     except Exception as e:
                         logger.error(f"[Scheduler] Asset enrichment error: {e}")
                     
                     # 1b. Refresh live technicals
                     try:
                         from app.api.routes.screener import refresh_live_technicals
-                        refresh_live_technicals(db=db)
+                        await asyncio.to_thread(refresh_live_technicals, db)
                     except Exception as e:
                         logger.error(f"[Scheduler] Technicals error: {e}")
                     
