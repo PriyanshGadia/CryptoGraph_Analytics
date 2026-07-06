@@ -238,6 +238,9 @@ async def binance_ws_loop(symbols: List[str]):
                         return float(ohlcv.close)
                 return 0.0
 
+    reconnect_delay = 1
+    max_reconnect_delay = 60
+
     while True:
         try:
             async with websockets.connect(ws_url) as ws:
@@ -248,6 +251,9 @@ async def binance_ws_loop(symbols: List[str]):
                 }
                 await ws.send(json.dumps(subscribe_payload))
                 logger.info(f"[BinanceWS] Connected to live kline & ticker streams for {len(ws_symbols)} assets.")
+                
+                # Reset reconnect delay on successful connection
+                reconnect_delay = 1
                 
                 while True:
                     msg = await ws.recv()
@@ -314,7 +320,10 @@ async def binance_ws_loop(symbols: List[str]):
                         logger.info(f"Fallback successful: BTC price updated to {fallback_price}")
             finally:
                 db.close()
-            await asyncio.sleep(5)
+            
+            logger.info(f"[BinanceWS] Reconnecting in {reconnect_delay} seconds...")
+            await asyncio.sleep(reconnect_delay)
+            reconnect_delay = min(reconnect_delay * 2, max_reconnect_delay)
 
 def get_latest_features() -> Dict[str, pd.DataFrame]:
     """Returns the latest 60-min window as pandas DataFrames per symbol, merged with static features."""

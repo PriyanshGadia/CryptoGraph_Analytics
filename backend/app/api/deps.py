@@ -43,4 +43,4 @@ def verify_api_key(api_key: str = Security(api_key_header)):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Could not validate credentials"
         )
-    return True
+    return api_key

@@ -31,10 +31,22 @@ logging.basicConfig(
 )
 logger = logging.getLogger("cryptograph")
 
+# Move lazy imports here
+import os
+import sys
+from app.api.routes.stream import SYMBOLS, prediction_broadcast_loop, screener_broadcast_loop, get_refresh_event
+from app.core.streams.binance_ws import binance_ws_loop, populate_static_features, refresh_predictions_in_ssot
+from app.api.routes.screener import refresh_live_technicals
+from app.core.cache import _cache
+scripts_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "scripts"))
+if scripts_path not in sys.path:
+    sys.path.append(scripts_path)
+from enrich_assets import enrich_assets
+
 # Initialize Sentry safely
 if getattr(settings, 'sentry_dsn', None) and settings.sentry_dsn.strip():
     dsn_str = settings.sentry_dsn.strip()
-    if "your_sentry_dsn" not in dsn_str:
+    if dsn_str.startswith("http") and "@" in dsn_str:  # Basic DSN format validation
         try:
             sentry_sdk.init(
                 dsn=dsn_str,
@@ -45,18 +57,10 @@ if getattr(settings, 'sentry_dsn', None) and settings.sentry_dsn.strip():
         except Exception as e:
             logger.error(f"Sentry initialization failed: {e}")
     else:
-        logger.info("Sentry initialization skipped (DSN is placeholder).")
-
-from contextlib import asynccontextmanager
+        logger.info("Sentry initialization skipped (DSN is invalid or placeholder).")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    import os
-    import asyncio
-    from app.api.routes.stream import SYMBOLS, prediction_broadcast_loop, screener_broadcast_loop
-    from app.core.streams.binance_ws import binance_ws_loop, populate_static_features
-    from app.core.config import get_setting
-    
     # Startup Security Validation: Ensure API_KEY is set or fail closed
     api_key_configured = get_setting("api_key")
     if not api_key_configured:
@@ -88,39 +92,30 @@ async def lifespan(app: FastAPI):
             
             # 1a. Enrich Asset Metadata
             try:
-                import sys
-                import os
-                scripts_path = os.path.join(os.path.dirname(__file__), "..", "..", "scripts")
-                sys.path.append(scripts_path)
-                from enrich_assets import enrich_assets
                 await asyncio.to_thread(enrich_assets)
             except Exception as e:
-                logger.error(f"[Scheduler] Asset enrichment error: {e}")
+                logger.error(f"[Scheduler] Asset enrichment error: {e}", exc_info=True)
             
             # 1b. Refresh live technicals
             try:
-                from app.api.routes.screener import refresh_live_technicals
                 await asyncio.to_thread(refresh_live_technicals, db)
             except Exception as e:
-                logger.error(f"[Scheduler] Technicals error: {e}")
+                logger.error(f"[Scheduler] Technicals error: {e}", exc_info=True)
             
             # 2. Clear response cache
             try:
-                from app.core.cache import _cache
                 _cache.clear()
             except Exception as e:
                 logger.error(f"[Scheduler] Cache error: {e}")
                 
             # 3. Trigger prediction broadcast
             try:
-                from app.api.routes.stream import get_refresh_event
                 get_refresh_event().set()
             except Exception as e:
                 logger.error(f"[Scheduler] Broadcast error: {e}")
 
             # 3b. Refresh SSOT prediction cache so /api/assets reflects fresh confidence
             try:
-                from app.core.streams.binance_ws import refresh_predictions_in_ssot
                 refresh_predictions_in_ssot(db)
                 logger.info("[Scheduler] SSOT prediction cache refreshed.")
             except Exception as e:
@@ -128,7 +123,10 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error(f"[Scheduler] Database session error: {e}")
         finally:
-            db.close()
+            try:
+                db.close()
+            except:
+                pass
 
     # Schedule the refresh job to run every hour
     scheduler.add_job(scheduled_refresh_job, 'interval', hours=1, max_instances=1)
@@ -139,22 +137,28 @@ async def lifespan(app: FastAPI):
     prediction_task = asyncio.create_task(prediction_broadcast_loop())
     screener_task = asyncio.create_task(screener_broadcast_loop())
     
-    yield
-    
-    # Clean shutdown using shield to prevent brutal termination
-    logger.info("[Lifespan] Shutting down services safely...")
-    scheduler.shutdown(wait=False)
-    
-    binance_task.cancel()
-    prediction_task.cancel()
-    screener_task.cancel()
-    
-    for task in [binance_task, prediction_task, screener_task]:
+    try:
+        yield
+    finally:
+        # Clean shutdown using shield to prevent brutal termination
+        logger.info("[Lifespan] Shutting down services safely...")
         try:
-            # Shield the cleanup so it isn't interrupted by uvicorn's strict timeout
-            await asyncio.shield(asyncio.wait_for(task, timeout=5.0))
-        except (asyncio.CancelledError, asyncio.TimeoutError):
-            pass
+            scheduler.shutdown(wait=False)
+        except Exception as e:
+            logger.error(f"[Lifespan] Error shutting down scheduler: {e}")
+        
+        binance_task.cancel()
+        prediction_task.cancel()
+        screener_task.cancel()
+        
+        for task in [binance_task, prediction_task, screener_task]:
+            try:
+                # Shield the cleanup so it isn't interrupted by uvicorn's strict timeout
+                await asyncio.shield(asyncio.wait_for(task, timeout=2.0))
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                pass
+            except Exception as e:
+                logger.error(f"[Lifespan] Error awaiting cancelled task: {e}")
 
 app = FastAPI(
     title="ST-GCN Crypto Forecasting API",

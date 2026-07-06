@@ -79,30 +79,35 @@ def get_coin_indicators(
     since_str = since.isoformat()
     
     res = db.execute(text("""
-        SELECT timestamp, rsi_14, macd, macd_signal, atr_14, bb_width, returns_1d, returns_7d, volatility_7d
+        SELECT 
+            strftime('%Y-%m-%dT%H:00:00Z', timestamp) as bucket,
+            AVG(rsi_14), AVG(macd), AVG(macd_signal), AVG(atr_14), 
+            AVG(bb_width), AVG(returns_1d), AVG(returns_7d), AVG(volatility_7d)
         FROM technical_features
         WHERE asset_id = :asset_id AND timestamp >= :since
-        ORDER BY timestamp ASC
+        GROUP BY bucket
+        ORDER BY bucket ASC
     """), {"asset_id": asset.id, "since": since_str}).fetchall()
         
     data = []
-    seen = set()
     for row in res:
-        # Enforce strict 1-hour time bucketing (reduce data volume by 60x to prevent OOM)
-        raw_ts = int(datetime.fromisoformat(row[0]).timestamp())
-        ts = (raw_ts // 3600) * 3600
-        if ts in seen: continue
-        seen.add(ts)
+        # Proper mathematical aggregation per hour
+        try:
+            ts_dt = datetime.strptime(row[0], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+            ts = int(ts_dt.timestamp())
+        except Exception:
+            continue
+            
         data.append({
             "time": ts,
-            "rsi_14": row[1],
-            "macd": row[2],
-            "macd_signal": row[3],
-            "atr_14": row[4],
-            "bb_width": row[5],
-            "returns_1d": row[6],
-            "returns_7d": row[7],
-            "volatility_7d": row[8],
+            "rsi_14": row[1] if row[1] is not None else 50.0,
+            "macd": row[2] if row[2] is not None else 0.0,
+            "macd_signal": row[3] if row[3] is not None else 0.0,
+            "atr_14": row[4] if row[4] is not None else 0.0,
+            "bb_width": row[5] if row[5] is not None else 0.0,
+            "returns_1d": row[6] if row[6] is not None else 0.0,
+            "returns_7d": row[7] if row[7] is not None else 0.0,
+            "volatility_7d": row[8] if row[8] is not None else 0.0,
         })
         
     return data
@@ -234,19 +239,17 @@ def get_coin_correlations(symbol: str, db: Session = Depends(get_db)):
     since = now - timedelta(days=90)
     
     res = db.execute(text("""
-        SELECT asset_id, timestamp, returns_1d
+        SELECT asset_id, strftime('%Y-%m-%d', timestamp) as date, AVG(returns_1d) as mean_ret
         FROM technical_features
         WHERE timestamp >= :since
+        GROUP BY asset_id, date
     """), {"since": since.isoformat()}).fetchall()
     
     if not res:
         return []
         
-    all_data = [{"asset_id": r[0], "timestamp": r[1], "returns_1d": r[2]} for r in res]
+    all_data = [{"asset_id": r[0], "date": r[1], "returns_1d": r[2]} for r in res]
     df = pd.DataFrame(all_data)
-    
-    # Force daily bucketing to avoid pivoting millions of rows and crashing memory
-    df['date'] = df['timestamp'].apply(lambda x: x.split("T")[0])
     
     # We take the mean daily return to aggregate multiple data points into 1 row per day per asset
     pivot = df.pivot_table(index='date', columns='asset_id', values='returns_1d', aggfunc='mean')

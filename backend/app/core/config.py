@@ -36,25 +36,31 @@ class Settings(BaseSettings):
 settings = Settings()
 
 
+from app.db.database import SessionLocal
+from app.db.models_sqla import AppSetting
+from app.core.security import decrypt_secret
+
+_settings_cache = {}
+
 def get_setting(key: str, default: str = None) -> Optional[str]:
     """
     Fetches a setting value with DB-first priority:
     1. Checks the app_settings SQLite table (user-configured via Settings page)
     2. Falls back to the pydantic Settings object (.env / defaults)
     
-    This ensures API keys saved through the UI are actually used.
+    Results are cached in-memory to prevent rapid DB queries and decryption overhead.
     """
+    if key in _settings_cache:
+        return _settings_cache[key]
+        
     try:
-        from app.db.database import SessionLocal
-        from app.db.models_sqla import AppSetting
-        from app.core.security import decrypt_secret
-
         db = SessionLocal()
         try:
             record = db.query(AppSetting).filter(AppSetting.setting_key == key).first()
             if record and record.setting_value:
                 value = decrypt_secret(record.setting_value)
                 if value:
+                    _settings_cache[key] = value
                     return value
         finally:
             db.close()
@@ -64,6 +70,7 @@ def get_setting(key: str, default: str = None) -> Optional[str]:
     # Fallback to pydantic settings
     env_val = getattr(settings, key, None)
     if env_val:
+        _settings_cache[key] = env_val
         return env_val
 
     return default
