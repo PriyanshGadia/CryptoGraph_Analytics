@@ -1,6 +1,6 @@
 import uuid
 from sqlalchemy import Column, String, Float, DateTime, Integer, JSON, ForeignKey, UniqueConstraint
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, validates
 from app.db.database import Base
 from sqlalchemy.sql import func
 
@@ -99,12 +99,25 @@ class Prediction(Base):
     volatility_regime = Column(String)
     shap_values = Column(JSON)  # Legacy SHAP
     model_version = Column(String)
+    baseline_probability = Column(Float, default=0.3333, nullable=True)  # Expected random-guess baseline probability
     
     # Phase 9: Algorithmic Transparency Ledger (XAI & Inference Attestation)
     t_shap_attributions = Column(JSON, nullable=True) # Topological Shapley feature importance
     attestation_hash = Column(String, nullable=True) # Cryptographic attestation of unmodified inference
 
     asset = relationship("Asset", back_populates="predictions")
+
+    @validates("confidence")
+    def validate_confidence(self, key, value):
+        if value is None:
+            return None
+        val = float(value)
+        # Enforce 0.0 - 100.0 percentage scale at ingestion boundary
+        if 0.0 <= val <= 1.0:
+            val = val * 100.0
+        if not (0.0 <= val <= 100.0):
+            raise ValueError(f"Confidence value {value} out of valid percentage range [0.0, 100.0]")
+        return round(val, 2)
 
 class PortfolioState(Base):
     __tablename__ = "portfolio_state"

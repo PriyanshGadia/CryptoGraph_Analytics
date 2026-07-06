@@ -259,6 +259,7 @@ def run_inference() -> dict:
             "volatility_regime": vol_regime,
             "predicted_at": timestamp_now,
             "model_version": model_version,
+            "baseline_probability": 0.3333,
             "t_shap_attributions": json.dumps(xai_result),
             "attestation_hash": attestation_result["attestation_hash"]
         })
@@ -294,6 +295,7 @@ def run_inference() -> dict:
                     pred["volatility_regime"],  # volatility_regime
                     json.dumps({"t_shap": pred["t_shap_attributions"], "attestation_hash": pred["attestation_hash"]}), # shap_values
                     pred["model_version"],      # model_version
+                    pred["baseline_probability"],# baseline_probability
                     pred["t_shap_attributions"],# t_shap_attributions
                     pred["attestation_hash"]    # attestation_hash
                 ))
@@ -302,8 +304,8 @@ def run_inference() -> dict:
                 cursor.executemany("""
                     INSERT INTO predictions
                         (asset_id, timestamp, predicted_at, direction,
-                         confidence, volatility_regime, shap_values, model_version, t_shap_attributions, attestation_hash)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         confidence, volatility_regime, shap_values, model_version, baseline_probability, t_shap_attributions, attestation_hash)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, records)
                 conn.commit()
             

@@ -5,6 +5,7 @@ Reads latest ST-GCN predictions and manages a virtual portfolio based on signals
 
 from datetime import datetime, timezone
 import asyncio
+import threading
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from app.db.database import SessionLocal
@@ -12,11 +13,37 @@ from app.db.models_sqla import Asset, Prediction, PortfolioState, TradeHistory, 
 from app.core.agents.analysts import MacroEconomistAgent, OnChainDetectiveAgent, SentimentAnalystAgent
 from app.core.agents.cio import ChiefInvestmentOfficerAgent
 from app.core.risk_manager import RiskManagerCore
+import numpy as np
 from app.core.smart_order_router import SmartOrderRouter
 from app.core.proof_of_performance import generate_daily_proof
 from app.core.multi_oracle_consensus import MultiOracleConsensus
 
 _oracle = MultiOracleConsensus(deviation_threshold_pct=0.5)
+_TRADING_LOCK = threading.Lock()
+
+
+def get_asset_dynamic_risk_thresholds(db: Session, asset_id: int) -> tuple[float, float, float]:
+    """
+    Calculates dynamic stop-loss, take-profit, and conviction thresholds per asset
+    scaled by rolling 7-day log volatility.
+    Returns: (stop_loss_pct, take_profit_pct, min_conviction_threshold)
+    """
+    recent = db.query(OHLCV).filter(OHLCV.asset_id == asset_id).order_by(desc(OHLCV.timestamp)).limit(14).all()
+    if len(recent) >= 3:
+        closes = [r.close for r in recent if r.close]
+        returns = np.diff(np.log(closes)) if len(closes) >= 2 else np.array([0.03])
+        vol_7d = float(np.std(returns)) if len(returns) > 0 else 0.03
+    else:
+        vol_7d = 0.03
+
+    # Dynamic stop loss: -1.5 * daily vol scaled to week, clamped between -4.0% and -12.0%
+    stop_loss = -max(0.04, min(0.12, vol_7d * np.sqrt(7) * 1.5))
+    # Dynamic take profit: 2:1 reward-to-risk ratio relative to stop loss, clamped between +8.0% and +24.0%
+    take_profit = max(0.08, min(0.24, abs(stop_loss) * 2.0))
+    # Dynamic conviction threshold: adapts between 0.58 and 0.70 based on volatility
+    min_conviction = max(0.58, min(0.70, 0.60 + vol_7d * 2.0))
+
+    return stop_loss, take_profit, min_conviction
 
 async def _run_swarm_evaluations(db: Session, signals: list):
     """Run the MoA swarm for a list of (asset, prediction) tuples."""
@@ -71,7 +98,34 @@ async def execute_daily_trades():
     2. Runs the Mixture-of-Agents swarm to debate the trade.
     3. Executes paper trades based on the CIO's decision.
     4. Updates PortfolioState.
+    Protected against concurrent execution by a non-blocking re-entrancy lock.
     """
+    if not _TRADING_LOCK.acquire(blocking=False):
+        print("[TradingAgent] Trade execution cycle already in progress. Skipping concurrent run.")
+        return {"status": "skipped", "reason": "Trade execution cycle already in progress"}
+
+    try:
+        return await _execute_daily_trades_core()
+    finally:
+        _TRADING_LOCK.release()
+
+
+def run_autonomous_trading_cycle():
+    """
+    Synchronous entry point for trade execution cycles.
+    """
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            return asyncio.run_coroutine_threadsafe(execute_daily_trades(), loop).result(timeout=120)
+        else:
+            return asyncio.run(execute_daily_trades())
+    except Exception as e:
+        print(f"[TradingAgent] Direct execution error: {e}")
+        return asyncio.run(execute_daily_trades())
+
+
+async def _execute_daily_trades_core():
     db: Session = SessionLocal()
     try:
         # Get current portfolio state
@@ -123,7 +177,7 @@ async def execute_daily_trades():
         new_trades = []
         sor = SmartOrderRouter()
 
-        # ── AUTOMATED RISK CIRCUIT BREAKER (Stop-Loss -6.0% & Take-Profit +12.0%) ──
+        # ── AUTOMATED DYNAMIC RISK CIRCUIT BREAKER (Volatility-Adapted Stop-Loss & Take-Profit) ──
         for asset in assets:
             h = holdings.get(asset.symbol, {})
             qty_held = h.get("qty", 0.0)
@@ -134,11 +188,13 @@ async def execute_daily_trades():
                     curr_val = qty_held * latest_p.close
                     pnl_pct = (curr_val - total_invested) / total_invested
                     
+                    stop_loss_pct, take_profit_pct, _ = get_asset_dynamic_risk_thresholds(db, asset.id)
+                    
                     circuit_triggered = None
-                    if pnl_pct <= -0.06:
-                        circuit_triggered = f"AUTOMATED STOP-LOSS CIRCUIT BREAKER: Trailing drawdown ({pnl_pct*100:.1f}%) reached threshold (-6.0%)."
-                    elif pnl_pct >= 0.12:
-                        circuit_triggered = f"AUTOMATED TAKE-PROFIT CIRCUIT BREAKER: Profit gain (+{pnl_pct*100:.1f}%) reached target (+12.0%)."
+                    if pnl_pct <= stop_loss_pct:
+                        circuit_triggered = f"AUTOMATED DYNAMIC STOP-LOSS CIRCUIT BREAKER: Trailing drawdown ({pnl_pct*100:.1f}%) reached dynamic threshold ({stop_loss_pct*100:.1f}%)."
+                    elif pnl_pct >= take_profit_pct:
+                        circuit_triggered = f"AUTOMATED DYNAMIC TAKE-PROFIT CIRCUIT BREAKER: Profit gain (+{pnl_pct*100:.1f}%) reached dynamic target (+{take_profit_pct*100:.1f}%)."
                         
                     if circuit_triggered:
                         route = sor.calculate_best_route(asset.symbol, "sell", curr_val, latest_p.close)
@@ -148,7 +204,7 @@ async def execute_daily_trades():
                         realized_pnl = net_val - total_invested
                         
                         import uuid
-                        t_ref = f"REF-{uuid.uuid4().hex[:12].upper()}"
+                        sim_id = f"SIM-{uuid.uuid4().hex[:8].upper()}"
                         
                         sl_trade = TradeHistory(
                             symbol=asset.symbol,
@@ -157,7 +213,7 @@ async def execute_daily_trades():
                             price=avg_fill,
                             total_usd=net_val,
                             pnl=realized_pnl,
-                            reason=f"{circuit_triggered} | SIMULATED PAPER TRADE using live {route['exchange']} order book data. | Simulation ID: {t_ref}",
+                            reason=f"{circuit_triggered} | SIMULATED PAPER TRADE using live {route['exchange']} order book data. | Simulation ID: {sim_id}",
                             confidence=None,  # Deterministic circuit breaker, not a model prediction — kept out of calibration stats.
                             status="EXECUTED"
                         )
@@ -179,15 +235,15 @@ async def execute_daily_trades():
         high_conviction_unheld = []
         for asset, pred, qty in candidate_signals:
             if qty == 0:
-                c_norm = pred.confidence / 100.0 if pred.confidence > 1.0 else pred.confidence
-                if pred.direction in ["up", "strong_up"] and c_norm >= 0.62:
+                _, _, min_conviction = get_asset_dynamic_risk_thresholds(db, asset.id)
+                if pred.direction in ["up", "strong_up"] and pred.confidence >= min_conviction:
                     high_conviction_unheld.append((asset, pred))
                     
-        high_conviction_unheld.sort(key=lambda x: (x[1].confidence if x[1].confidence > 1.0 else x[1].confidence * 100.0), reverse=True)
+        high_conviction_unheld.sort(key=lambda x: x[1].confidence, reverse=True)
         signals_to_evaluate = held_signals + high_conviction_unheld[:5]
 
         if not signals_to_evaluate:
-            print("[TradingAgent] No high-conviction trade opportunities detected (confidence >= 62%). Portfolio remaining in HOLD state.")
+            print("[TradingAgent] No high-conviction trade opportunities detected meeting dynamic threshold criteria. Portfolio remaining in HOLD state.")
             return new_trades
 
         # Run Swarm
@@ -211,8 +267,11 @@ async def execute_daily_trades():
             current_price = latest_price_record.close
             qty_held = holdings.get(asset.symbol, {}).get("qty", 0.0)
             
-            # Risk Management Interception
-            risk_assessment = risk_manager.evaluate_trade(asset.symbol, cio_decision, pred.confidence, portfolio)
+            # Risk Management Interception with Dynamic Baseline Edge Validation
+            baseline_prob = getattr(pred, 'baseline_probability', 0.3333) or 0.3333
+            risk_assessment = risk_manager.evaluate_trade(
+                asset.symbol, cio_decision, pred.confidence, portfolio, baseline_prob=baseline_prob
+            )
             if not risk_assessment["approved"]:
                 print(f"[TradingAgent] {risk_assessment['reasoning']}")
                 continue
@@ -238,7 +297,7 @@ async def execute_daily_trades():
                     qty_to_buy = actual_investment / avg_fill_price
                     
                     import uuid
-                    trade_ref = f"REF-{uuid.uuid4().hex[:12].upper()}"
+                    sim_id = f"SIM-{uuid.uuid4().hex[:8].upper()}"
                     
                     new_trades.append(TradeHistory(
                         symbol=asset.symbol,
@@ -246,7 +305,7 @@ async def execute_daily_trades():
                         quantity=qty_to_buy,
                         price=avg_fill_price,
                         total_usd=allocation_target, # Total deducted from cash
-                        reason=f"CIO Verdict: {verdict['reasoning'][:150]}... | SIMULATED PAPER TRADE using live {exchange_used} order book data. | Simulation ID: {trade_ref}",
+                        reason=f"CIO Verdict: {verdict['reasoning'][:150]}... | SIMULATED PAPER TRADE using live {exchange_used} order book data. | Simulation ID: {sim_id}",
                         confidence=pred.confidence,
                         status="EXECUTED"
                     ))
@@ -266,7 +325,7 @@ async def execute_daily_trades():
                 realized_pnl = net_sell_value - total_invested
                 
                 import uuid
-                trade_ref = f"REF-{uuid.uuid4().hex[:12].upper()}"
+                sim_id = f"SIM-{uuid.uuid4().hex[:8].upper()}"
                 
                 new_trades.append(TradeHistory(
                     symbol=asset.symbol,
@@ -275,7 +334,7 @@ async def execute_daily_trades():
                     price=avg_fill_price,
                     total_usd=net_sell_value, # Total added to cash
                     pnl=realized_pnl,
-                    reason=f"CIO Verdict: {verdict['reasoning'][:150]}... | SIMULATED PAPER TRADE using live {exchange_used} order book data. | Simulation ID: {trade_ref}",
+                    reason=f"CIO Verdict: {verdict['reasoning'][:150]}... | SIMULATED PAPER TRADE using live {exchange_used} order book data. | Simulation ID: {sim_id}",
                     confidence=pred.confidence,
                     status="EXECUTED"
                 ))

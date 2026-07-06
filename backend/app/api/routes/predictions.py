@@ -26,33 +26,39 @@ async def get_validation_metrics():
         if p.exists() and p.is_file():
             try:
                 with open(p, "r") as f:
-                    return json.load(f)
+                    data = json.load(f)
+                    data["status"] = "audited"
+                    return data
             except Exception:
                 pass
                 
     return {
-        "sharpe_ratio": 0.0,
-        "sortino_ratio": 0.0,
-        "max_drawdown": 0.0,
-        "profit_factor": 0.0,
-        "win_rate": 0.0,
-        "f1_macro": 0.0,
-        "precision_macro": 0.0,
-        "recall_macro": 0.0,
-        "status": "awaiting_calibration"
+        "sharpe_ratio": None,
+        "sortino_ratio": None,
+        "max_drawdown": None,
+        "profit_factor": None,
+        "win_rate": None,
+        "f1_macro": None,
+        "precision_macro": None,
+        "recall_macro": None,
+        "status": "awaiting_calibration",
+        "message": "Model calibration in progress. Audited backtesting metrics not yet available."
     }
 
 @router.get("", response_model=list[Prediction])
 async def get_predictions(
     limit: int = 50,
+    days: int = 7,
     direction: str = "all",           # all | up | down | neutral
     min_confidence: float = 0.0,
     db: Session = Depends(get_db)
 ):
     """Returns latest predictions for all assets with optional filters."""
+    from datetime import datetime, timedelta, timezone
     from app.db.models_sqla import Prediction as SQLAPrediction, Asset
     
-    query = db.query(SQLAPrediction, Asset).join(Asset)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    query = db.query(SQLAPrediction, Asset).join(Asset).filter(SQLAPrediction.predicted_at >= cutoff)
     
     if direction != "all":
         query = query.filter(SQLAPrediction.direction == direction)
@@ -60,7 +66,14 @@ async def get_predictions(
     if min_confidence > 0:
         query = query.filter(SQLAPrediction.confidence >= min_confidence)
         
-    res = query.order_by(desc(SQLAPrediction.predicted_at)).limit(1000).all()
+    res = query.order_by(desc(SQLAPrediction.predicted_at)).limit(min(1000, limit * 20)).all()
+    if not res:
+        query_fallback = db.query(SQLAPrediction, Asset).join(Asset)
+        if direction != "all":
+            query_fallback = query_fallback.filter(SQLAPrediction.direction == direction)
+        if min_confidence > 0:
+            query_fallback = query_fallback.filter(SQLAPrediction.confidence >= min_confidence)
+        res = query_fallback.order_by(desc(SQLAPrediction.predicted_at)).limit(200).all()
     
     predictions = []
     seen_assets = set()

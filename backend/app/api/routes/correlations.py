@@ -30,6 +30,23 @@ def get_correlation_matrix(
     """), {"since": since.isoformat()}).fetchall()
 
     if not rows:
+        # Fallback to computing 1d log returns directly from OHLCV close prices
+        ohlcv_rows = db.execute(text("""
+            SELECT asset_id, timestamp, close
+            FROM ohlcv
+            WHERE timestamp >= :since
+            ORDER BY timestamp ASC
+        """), {"since": since.isoformat()}).fetchall()
+        
+        if ohlcv_rows:
+            df_raw = pd.DataFrame(ohlcv_rows, columns=["asset_id", "timestamp", "close"])
+            df_raw["date"] = df_raw["timestamp"].apply(lambda x: str(x).split("T")[0] if isinstance(x, str) else str(x)[:10])
+            piv_close = df_raw.pivot_table(index="date", columns="asset_id", values="close").ffill()
+            piv_ret = np.log(piv_close / piv_close.shift(1))
+            stacked = piv_ret.unstack().reset_index(name="returns_1d")
+            rows = [(r.asset_id, r.date, r.returns_1d) for r in stacked.itertuples() if pd.notna(r.returns_1d)]
+
+    if not rows:
         return {"symbols": [], "matrix": [], "top_pairs": [], "period_days": days}
 
     df = pd.DataFrame(rows, columns=["asset_id", "timestamp", "returns_1d"])
@@ -138,6 +155,22 @@ def get_sector_correlations(
     """), {"since": since.isoformat()}).fetchall()
 
     if not rows:
+        ohlcv_rows = db.execute(text("""
+            SELECT asset_id, timestamp, close
+            FROM ohlcv
+            WHERE timestamp >= :since
+            ORDER BY timestamp ASC
+        """), {"since": since.isoformat()}).fetchall()
+        
+        if ohlcv_rows:
+            df_raw = pd.DataFrame(ohlcv_rows, columns=["asset_id", "timestamp", "close"])
+            df_raw["date"] = df_raw["timestamp"].apply(lambda x: str(x).split("T")[0] if isinstance(x, str) else str(x)[:10])
+            piv_close = df_raw.pivot_table(index="date", columns="asset_id", values="close").ffill()
+            piv_ret = np.log(piv_close / piv_close.shift(1))
+            stacked = piv_ret.unstack().reset_index(name="returns_1d")
+            rows = [(r.asset_id, r.date, r.returns_1d) for r in stacked.itertuples() if pd.notna(r.returns_1d)]
+
+    if not rows:
         return {"sectors": [], "matrix": [], "intra_sector": {}}
 
     df = pd.DataFrame(rows, columns=["asset_id", "timestamp", "returns_1d"])
@@ -154,13 +187,13 @@ def get_sector_correlations(
 
     if basis == "Motif Similarity":
         latest_tech_query = text("""
-            SELECT asset_id, returns_1d, volatility_7d, rsi_14, macd, macd_signal
-            FROM technical_features
-            WHERE (asset_id, timestamp) IN (
-                SELECT asset_id, MAX(timestamp)
+            SELECT t1.asset_id, t1.returns_1d, t1.volatility_7d, t1.rsi_14, t1.macd, t1.macd_signal
+            FROM technical_features t1
+            JOIN (
+                SELECT asset_id, MAX(timestamp) as max_ts
                 FROM technical_features
                 GROUP BY asset_id
-            )
+            ) t2 ON t1.asset_id = t2.asset_id AND t1.timestamp = t2.max_ts
         """)
         latest_tech_rows = db.execute(latest_tech_query).fetchall()
         

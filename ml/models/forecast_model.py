@@ -92,19 +92,8 @@ def run_lstm_forecast(
         }
         
     except Exception as e:
-        # Fallback to naive drift projection if torch fails or model is missing
-        print(f"[LSTM Forecast] Fallback to naive trend due to: {e}")
-        last_price = price_array[-1]
-        trend = (price_array[-1] - price_array[-7]) / 7 if len(price_array) >= 7 else 0.0
-        forecast = [last_price + trend * i for i in range(1, forecast_days + 1)]
-        spread = np.std(np.diff(price_array)) * 1.96 * np.sqrt(np.arange(1, forecast_days + 1)) if len(price_array) > 1 else price_range * 0.05
-        
-        return {
-            "forecast_prices": [round(float(p), 8) for p in forecast],
-            "lower_bound":     [round(float(p - s), 8) for p, s in zip(forecast, spread)],
-            "upper_bound":     [round(float(p + s), 8) for p, s in zip(forecast, spread)],
-            "model_used":      "Naive Drift Fallback"
-        }
+        print(f"[LSTM Forecast Error] {e}")
+        raise RuntimeError(f"LSTM Deep Learning forecast failed: {e}")
 
 
 def run_prophet_forecast(

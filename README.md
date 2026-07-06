@@ -4,8 +4,7 @@
   <img src="https://img.shields.io/badge/FastAPI-Python_3.11-009688?style=for-the-badge&logo=fastapi" alt="FastAPI" />
   <img src="https://img.shields.io/badge/PyTorch-ST--GCN-EE4C2C?style=for-the-badge&logo=pytorch" alt="PyTorch" />
 
-  <h1>🧠 CryptoGraph Analytics</h1>
-  <p><b>A Production-Grade Spatio-Temporal Graph Neural Network (ST-GCN) for Cryptocurrency Market Forecasting.</b></p>
+  <p><b>An Experimental Research & Analytics Platform using Spatio-Temporal Graph Neural Networks (ST-GCN) for Cryptocurrency Market Analysis.</b></p>
   <p>Real-time data. Deep Learning predictions. Swarm Intelligence UI.</p>
 </div>
 

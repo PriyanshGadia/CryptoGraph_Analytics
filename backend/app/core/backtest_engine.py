@@ -16,12 +16,22 @@ from app.db.models_sqla import PortfolioState
 from ml.evaluation.finance_metrics import sharpe_ratio, sortino_ratio
 
 
+from datetime import datetime, timedelta, timezone
+
 def generate_tear_sheet(db: Session, risk_free_rate: float = 0.04) -> Dict[str, Any]:
     """
     Generates institutional-grade backtest metrics by analyzing the historical 
-    PortfolioState table.
+    PortfolioState table over a windowed period to maintain high query efficiency.
     """
-    states = db.query(PortfolioState).order_by(PortfolioState.timestamp.asc()).all()
+    ninety_days_ago = datetime.now(timezone.utc) - timedelta(days=90)
+    states = db.query(PortfolioState).filter(
+        PortfolioState.timestamp >= ninety_days_ago
+    ).order_by(PortfolioState.timestamp.asc()).all()
+
+    if len(states) < 2:
+        # Fallback to the last 100 snapshots if data is sparse
+        subq = db.query(PortfolioState.id).order_by(PortfolioState.timestamp.desc()).limit(100).subquery()
+        states = db.query(PortfolioState).filter(PortfolioState.id.in_(subq)).order_by(PortfolioState.timestamp.asc()).all()
     
     if len(states) < 2:
         return {"error": "Not enough portfolio data to generate a tear sheet."}

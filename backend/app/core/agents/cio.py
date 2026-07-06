@@ -70,13 +70,10 @@ class ChiefInvestmentOfficerAgent(BaseAgent):
         
         if not reasoning:
             # Fallback CIO logic if LLM fails: only execute trades with high model conviction
-            reasoning = "CIO_FALLBACK: LLM unavailable. Evaluating strict high-conviction ST-GCN rules."
-            c_norm = confidence / 100.0 if confidence > 1.0 else confidence
-            
-            # High-conviction opportunistic trading: require >= 55% model confidence for BUY
-            if direction in ["strong_up", "up"] and c_norm >= 0.55:
+            # High-conviction opportunistic trading: require >= 0.55 model confidence for BUY
+            if direction in ["strong_up", "up"] and confidence >= 0.55:
                 decision = "EXECUTE_BUY"
-            elif direction in ["strong_down", "down"] and c_norm >= 0.50:
+            elif direction in ["strong_down", "down"] and confidence >= 0.50:
                 decision = "EXECUTE_SELL"
             else:
                 decision = "HOLD"

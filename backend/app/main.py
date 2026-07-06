@@ -89,7 +89,29 @@ async def lifespan(app: FastAPI):
     import asyncio
     from app.api.routes.stream import SYMBOLS, prediction_broadcast_loop, screener_broadcast_loop
     from app.core.streams.binance_ws import binance_ws_loop, populate_static_features
+    from app.core.config import get_setting
     
+    # Startup Security Validation: Ensure API_KEY is set or fail closed
+    api_key_configured = get_setting("api_key") or getattr(settings, "api_key", None)
+    if settings.environment == "production" and not api_key_configured:
+        raise RuntimeError("[SECURITY ERROR] API_KEY is not configured in production. Server startup aborted to prevent vulnerabilities.")
+    elif not api_key_configured:
+        print("[SECURITY WARNING] API_KEY is not configured. Protected API endpoints will fail-closed (reject all calls with 403).")
+    
+    # Dynamic CORS Origin Fetch inside lifespan after DB initialization
+    try:
+        db = SessionLocal()
+        frontend_url_record = db.query(AppSetting).filter(AppSetting.setting_key == "FRONTEND_URL").first()
+        frontend_url = frontend_url_record.setting_value if frontend_url_record and frontend_url_record.setting_value else "http://localhost:3000"
+        db.close()
+    except Exception:
+        frontend_url = "http://localhost:3000"
+
+    dynamic_origins = ["*"] if settings.environment == "development" else [frontend_url]
+    for middleware in app.user_middleware:
+        if middleware.cls == CORSMiddleware:
+            middleware.options["allow_origins"] = dynamic_origins
+
     # Populate static cache using our synchronous DB session setup
     try:
         db = SessionLocal()
@@ -166,22 +188,15 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS
-try:
-    db_session = SessionLocal()
-    frontend_url_record = db_session.query(AppSetting).filter(AppSetting.setting_key == "FRONTEND_URL").first()
-    frontend_url = frontend_url_record.setting_value if frontend_url_record and frontend_url_record.setting_value else "http://localhost:3000"
-    db_session.close()
-except Exception:
-    frontend_url = "http://localhost:3000"
-
-origins = ["*"] if settings.environment == "development" else [frontend_url]
+# Initialize CORS Middleware at module creation
 app.add_middleware(
-    CORSMiddleware, 
-    allow_origins=origins,
-    allow_methods=["*"], 
+    CORSMiddleware,
+    allow_origins=["*"] if settings.environment == "development" else ["http://localhost:3000"],
+    allow_methods=["*"],
     allow_headers=["*"]
 )
+
+
 
 # Rate Limiter
 app.state.limiter = limiter

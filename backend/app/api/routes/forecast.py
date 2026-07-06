@@ -106,6 +106,11 @@ async def get_forecast(request: Request, symbol: str, db: Session = Depends(get_
         # Run actual PyTorch LSTM time-series forecast model
         raw_forecast_res = run_ensemble_forecast(prices, dates, forecast_days=30)
         raw_f_prices = raw_forecast_res.get("forecast_prices", [])
+        
+        if not raw_f_prices or raw_forecast_res.get("model_used") == "unavailable":
+            err_msg = raw_forecast_res.get("error", "Forecast model execution failed.")
+            raise HTTPException(status_code=500, detail=f"Deep Learning Forecast generation failed: {err_msg}")
+            
         raw_l_bound = raw_forecast_res.get("lower_bound", [])
         raw_u_bound = raw_forecast_res.get("upper_bound", [])
         
