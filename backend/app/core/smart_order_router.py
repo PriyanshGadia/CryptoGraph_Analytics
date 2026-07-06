@@ -90,7 +90,7 @@ class SmartOrderRouter:
 
     def _fetch_real_l2_book(self, exchange: str, symbol: str) -> Optional[Dict[str, Any]]:
         """
-        Attempts to fetch real L2 order book using CCXT.
+        Attempts to fetch real L2 order book using CCXT with automatic retries.
         """
         client = self.exchange_clients.get(exchange)
         if not client:
@@ -100,14 +100,17 @@ class SmartOrderRouter:
         pairs_to_try = [f"{sym}/USDT", f"{sym}/USD", f"{sym}/BTC"]
         
         for pair in pairs_to_try:
-            try:
-                book = client.fetch_order_book(pair, limit=10)
-                bids = [[float(p), float(v)] for p, v in book.get("bids", [])]
-                asks = [[float(p), float(v)] for p, v in book.get("asks", [])]
-                if bids and asks:
-                    return {"bids": bids, "asks": asks}
-            except Exception:
-                continue
+            for attempt in range(2):  # Up to 2 retries per pair
+                try:
+                    book = client.fetch_order_book(pair, limit=10)
+                    bids = [[float(p), float(v)] for p, v in book.get("bids", [])]
+                    asks = [[float(p), float(v)] for p, v in book.get("asks", [])]
+                    if bids and asks:
+                        return {"bids": bids, "asks": asks}
+                except Exception as e:
+                    if attempt == 1:
+                        print(f"[SOR] L2 Book fetch failed for {pair} on {exchange}: {e}")
+                    continue
         return None
 
     def calculate_best_route(self, symbol: str, side: str, order_value_usd: float, current_price: float) -> Dict[str, Any]:

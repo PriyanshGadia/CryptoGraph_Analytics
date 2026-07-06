@@ -13,7 +13,7 @@ from app.db.models_sqla import PortfolioState, TradeHistory, ProofOfPerformance
 def generate_daily_proof(db: Session, portfolio_id: int) -> str:
     """
     Generates a chained SHA-256 hash of the portfolio state and the day's trades.
-    Each proof includes the hash of the previous day's proof, forming a Merkle chain.
+    Each proof includes the hash of the previous day's proof, forming a sequential Attestation Hash Chain.
     """
     portfolio = db.query(PortfolioState).filter(PortfolioState.id == portfolio_id).first()
     if not portfolio:
@@ -32,7 +32,7 @@ def generate_daily_proof(db: Session, portfolio_id: int) -> str:
         } for t in recent_trades
     ]
     
-    # Query previous proof hash to chain them together (Merkle Chain)
+    # Query previous proof hash to chain them together (Attestation Hash Chain)
     prev_proof = db.query(ProofOfPerformance).order_by(ProofOfPerformance.timestamp.desc()).first()
     prev_hash = prev_proof.state_hash if prev_proof else "0x0000000000000000000000000000000000000000000000000000000000000000"
     

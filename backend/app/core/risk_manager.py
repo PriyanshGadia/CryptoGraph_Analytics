@@ -135,6 +135,6 @@ class RiskManagerCore:
 
         return {
             "approved": True,
-            "reasoning": f"RiskManager APPROVED: Kelly position sizing set to ${suggested_allocation:,.2f} based on {conf_norm*100:.1f}% confidence.",
+            "reasoning": f"RiskManager APPROVED: Kelly position sizing set to ${suggested_allocation:,.2f} based on {p*100:.1f}% confidence.",
             "suggested_allocation_usd": suggested_allocation
         }
