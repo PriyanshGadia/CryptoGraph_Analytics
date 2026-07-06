@@ -89,9 +89,9 @@ def get_coin_indicators(
     data = []
     seen = set()
     for row in res:
-        # Enforce strict 1-minute time bucketing to prevent duplicate/overlapping candles
+        # Enforce strict 1-hour time bucketing (reduce data volume by 60x to prevent OOM)
         raw_ts = int(datetime.fromisoformat(row[0]).timestamp())
-        ts = (raw_ts // 60) * 60
+        ts = (raw_ts // 3600) * 3600
         if ts in seen: continue
         seen.add(ts)
         data.append({
@@ -246,8 +246,11 @@ def get_coin_correlations(symbol: str, db: Session = Depends(get_db)):
     all_data = [{"asset_id": r[0], "timestamp": r[1], "returns_1d": r[2]} for r in res]
     df = pd.DataFrame(all_data)
     
+    # Force daily bucketing to avoid pivoting millions of rows and crashing memory
     df['date'] = df['timestamp'].apply(lambda x: x.split("T")[0])
-    pivot = df.pivot_table(index='date', columns='asset_id', values='returns_1d')
+    
+    # We take the mean daily return to aggregate multiple data points into 1 row per day per asset
+    pivot = df.pivot_table(index='date', columns='asset_id', values='returns_1d', aggfunc='mean')
     
     if target_asset_id not in pivot.columns:
         return []
@@ -313,13 +316,11 @@ def get_coin_sentiment_history(symbol: str, db: Session = Depends(get_db)):
         date_str = ts.split("T")[0] if "T" in ts else ts[:10]
         ret7d = row[2] or 0
         rsi = row[3] or 50
-        vol = row[3] or 0
-        
-        # Synthetic sentiment from technicals
-        sentiment = max(-1, min(1, ret7d * 10))
-        # Synthetic fear/greed from RSI
-        fear_greed = max(0, min(100, rsi))
-        community = max(0, min(1, 1 - abs(rsi - 50) / 50))
+        # Note: True sentiment requires external NLP processing. 
+        # Previous synthetic logic removed for data integrity.
+        sentiment = 0.0 
+        fear_greed = 50.0
+        community = 50.0
         
         data.append({
             "date": date_str,

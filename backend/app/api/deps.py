@@ -34,7 +34,7 @@ def verify_api_key(api_key: str = Security(api_key_header)):
         # But if we reach here without a key configured, it means we're
         # in a mode that demands it but it's not set. Fail closed.
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=status.HTTP_403_FORBIDDEN,
             detail="Server API key is not configured. Access denied."
         )
         
@@ -43,4 +43,4 @@ def verify_api_key(api_key: str = Security(api_key_header)):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Could not validate credentials"
         )
-    return api_key
+    return True

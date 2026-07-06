@@ -24,9 +24,10 @@ def get_assets():
             price_change_24h_pct=data.get("price_change_24h_pct", 0.0),
             predicted_direction=data.get("predicted_direction", "neutral"),
             confidence=data.get("confidence", 0.0),
-            confidence_interval=data.get("confidence_interval", None)
+            confidence_interval=data.get("confidence_interval", None),
+            updated_at=data.get("updated_at", None)
         ))
         
-    # Sort by market cap descending
-    results.sort(key=lambda x: x.market_cap_usd or 0.0, reverse=True)
+    # Sort by market cap descending safely, handling None values
+    results.sort(key=lambda x: (x.market_cap_usd is not None, x.market_cap_usd), reverse=True)
     return results

@@ -12,6 +12,7 @@ class Asset(BaseModel):
     predicted_direction: Optional[str] = None
     confidence: Optional[float] = None
     confidence_interval: Optional[List[float]] = None
+    updated_at: Optional[str] = None
 
 class Prediction(BaseModel):
     asset_symbol: str

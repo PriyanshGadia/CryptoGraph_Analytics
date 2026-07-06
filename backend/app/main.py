@@ -76,82 +76,83 @@ async def lifespan(app: FastAPI):
         yield
         return
         
-    refresh_lock = asyncio.Lock()
-    async def auto_refresh_loop():
-        """Background task to run the scheduler automatically every hour."""
-        while True:
-            await asyncio.sleep(3600)  # Sleep for 1 hour
+    # Set up proper cron-like scheduler for background tasks
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    scheduler = AsyncIOScheduler()
+    
+    async def scheduled_refresh_job():
+        """Scheduled hourly refresh executed by APScheduler."""
+        logger.info("[Scheduler] Auto-running hourly full data refresh...")
+        try:
+            db = SessionLocal()
             
-            if refresh_lock.locked():
-                logger.warning("[Scheduler] Previous refresh is still running. Skipping this iteration to prevent overlap.")
-                continue
+            # 1a. Enrich Asset Metadata
+            try:
+                import sys
+                import os
+                scripts_path = os.path.join(os.path.dirname(__file__), "..", "..", "scripts")
+                sys.path.append(scripts_path)
+                from enrich_assets import enrich_assets
+                await asyncio.to_thread(enrich_assets)
+            except Exception as e:
+                logger.error(f"[Scheduler] Asset enrichment error: {e}")
+            
+            # 1b. Refresh live technicals
+            try:
+                from app.api.routes.screener import refresh_live_technicals
+                await asyncio.to_thread(refresh_live_technicals, db)
+            except Exception as e:
+                logger.error(f"[Scheduler] Technicals error: {e}")
+            
+            # 2. Clear response cache
+            try:
+                from app.core.cache import _cache
+                _cache.clear()
+            except Exception as e:
+                logger.error(f"[Scheduler] Cache error: {e}")
                 
-            async with refresh_lock:
-                logger.info("[Scheduler] Auto-running hourly full data refresh...")
-                try:
-                    db = SessionLocal()
-                    
-                    # 1a. Enrich Asset Metadata
-                    try:
-                        import sys
-                        import os
-                        scripts_path = os.path.join(os.path.dirname(__file__), "..", "..", "scripts")
-                        sys.path.append(scripts_path)
-                        from enrich_assets import enrich_assets
-                        await asyncio.to_thread(enrich_assets)
-                    except Exception as e:
-                        logger.error(f"[Scheduler] Asset enrichment error: {e}")
-                    
-                    # 1b. Refresh live technicals
-                    try:
-                        from app.api.routes.screener import refresh_live_technicals
-                        await asyncio.to_thread(refresh_live_technicals, db)
-                    except Exception as e:
-                        logger.error(f"[Scheduler] Technicals error: {e}")
-                    
-                    # 2. Clear response cache
-                    try:
-                        from app.core.cache import _cache
-                        _cache.clear()
-                    except Exception as e:
-                        logger.error(f"[Scheduler] Cache error: {e}")
-                        
-                    # 3. Trigger prediction broadcast
-                    try:
-                        from app.api.routes.stream import get_refresh_event
-                        get_refresh_event().set()
-                    except Exception as e:
-                        logger.error(f"[Scheduler] Broadcast error: {e}")
+            # 3. Trigger prediction broadcast
+            try:
+                from app.api.routes.stream import get_refresh_event
+                get_refresh_event().set()
+            except Exception as e:
+                logger.error(f"[Scheduler] Broadcast error: {e}")
 
-                    # 3b. Refresh SSOT prediction cache so /api/assets reflects fresh confidence
-                    try:
-                        from app.core.streams.binance_ws import refresh_predictions_in_ssot
-                        refresh_predictions_in_ssot(db)
-                        logger.info("[Scheduler] SSOT prediction cache refreshed.")
-                    except Exception as e:
-                        logger.error(f"[Scheduler] SSOT refresh error: {e}")
-                except Exception as e:
-                    logger.error(f"[Scheduler] Database session error: {e}")
-                finally:
-                    db.close()
+            # 3b. Refresh SSOT prediction cache so /api/assets reflects fresh confidence
+            try:
+                from app.core.streams.binance_ws import refresh_predictions_in_ssot
+                refresh_predictions_in_ssot(db)
+                logger.info("[Scheduler] SSOT prediction cache refreshed.")
+            except Exception as e:
+                logger.error(f"[Scheduler] SSOT refresh error: {e}")
+        except Exception as e:
+            logger.error(f"[Scheduler] Database session error: {e}")
+        finally:
+            db.close()
 
-    # Start tasks
+    # Schedule the refresh job to run every hour
+    scheduler.add_job(scheduled_refresh_job, 'interval', hours=1, max_instances=1)
+    scheduler.start()
+
+    # Start WebSocket tasks
     binance_task = asyncio.create_task(binance_ws_loop(SYMBOLS))
     prediction_task = asyncio.create_task(prediction_broadcast_loop())
     screener_task = asyncio.create_task(screener_broadcast_loop())
-    refresh_task = asyncio.create_task(auto_refresh_loop())
     
     yield
     
-    # Clean shutdown
+    # Clean shutdown using shield to prevent brutal termination
+    logger.info("[Lifespan] Shutting down services safely...")
+    scheduler.shutdown(wait=False)
+    
     binance_task.cancel()
     prediction_task.cancel()
     screener_task.cancel()
-    refresh_task.cancel()
     
-    for task in [binance_task, prediction_task, screener_task, refresh_task]:
+    for task in [binance_task, prediction_task, screener_task]:
         try:
-            await asyncio.wait_for(task, timeout=3.0)
+            # Shield the cleanup so it isn't interrupted by uvicorn's strict timeout
+            await asyncio.shield(asyncio.wait_for(task, timeout=5.0))
         except (asyncio.CancelledError, asyncio.TimeoutError):
             pass
 

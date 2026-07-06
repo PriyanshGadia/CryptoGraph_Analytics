@@ -298,6 +298,7 @@ async def binance_ws_loop(symbols: List[str]):
                                 GLOBAL_MARKET_STATE[asset_symbol]["volume_24h"] = float(data["q"])
                                 GLOBAL_MARKET_STATE[asset_symbol]["price_change_24h_pct"] = float(data["P"])
                                 GLOBAL_MARKET_STATE[asset_symbol]["market_cap_usd"] = current_mcap
+                                GLOBAL_MARKET_STATE[asset_symbol]["updated_at"] = datetime.now(timezone.utc).isoformat()
         except Exception as e:
             logger.error(f"[BinanceWS] Connection error: {e}. Engaging fallback layer...")
             # Trigger Fallback layer to keep UI responsive
