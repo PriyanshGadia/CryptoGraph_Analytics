@@ -44,7 +44,7 @@ try:
 except Exception as e:
     print(f"Error ensuring technical_features table: {e}")
 
-# SQLite migration: rename zk_snark_proof to attestation_hash if needed
+# SQLite migration: ensure all predictions columns exist (e.g. baseline_probability, t_shap_attributions, attestation_hash)
 try:
     with engine.begin() as conn:
         table_exists = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='predictions'")).fetchone()
@@ -54,8 +54,17 @@ try:
             if "zk_snark_proof" in column_names and "attestation_hash" not in column_names:
                 print("[Migration] Renaming predictions.zk_snark_proof to attestation_hash...")
                 conn.execute(text("ALTER TABLE predictions RENAME COLUMN zk_snark_proof TO attestation_hash"))
+            if "baseline_probability" not in column_names:
+                print("[Migration] Adding missing baseline_probability column to predictions table...")
+                conn.execute(text("ALTER TABLE predictions ADD COLUMN baseline_probability FLOAT DEFAULT 0.3333"))
+            if "t_shap_attributions" not in column_names:
+                print("[Migration] Adding missing t_shap_attributions column to predictions table...")
+                conn.execute(text("ALTER TABLE predictions ADD COLUMN t_shap_attributions TEXT"))
+            if "attestation_hash" not in column_names:
+                print("[Migration] Adding missing attestation_hash column to predictions table...")
+                conn.execute(text("ALTER TABLE predictions ADD COLUMN attestation_hash VARCHAR"))
 except Exception as e:
-    print(f"Error checking/renaming predictions column: {e}")
+    print(f"Error checking/migrating predictions columns: {e}")
 
 # Initialize Database
 Base.metadata.create_all(bind=engine)
@@ -110,7 +119,8 @@ async def lifespan(app: FastAPI):
     dynamic_origins = ["*"] if settings.environment == "development" else [frontend_url]
     for middleware in app.user_middleware:
         if middleware.cls == CORSMiddleware:
-            middleware.options["allow_origins"] = dynamic_origins
+            if hasattr(middleware, "kwargs"):
+                middleware.kwargs["allow_origins"] = dynamic_origins
 
     # Populate static cache using our synchronous DB session setup
     try:

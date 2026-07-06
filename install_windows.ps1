@@ -18,12 +18,25 @@ function Check-Command {
 }
 
 # 1. Check & Install Python
-if (-not (Check-Command "python")) {
-    Write-Host "[!] Python not found. Installing via Winget..." -ForegroundColor Yellow
+$compatiblePythonFound = $false
+if (Get-Command "py" -ErrorAction SilentlyContinue) {
+    if ((& py -3.11 --version 2>&1 | Out-String) -match "3.11") { $compatiblePythonFound = $true }
+    elseif ((& py -3.12 --version 2>&1 | Out-String) -match "3.12") { $compatiblePythonFound = $true }
+}
+if (-not $compatiblePythonFound) {
+    $wingetPath = "$env:LOCALAPPDATA\Programs\Python\Python311\python.exe"
+    $wingetPath2 = "$env:PROGRAMFILES\Python311\python.exe"
+    if ((Test-Path $wingetPath) -or (Test-Path $wingetPath2)) {
+        $compatiblePythonFound = $true
+    }
+}
+
+if (-not $compatiblePythonFound) {
+    Write-Host "[!] Compatible Python (3.11/3.12) not found. Installing Python 3.11 via Winget..." -ForegroundColor Yellow
     winget install --id Python.Python.3.11 --exact --source winget --accept-package-agreements --accept-source-agreements
     $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
 } else {
-    Write-Host "[*] Python is installed." -ForegroundColor Green
+    Write-Host "[*] Compatible Python is installed." -ForegroundColor Green
 }
 
 # 2. Check & Install Node.js
@@ -39,20 +52,28 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $ScriptDir
 
 function Get-PythonExecutable {
+    $wingetPath = "$env:LOCALAPPDATA\Programs\Python\Python311\python.exe"
+    if (Test-Path $wingetPath) { return "& `"$wingetPath`"" }
+
+    $wingetPath2 = "$env:PROGRAMFILES\Python311\python.exe"
+    if (Test-Path $wingetPath2) { return "& `"$wingetPath2`"" }
+
     $py = Get-Command "py" -ErrorAction SilentlyContinue
-    if ($py) { return "py -3" }
+    if ($py) { 
+        $test11 = & py -3.11 --version 2>&1
+        if ($LASTEXITCODE -eq 0) { return "py -3.11" }
+        
+        $test12 = & py -3.12 --version 2>&1
+        if ($LASTEXITCODE -eq 0) { return "py -3.12" }
+        
+        return "py -3" 
+    }
 
     $python = Get-Command "python" -ErrorAction SilentlyContinue
     if ($python -and $python.Length -gt 0) {
         $test = & python --version 2>&1
         if ($LASTEXITCODE -eq 0) { return "python" }
     }
-
-    $wingetPath = "$env:LOCALAPPDATA\Programs\Python\Python311\python.exe"
-    if (Test-Path $wingetPath) { return "& `"$wingetPath`"" }
-
-    $wingetPath2 = "$env:PROGRAMFILES\Python311\python.exe"
-    if (Test-Path $wingetPath2) { return "& `"$wingetPath2`"" }
 
     return $null
 }
@@ -99,8 +120,8 @@ if (-not $venvValid) {
     Invoke-Expression "$pyCmd -m venv venv"
 }
 Write-Host "    Installing Python requirements (this may take a while)..."
-.\venv\Scripts\python.exe -m pip install --upgrade pip > $null
-.\venv\Scripts\python.exe -m pip install -r requirements.txt > $null
+.\venv\Scripts\python.exe -m pip install --upgrade pip
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
 
 # 4. Setup Node Frontend
 Write-Host "[*] Setting up Frontend Environment..." -ForegroundColor Cyan
@@ -116,7 +137,7 @@ Write-Host "[*] Launching Servers..." -ForegroundColor Green
 
 # Launch backend in a new window using the venv python
 $env:PYTHONPATH = "$ScriptDir\backend;$ScriptDir"
-Start-Process cmd -ArgumentList "/k `"cd /d `"$ScriptDir\backend`" && .\venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload`"" -WindowStyle Normal
+Start-Process cmd -ArgumentList "/k `"cd /d `"$ScriptDir\backend`" && .\venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --no-use-colors`"" -WindowStyle Normal
 
 # Launch frontend in a new window
 Start-Process cmd -ArgumentList "/k `"cd /d `"$ScriptDir\frontend`" && npm run dev`"" -WindowStyle Normal

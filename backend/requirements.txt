@@ -1,4 +1,4 @@
-numpy>=2.1.0
+numpy<2.0.0
 fastapi
 uvicorn[standard]
 supabase
@@ -22,4 +22,4 @@ pandas
 requests
 torch
 websockets
-neuralprophet>=1.0.0
+neuralprophet>=0.8.0

@@ -22,7 +22,7 @@ if (-not $venvValid) {
     exit 1
 }
 $env:PYTHONPATH = "$PSScriptRoot\backend;$PSScriptRoot"
-Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"cd /d `"$PSScriptRoot\backend`" && .\venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload`"" -WindowStyle Normal
+Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"cd /d `"$PSScriptRoot\backend`" && .\venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --no-use-colors`"" -WindowStyle Normal
 
 # Wait briefly
 Start-Sleep -Seconds 2
