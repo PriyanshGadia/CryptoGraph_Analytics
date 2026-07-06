@@ -14,6 +14,9 @@ from app.core.agents.cio import ChiefInvestmentOfficerAgent
 from app.core.risk_manager import RiskManagerCore
 from app.core.smart_order_router import SmartOrderRouter
 from app.core.proof_of_performance import generate_daily_proof
+from app.core.multi_oracle_consensus import MultiOracleConsensus
+
+_oracle = MultiOracleConsensus(deviation_threshold_pct=0.5)
 
 async def _run_swarm_evaluations(db: Session, signals: list):
     """Run the MoA swarm for a list of (asset, prediction) tuples."""
@@ -213,7 +216,12 @@ async def execute_daily_trades():
             if not risk_assessment["approved"]:
                 print(f"[TradingAgent] {risk_assessment['reasoning']}")
                 continue
-            
+
+            # Multi-Oracle Consensus Price Validation
+            if not _oracle.validate_price(asset.symbol, current_price):
+                print(f"[TradingAgent] Multi-Oracle Consensus REJECTED trade for {asset.symbol} — price validation failed. Skipping.")
+                continue
+
             # Trading Logic
             if cio_decision == "EXECUTE_BUY":
                 # BUY Signal: Use Risk Manager's suggested allocation

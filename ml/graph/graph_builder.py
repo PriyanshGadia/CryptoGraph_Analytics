@@ -22,6 +22,7 @@ class DynamicGraphBuilder:
         self.feature_dim = feature_dim
         self.rolling_min_cache = {}
         self.rolling_max_cache = {}
+        self._cached_len = {}
 
     def build_graph(
         self,
@@ -64,13 +65,14 @@ class DynamicGraphBuilder:
             if sym in proc_features:
                 df = proc_features[sym]
                 # Cache rolling mean/std for ALL feature columns (not just 6)
-                if sym not in self.rolling_min_cache:
+                if sym not in self.rolling_min_cache or len(df) != self._cached_len.get(sym, -1):
                     cols_present = [c for c in feature_cols if c in df.columns]
                     # Store rolling mean in min_cache, rolling std in max_cache (reusing cache names)
                     self.rolling_min_cache[sym] = df[cols_present].rolling(window=30, min_periods=1).mean()
                     rolling_std = df[cols_present].rolling(window=30, min_periods=1).std()
                     # Replace zero std with 1.0 to avoid division by zero
                     self.rolling_max_cache[sym] = rolling_std.replace(0.0, 1.0).fillna(1.0)
+                    self._cached_len[sym] = len(df)
                 
                 df_mean = self.rolling_min_cache[sym]
                 df_std = self.rolling_max_cache[sym]

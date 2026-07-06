@@ -149,7 +149,7 @@ async def trigger_inference(background_tasks: BackgroundTasks, api_key: str = De
             root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../.."))
             env = os.environ.copy()
             env["PYTHONPATH"] = root_dir
-            subprocess.run([python_exec, "ml/pipelines/inference_pipeline.py"], cwd=root_dir, env=env)
+            subprocess.run([python_exec, "ml/pipelines/inference_pipeline.py"], cwd=root_dir, env=env, check=True)
             print("[Scheduler] Inference completed.")
             
             # Refresh SSOT so /api/assets immediately reflects new confidence scores

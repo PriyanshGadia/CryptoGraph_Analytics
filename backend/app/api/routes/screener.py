@@ -177,16 +177,8 @@ def get_preset_scan(preset_name: str):
     }
 
 def calculate_rsi_live(series: pd.Series, period: int = 14) -> pd.Series:
-    delta = series.diff()
-    gain = delta.where(delta > 0, 0.0)
-    loss = -delta.where(delta < 0, 0.0)
-    
-    avg_gain = gain.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
-    avg_loss = loss.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
-    
-    rs = avg_gain / avg_loss
-    rsi = 100 - (100 / (1 + rs))
-    return rsi
+    from ml.data.feature_engineering.technical_indicators import compute_rsi
+    return compute_rsi(series, length=period)
 
 def calculate_macd_live(series: pd.Series) -> tuple[float, float]:
     ema_12 = series.ewm(span=12, adjust=False).mean()
@@ -232,9 +224,9 @@ def refresh_live_technicals(db: Session = Depends(get_db)):
         latest_rsi = float(rsi_series.iloc[-1])
         if np.isnan(latest_rsi): continue
         
-        ret1d = float(closes.pct_change(24).iloc[-1])
-        ret7d = float(closes.pct_change(24*7).iloc[-1]) if len(closes) > 24*7 else 0.0
-        vol7d = float(closes.pct_change(1).rolling(24*7).std().iloc[-1]) if len(closes) > 24*7 else 0.0
+        ret1d = float(np.log(closes / closes.shift(24)).iloc[-1]) if len(closes) > 24 else 0.0
+        ret7d = float(np.log(closes / closes.shift(24*7)).iloc[-1]) if len(closes) > 24*7 else 0.0
+        vol7d = float(np.log(closes / closes.shift(1)).rolling(24*7).std().iloc[-1]) if len(closes) > 24*7 else 0.0
         
         if np.isnan(ret1d): ret1d = 0.0
         if np.isnan(ret7d): ret7d = 0.0

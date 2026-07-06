@@ -13,9 +13,17 @@ def compute_rsi(close: pd.Series, length: int = 14) -> pd.Series:
     loss = -delta.clip(upper=0)
     avg_gain = gain.ewm(com=length - 1, adjust=False).mean()
     avg_loss = loss.ewm(com=length - 1, adjust=False).mean()
-    rs = avg_gain / avg_loss.replace(0, np.nan)
-    rsi = 100 - (100 / (1 + rs))
-    return rsi.fillna(50.0)
+
+    rsi = pd.Series(index=close.index, dtype=float)
+    both_zero = (avg_gain == 0) & (avg_loss == 0)
+    loss_zero = (avg_loss == 0) & (avg_gain > 0)
+    normal = ~both_zero & ~loss_zero
+
+    rsi[both_zero] = 50.0   # truly no movement at all — genuinely neutral
+    rsi[loss_zero] = 100.0  # all gains, zero losses — maximally overbought, not neutral
+    rs = avg_gain[normal] / avg_loss[normal]
+    rsi[normal] = 100 - (100 / (1 + rs))
+    return rsi.fillna(50.0)  # only reachable during the initial warm-up window
 
 def compute_macd(close: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9):
     ema_fast = close.ewm(span=fast, adjust=False).mean()
@@ -90,7 +98,7 @@ def main() -> None:
 
         # Compute manual indicators
         df["returns_1d"] = np.log(df["close"] / df["close"].shift(1))
-        df["returns_7d"] = (df["close"] - df["close"].shift(7)) / df["close"].shift(7)
+        df["returns_7d"] = np.log(df["close"] / df["close"].shift(7))
         df["volatility_7d"] = df["returns_1d"].rolling(7).std()
 
         # Drop rows where any column is NaN (indicator warm-up)

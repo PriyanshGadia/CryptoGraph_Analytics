@@ -207,26 +207,13 @@ def run_inference() -> dict:
     for idx, symbol in enumerate(available_symbols):
         latest_features = features[symbol].iloc[-1] if symbol in features else None
         
-        # Decode direction and confidence from the model's forward pass
+        # Decode direction and confidence from the model's calibrated forward pass
         if gate_passed:
             dir_idx = int(dir_probs[idx].argmax().item())
-            prob = float(dir_probs[idx][dir_idx].item()) # Raw softmax probability in range [0.3333, 1.0]
-            
-            # 1. Rescale relative to 3-class 33.33% random baseline (0% edge = 50.0% conf, 100% edge = 95.0% conf)
-            base_model_conf = 50.0 + max(0.0, (prob - 0.3333) / 0.6667) * 45.0
-            
-            # 2. Blend with multi-factor technical indicator alignment (RSI deviation, MACD momentum)
-            indicator_bonus = 0.0
-            if latest_features is not None:
-                rsi = float(latest_features.get("rsi_14", 50.0))
-                macd = float(latest_features.get("macd", 0.0))
-                
-                # Dynamic indicator alignment boost (up to +10.0%)
-                rsi_dev = min(1.0, abs(rsi - 50.0) / 25.0)  # High RSI divergence
-                macd_sig = min(1.0, abs(macd) * 8.0)       # MACD momentum strength
-                indicator_bonus = (rsi_dev * 5.0) + (macd_sig * 5.0)
-                
-            confidence = round(min(98.5, base_model_conf + indicator_bonus), 2)
+            prob = float(dir_probs[idx][dir_idx].item())  # Calibrated softmax probability in range [0.3333, 1.0]
+
+            # Linear rescale of calibrated probability (33.33% baseline -> 33.33, 100% -> 98.50), no uncalibrated heuristic bonus
+            confidence = round(min(98.5, 33.33 + (prob - 0.3333) / 0.6667 * 65.17), 2)
             direction = DIRECTION_CLASSES[dir_idx]
             
             # Map 3-class outputs to high-conviction signals based on calibrated probability threshold

@@ -13,6 +13,8 @@ import pandas as pd
 from typing import List, Dict, Any
 from sqlalchemy.orm import Session
 from app.db.models_sqla import PortfolioState
+from ml.evaluation.finance_metrics import sharpe_ratio, sortino_ratio
+
 
 def generate_tear_sheet(db: Session, risk_free_rate: float = 0.04) -> Dict[str, Any]:
     """
@@ -61,25 +63,11 @@ def generate_tear_sheet(db: Session, risk_free_rate: float = 0.04) -> Dict[str, 
     drawdown = (cumulative_returns - peak) / peak
     max_drawdown = drawdown.min()
 
-    # 3. Sharpe Ratio (Risk-Free Rate normalized to daily)
-    daily_rf = risk_free_rate / 365
-    excess_returns = df['portfolio_return'] - daily_rf
-    mean_excess_return = excess_returns.mean()
-    std_excess_return = excess_returns.std()
-    
-    sharpe_ratio = 0.0
-    if std_excess_return > 0:
-        sharpe_ratio = (mean_excess_return / std_excess_return) * np.sqrt(365)
+    # 3. Sharpe & Sortino Ratios (Single Source of Truth from finance_metrics)
+    sharpe = sharpe_ratio(df['portfolio_return'], risk_free_rate=risk_free_rate)
+    sortino = sortino_ratio(df['portfolio_return'], risk_free_rate=risk_free_rate)
         
-    # 4. Sortino Ratio (Only penalizes downside volatility)
-    downside_returns = excess_returns[excess_returns < 0]
-    downside_std = downside_returns.std()
-    
-    sortino_ratio = 0.0
-    if downside_std > 0:
-        sortino_ratio = (mean_excess_return / downside_std) * np.sqrt(365)
-        
-    # 5. Alpha & Beta (against BTC benchmark)
+    # 4. Alpha & Beta (against BTC benchmark)
     covariance = df[['portfolio_return', 'btc_return']].cov().iloc[0, 1]
     btc_variance = df['btc_return'].var()
     
@@ -95,11 +83,12 @@ def generate_tear_sheet(db: Session, risk_free_rate: float = 0.04) -> Dict[str, 
         "annualized_return_pct": annualized_return * 100,
         "btc_annualized_return_pct": btc_annualized_return * 100,
         "max_drawdown_pct": max_drawdown * 100,
-        "sharpe_ratio": sharpe_ratio,
-        "sortino_ratio": sortino_ratio,
+        "sharpe_ratio": sharpe,
+        "sortino_ratio": sortino,
         "alpha_pct": alpha * 100,
         "beta": beta
     }
+
 
 if __name__ == "__main__":
     from app.db.database import SessionLocal
