@@ -11,7 +11,6 @@ import { TrendingUp, TrendingDown, MessageSquareShare, Activity, HeartPulse } fr
 import { ChartSkeleton } from "@/components/PageSkeleton";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { ScrollToTop } from "@/components/ScrollToTop";
-import { CHART_HEX } from "@/lib/design-tokens";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -306,7 +305,7 @@ export default function SentimentPage() {
                   <Bar dataKey="avg_sentiment" radius={[0, 4, 4, 0]} barSize={20}>
                     {
                       sectorSent.map((entry: any, index: number) => (
-                        <Cell key={`cell-${index}`} fill={entry.avg_sentiment >= 0 ? CHART_HEX.dark.success : CHART_HEX.dark.danger} className={entry.avg_sentiment >= 0 ? 'drop-shadow-[0_0_5px_rgba(34,197,94,0.5)]' : 'drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]'} />
+                        <Cell key={`cell-${index}`} fill={entry.avg_sentiment >= 0 ? palette.success : palette.danger} className={entry.avg_sentiment >= 0 ? 'drop-shadow-[0_0_5px_rgba(34,197,94,0.5)]' : 'drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]'} />
                       ))
                     }
                   </Bar>

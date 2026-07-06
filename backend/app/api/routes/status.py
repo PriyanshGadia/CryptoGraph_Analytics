@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from app.api.deps import get_db
+from app.core.auth import get_api_key
 from app.db.models_sqla import OHLCV, Prediction, AssetNews
 from datetime import datetime, timezone
 
@@ -42,7 +43,7 @@ async def get_data_status(db: Session = Depends(get_db)):
 
 
 @router.post("/refresh-all")
-async def trigger_refresh_all(db: Session = Depends(get_db)):
+async def trigger_refresh_all(db: Session = Depends(get_db), api_key: str = Depends(get_api_key)):
     """
     Manually triggers a full data refresh cycle:
     1. Refreshes live technicals (RSI, MACD, returns) from Binance via CCXT
@@ -112,7 +113,7 @@ async def trigger_refresh_all(db: Session = Depends(get_db)):
 
 
 @router.post("/scheduler/start")
-async def start_scheduler():
+async def start_scheduler(api_key: str = Depends(get_api_key)):
     """Starts the background scheduler."""
     try:
         import subprocess

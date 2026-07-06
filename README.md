@@ -37,7 +37,7 @@ We've engineered this project to be deployed flawlessly across any environment. 
 ### 1. The "I just want it to work on my laptop" Deploy (Mac & Linux)
 We wrote a native bash launcher. Just run this in your terminal. It sets up your paths, spawns the backend and frontend in the background, and opens your browser.
 ```bash
-git clone https://github.com/AkshatJ557/CryptoGraph_Analytics.git
+git clone https://github.com/PriyanshGadia/CryptoGraph_Analytics.git
 cd CryptoGraph_Analytics
 chmod +x start.sh
 ./start.sh
@@ -50,7 +50,7 @@ docker-compose up --build -d
 ```
 *Note: Make sure Docker and Docker Compose are installed.*
 
-### 3. The Serverless Deploy (Vercel & GitHub Actions)
+### 3. The Frontend Deploy (Vercel)
 The frontend is already configured for **Next.js Standalone Output**. 
 1. Push this repository to your GitHub.
 2. Connect it to **Vercel**.
@@ -140,7 +140,7 @@ graph LR
 **No.** This is an Analytics and Forecasting dashboard. The portfolio dashboard shows simulated backtested runs and paper trading. There is no automated execution.
 
 ### How are the model validation metrics calculated?
-Validation metrics (F1 validation score, Sharpe ratio) are computed chronologically on a held-out validation set. If a model's F1 score is $< 0.35$ or Sharpe is $< 0.0$, the inference pipeline gates predictions and serves a "recalibrating" state to the UI to avoid outputting poor predictions.
+Validation metrics (F1 validation score, Sharpe ratio) are computed chronologically on a held-out validation set. If a model's F1 score is below 0.35 or Sharpe is below 0.0, the inference pipeline gates predictions and serves a "recalibrating" state to the UI to avoid outputting poor predictions.
 
 ### I am getting "Failed to load market data" or "Stream Offline".
 This happens if the backend isn't running, or if it's your very first time booting and the SQLite database is completely empty. Run the backend, let it establish the WebSocket handshake with Binance (takes about 5 seconds), and refresh the page.

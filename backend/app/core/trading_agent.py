@@ -154,8 +154,8 @@ async def execute_daily_trades():
                             price=avg_fill,
                             total_usd=net_val,
                             pnl=realized_pnl,
-                            reason=f"{circuit_triggered} | Executed via {route['exchange']}. Ref: {t_ref}",
-                            confidence=99.0,
+                            reason=f"{circuit_triggered} | SIMULATED PAPER TRADE using live {route['exchange']} order book data. | Simulation ID: {t_ref}",
+                            confidence=None,  # Deterministic circuit breaker, not a model prediction — kept out of calibration stats.
                             status="EXECUTED"
                         )
                         new_trades.append(sl_trade)
@@ -238,7 +238,7 @@ async def execute_daily_trades():
                         quantity=qty_to_buy,
                         price=avg_fill_price,
                         total_usd=allocation_target, # Total deducted from cash
-                        reason=f"CIO Verdict: {verdict['reasoning'][:150]}... | Routed via {exchange_used} CEX. | Trade Ref: {trade_ref}",
+                        reason=f"CIO Verdict: {verdict['reasoning'][:150]}... | SIMULATED PAPER TRADE using live {exchange_used} order book data. | Simulation ID: {trade_ref}",
                         confidence=pred.confidence,
                         status="EXECUTED"
                     ))
@@ -267,7 +267,7 @@ async def execute_daily_trades():
                     price=avg_fill_price,
                     total_usd=net_sell_value, # Total added to cash
                     pnl=realized_pnl,
-                    reason=f"CIO Verdict: {verdict['reasoning'][:150]}... | Routed via {exchange_used} CEX. | Trade Ref: {trade_ref}",
+                    reason=f"CIO Verdict: {verdict['reasoning'][:150]}... | SIMULATED PAPER TRADE using live {exchange_used} order book data. | Simulation ID: {trade_ref}",
                     confidence=pred.confidence,
                     status="EXECUTED"
                 ))

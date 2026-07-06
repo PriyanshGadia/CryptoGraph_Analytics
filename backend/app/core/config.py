@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     sentry_dsn: Optional[str] = None
     model_artifact_path: str = "./artifacts/best_model.pt"
     environment: str = "development"
+    api_key: str = ""
 
     class Config:
         env_file = ".env"

@@ -10,7 +10,7 @@ services:
       - key: PYTHON_VERSION
         value: 3.10.12
       - key: PYTHONPATH
-        value: "/opt/render/project/src/backend"
+        value: "/opt/render/project/src"
       - key: ENVIRONMENT
         value: production
       # Add these securely via the Render dashboard:

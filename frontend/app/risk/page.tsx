@@ -13,7 +13,6 @@ import {
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, ScatterChart, Scatter, ZAxis, Area, AreaChart, BarChart, CartesianGrid, Bar, PieChart, Pie, Cell, Legend, ComposedChart } from "recharts";
 import { ScrollToTop } from "@/components/ScrollToTop";
-import { CHART_HEX } from "@/lib/design-tokens";
 
 interface PredictionRow {
   asset_symbol: string;

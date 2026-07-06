@@ -20,3 +20,5 @@ ccxt
 networkx
 pandas
 requests
+torch
+websockets

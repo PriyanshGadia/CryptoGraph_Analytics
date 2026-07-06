@@ -9,13 +9,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install
-COPY requirements*.txt ./
+COPY backend/requirements*.txt ./
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt && \
     if [ -f requirements-optional.txt ]; then pip install --no-cache-dir -r requirements-optional.txt || true; fi
 
 # Copy backend code
-COPY . .
+COPY backend/ ./
+COPY ml/ ./ml/
 
 # Ensure PYTHONPATH is set so that 'app' can be resolved
 ENV PYTHONPATH=/app
