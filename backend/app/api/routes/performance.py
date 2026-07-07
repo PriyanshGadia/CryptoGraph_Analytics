@@ -124,13 +124,7 @@ def get_model_performance(
             if next_day_str in price_map[aid]:
                 close_next = price_map[aid][next_day_str]
             else:
-                sym = asset_map.get(aid)
-                if sym:
-                    from app.core.streams.binance_ws import get_global_market_state
-                    market_state = get_global_market_state()
-                    live_price = market_state.get(sym, {}).get("current_price", 0)
-                    if live_price > 0:
-                        close_next = live_price
+                close_next = None
         else:
             ohlcv_today = db.query(OHLCV).filter(
                 OHLCV.asset_id == aid,
@@ -138,13 +132,7 @@ def get_model_performance(
             ).order_by(desc(OHLCV.timestamp)).first()
             if ohlcv_today:
                 close_today = ohlcv_today.close
-                sym = asset_map.get(aid)
-                if sym:
-                    from app.core.streams.binance_ws import get_global_market_state
-                    market_state = get_global_market_state()
-                    live_price = market_state.get(sym, {}).get("current_price", 0)
-                    if live_price > 0:
-                        close_next = live_price
+                close_next = None
 
         if close_today and close_next and close_today > 0:
             actual_return = (close_next - close_today) / close_today
@@ -197,13 +185,13 @@ def get_model_performance(
                 if was_correct:
                     best_dir[direction]["correct"] += 1
 
-            bucket_idx = min(int(conf * 10), 9) if conf <= 1 else min(int(conf / 10), 9)
+            bucket_idx = min(int(conf / 10), 9)
             calib_buckets[bucket_idx]["total"] += 1
             if was_correct:
                 calib_buckets[bucket_idx]["correct"] += 1
 
             # Strategy simulation
-            conf_threshold = 0.65 if conf <= 1 else 65
+            conf_threshold = 65
             if direction in ["up", "strong_up"] and conf > conf_threshold:
                 trade_return = actual_return
                 strategy_returns.append(trade_return)
@@ -277,10 +265,9 @@ def get_model_performance(
     strategy_return_pct = (capital - 100) / 100 * 100
 
     if len(strategy_returns) > 1:
-        ret_array = np.array(strategy_returns)
-        mean_ret = np.mean(ret_array)
-        std_ret = np.std(ret_array)
-        strategy_sharpe = float((mean_ret / std_ret) * np.sqrt(365)) if std_ret > 0 else 0.0
+        from ml.evaluation.finance_metrics import sharpe_ratio
+        import pandas as pd
+        strategy_sharpe = sharpe_ratio(pd.Series(strategy_returns), risk_free_rate=0.04)
     else:
         strategy_sharpe = 0.0
 

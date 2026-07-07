@@ -6,6 +6,9 @@ import numpy as np
 import pandas as pd
 from typing import Optional
 
+_GLOBAL_LSTM_MODEL = None
+_GLOBAL_LSTM_LOOKBACK = 14
+
 def run_lstm_forecast(
     prices: pd.Series,  # 60 days of close prices, daily
     forecast_days: int = 30
@@ -13,6 +16,8 @@ def run_lstm_forecast(
     """
     Runs LSTM forecast using a pre-trained global model.
     """
+    global _GLOBAL_LSTM_MODEL, _GLOBAL_LSTM_LOOKBACK
+    
     price_array = prices.values.astype(np.float32)
     price_min   = price_array.min()
     price_max   = price_array.max()
@@ -45,28 +50,34 @@ def run_lstm_forecast(
                 out, _ = self.lstm(x)
                 return self.fc(out[:, -1, :]).squeeze(-1)
                 
-        # Search for pre-trained model checkpoint
-        ckpt_path = None
-        possible_paths = [
-            Path(__file__).resolve().parent.parent.parent / "ml" / "artifacts" / "best_lstm.pt",
-            Path(__file__).resolve().parent / "best_lstm.pt",
-            Path("ml/artifacts/best_lstm.pt"),
-            Path("../ml/artifacts/best_lstm.pt")
-        ]
-        for p in possible_paths:
-            if p.exists() and p.is_file():
-                ckpt_path = p
-                break
+        if _GLOBAL_LSTM_MODEL is None:
+            # Search for pre-trained model checkpoint
+            ckpt_path = None
+            possible_paths = [
+                Path(__file__).resolve().parent.parent.parent / "ml" / "artifacts" / "best_lstm.pt",
+                Path(__file__).resolve().parent / "best_lstm.pt",
+                Path("ml/artifacts/best_lstm.pt"),
+                Path("../ml/artifacts/best_lstm.pt")
+            ]
+            for p in possible_paths:
+                if p.exists() and p.is_file():
+                    ckpt_path = p
+                    break
+                    
+            if ckpt_path is None:
+                raise FileNotFoundError("Pre-trained LSTM model checkpoint not found.")
                 
-        if ckpt_path is None:
-            raise FileNotFoundError("Pre-trained LSTM model checkpoint not found.")
+            checkpoint = torch.load(str(ckpt_path), map_location="cpu")
+            model = LSTMForecaster()
+            model.load_state_dict(checkpoint["model_state_dict"])
+            model.eval()
             
-        checkpoint = torch.load(str(ckpt_path), map_location="cpu")
-        model = LSTMForecaster()
-        model.load_state_dict(checkpoint["model_state_dict"])
-        model.eval()
+            _GLOBAL_LSTM_LOOKBACK = checkpoint.get("lookback", 14)
+            _GLOBAL_LSTM_MODEL = model
+        else:
+            model = _GLOBAL_LSTM_MODEL
         
-        LOOKBACK = checkpoint.get("lookback", 14)
+        LOOKBACK = _GLOBAL_LSTM_LOOKBACK
         
         forecast_norm = []
         window = list(normalized[-LOOKBACK:])

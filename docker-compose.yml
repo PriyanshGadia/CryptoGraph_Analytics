@@ -10,7 +10,7 @@ services:
       - "8000:8000"
     environment:
       - ENVIRONMENT=production
-      - API_KEY=swarm_intelligence_default_key_123
+      - API_KEY=${API_KEY}
       - FRONTEND_URL=http://localhost:3000
     # Use internal Docker volume for SQLite to avoid permission issues with bind mounts
     volumes:
@@ -32,7 +32,7 @@ services:
       - "3000:3000"
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
-      - NEXT_PUBLIC_API_KEY=swarm_intelligence_default_key_123
+      - NEXT_PUBLIC_API_KEY=${API_KEY}
     depends_on:
       backend:
         condition: service_healthy

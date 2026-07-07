@@ -9,9 +9,11 @@ from sqlalchemy import desc
 
 from app.db.models_sqla import Asset, OnchainMetric, AssetNews, TechnicalFeature, Prediction
 
+from cachetools import TTLCache
+
 # In-memory cache for live OHLCV data.
 # Structure: { symbol: [ {timestamp, open, high, low, close, volume}, ... ] }
-LIVE_OHLCV_CACHE: Dict[str, List[Dict]] = {}
+LIVE_OHLCV_CACHE: Dict[str, List[Dict]] = TTLCache(maxsize=1000, ttl=3600)
 CACHE_MAX_SIZE = 60  # Keep last 60 minutes
 
 # Static features cache (used by get_latest_features for ML)
@@ -145,38 +147,55 @@ async def binance_ws_loop(symbols: List[str]):
         if s not in LIVE_OHLCV_CACHE:
             LIVE_OHLCV_CACHE[s] = []
 
-    # Start a background task to periodically fetch XMR price from CoinGecko
+    # Start a background task to periodically fetch XMR price from CoinGecko & Kraken
     async def fetch_xmr_price_periodically():
         import urllib.request
         import json
+
+        def fetch_coingecko():
+            req = urllib.request.Request(
+                'https://api.coingecko.com/api/v3/simple/price?ids=monero&vs_currencies=usd',
+                headers={'User-Agent': 'Mozilla/5.0'}
+            )
+            with urllib.request.urlopen(req, timeout=5) as response:
+                data = json.loads(response.read().decode())
+                return float(data["monero"]["usd"])
+
+        def fetch_kraken():
+            import ccxt
+            client = ccxt.kraken({'enableRateLimit': True, 'timeout': 5000})
+            ticker = client.fetch_ticker('XMR/USD')
+            return float(ticker['last'])
+
         while True:
-            try:
-                loop = asyncio.get_event_loop()
-                def fetch():
-                    req = urllib.request.Request(
-                        'https://api.coingecko.com/api/v3/simple/price?ids=monero&vs_currencies=usd',
-                        headers={'User-Agent': 'Mozilla/5.0'}
-                    )
-                    with urllib.request.urlopen(req, timeout=5) as response:
-                        return json.loads(response.read().decode())
+            loop = asyncio.get_event_loop()
+            xmr_price = None
+            source_used = None
+
+            for fetch_fn, name in [(fetch_coingecko, "CoinGecko"), (fetch_kraken, "Kraken")]:
+                try:
+                    xmr_price = await loop.run_in_executor(None, fetch_fn)
+                    source_used = name
+                    break
+                except Exception as e:
+                    print(f"[XMR Price] {name} failed: {e}")
+
+            if xmr_price is not None and "XMR" in GLOBAL_MARKET_STATE:
+                GLOBAL_MARKET_STATE["XMR"]["current_price"] = xmr_price
+                GLOBAL_MARKET_STATE["XMR"]["price_source"] = source_used
+                static_mcap = GLOBAL_MARKET_STATE["XMR"].get("market_cap_usd", 0)
+                if GLOBAL_MARKET_STATE["XMR"].get("circulating_supply", 0) == 0 and xmr_price > 0 and static_mcap > 0:
+                    GLOBAL_MARKET_STATE["XMR"]["circulating_supply"] = static_mcap / xmr_price
                 
-                res = await loop.run_in_executor(None, fetch)
-                if "monero" in res and "usd" in res["monero"]:
-                    xmr_price = float(res["monero"]["usd"])
-                    if "XMR" in GLOBAL_MARKET_STATE:
-                        GLOBAL_MARKET_STATE["XMR"]["current_price"] = xmr_price
-                        static_mcap = GLOBAL_MARKET_STATE["XMR"].get("market_cap_usd", 0)
-                        if GLOBAL_MARKET_STATE["XMR"].get("circulating_supply", 0) == 0 and xmr_price > 0 and static_mcap > 0:
-                            GLOBAL_MARKET_STATE["XMR"]["circulating_supply"] = static_mcap / xmr_price
-                        
-                        circ_supply = GLOBAL_MARKET_STATE["XMR"].get("circulating_supply", 0)
-                        if circ_supply > 0:
-                            GLOBAL_MARKET_STATE["XMR"]["market_cap_usd"] = circ_supply * xmr_price
-            except Exception as e:
-                # Simulate a tiny organic price movement from current to keep UI alive
-                if "XMR" in GLOBAL_MARKET_STATE and GLOBAL_MARKET_STATE["XMR"]["current_price"] > 0:
-                    import random
-                    GLOBAL_MARKET_STATE["XMR"]["current_price"] *= (1.0 + random.uniform(-0.0005, 0.0005))
+                circ_supply = GLOBAL_MARKET_STATE["XMR"].get("circulating_supply", 0)
+                if circ_supply > 0:
+                    GLOBAL_MARKET_STATE["XMR"]["market_cap_usd"] = circ_supply * xmr_price
+            else:
+                # Both real sources failed. Freeze the price.
+                print("[XMR Price] All sources failed this cycle — holding last known price.")
+                if "XMR" in GLOBAL_MARKET_STATE:
+                    GLOBAL_MARKET_STATE["XMR"]["price_source"] = "stale"
+            
             await asyncio.sleep(60)
 
     asyncio.create_task(fetch_xmr_price_periodically())

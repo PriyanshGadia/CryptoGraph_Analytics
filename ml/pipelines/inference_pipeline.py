@@ -238,6 +238,8 @@ def run_inference() -> dict:
 
             # Linear rescale of calibrated probability (33.33% baseline -> 33.33, 100% -> 98.50), no uncalibrated heuristic bonus
             confidence = round(min(98.5, 33.33 + (prob - 0.3333) / 0.6667 * 65.17), 2)
+            if not (0 <= confidence <= 100):
+                raise ValueError(f"Confidence score {confidence} is out of bounds [0, 100]")
             direction = DIRECTION_CLASSES[dir_idx]
             
             # Map 3-class outputs to high-conviction signals based on calibrated probability threshold

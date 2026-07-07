@@ -19,21 +19,19 @@ def get_refresh_event() -> asyncio.Event:
 
 # Discover SYMBOLS from local database dynamically
 def get_db_symbols() -> List[str]:
-    import sqlite3
-    db_path = Path(__file__).resolve().parent.parent.parent.parent / "cryptograph.db"
-    if not db_path.exists():
-        # Check standard location inside backend folder
-        db_path = Path(__file__).resolve().parent.parent.parent / "cryptograph.db"
     try:
-        conn = sqlite3.connect(str(db_path))
-        cursor = conn.cursor()
-        cursor.execute("SELECT symbol FROM assets")
-        rows = cursor.fetchall()
-        conn.close()
-        if rows:
-            return [r[0] for r in rows]
+        from app.db.database import SessionLocal
+        from app.db.models_sqla import Asset
+        db = SessionLocal()
+        try:
+            assets = db.query(Asset.symbol).all()
+            if assets:
+                return [a.symbol for a in assets]
+        finally:
+            db.close()
     except Exception as e:
         print(f"Error querying symbols from database: {e}")
+        
     # Hardcoded fallback of all 50 database assets
     return [
         "BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "AVAX", "LINK", "DOT",

@@ -317,12 +317,19 @@ def get_trending_assets(db: Session = Depends(get_db)):
             4
         )
 
-        # Previous sentiment estimate: remove the 1d contribution
-        # This approximates "what sentiment was before today's move"
-        prev_rsi = rsi - (ret_1d * 100)  # Rough: RSI changes ~proportionally to returns
+        # Previous sentiment estimate using actual historical data
+        prev_row = db.execute(text("""
+            SELECT rsi_14, returns_7d FROM technical_features
+            WHERE asset_id = :aid AND timestamp < :ts
+            ORDER BY timestamp DESC LIMIT 1
+        """), {"aid": aid, "ts": r[4]}).fetchone()
+        
+        prev_rsi = prev_row[0] if prev_row else rsi
+        prev_ret_7d = prev_row[1] if prev_row else ret_7d
+        
         prev_rsi = max(0, min(100, prev_rsi))
         prev_rsi_component = (prev_rsi - 50) / 50
-        prev_momentum = math.tanh((ret_7d - ret_1d) * 8)
+        prev_momentum = math.tanh(prev_ret_7d * 8)
 
         prev_sentiment = round(
             prev_rsi_component * 0.5 + prev_momentum * 0.5,

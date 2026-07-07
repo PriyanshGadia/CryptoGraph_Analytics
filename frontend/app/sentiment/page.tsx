@@ -161,7 +161,10 @@ export default function SentimentPage() {
             <div className="absolute top-0 right-0 p-4">
                 <HeartPulse size={20} className={`opacity-50 group-hover:opacity-100 transition-opacity ${today > 60 ? 'text-success animate-pulse' : today < 40 ? 'text-danger' : 'text-text-muted'}`} />
             </div>
-            <h3 className="text-xl font-black text-text tracking-tight mb-8">Fear & Greed Index</h3>
+            <h3 className="text-xl font-black text-text tracking-tight mb-2">Fear & Greed Index</h3>
+            <p className="text-xs text-text-muted mb-6 italic text-center max-w-sm">
+              Proprietary composite index derived from this platform's own technical signals, not the standard Alternative.me index.
+            </p>
             
             <FearGreedGauge value={today} />
             
