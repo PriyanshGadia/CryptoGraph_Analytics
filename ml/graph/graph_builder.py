@@ -224,22 +224,37 @@ class DynamicGraphBuilder:
         if self.feature_dim == 27:
             feature_cols.extend(["tvl", "revenue", "active_users"])
             
-        # STEP 1: Node Features with min-max scaling normalized per-asset
+        # STEP 1: Node Features with Rolling 30-day Z-Score normalization (all features)
         x_list = []
         for sym in self.symbols:
             if sym in features and not features[sym].empty:
                 df = features[sym]
+                
+                if sym not in self.rolling_min_cache or len(df) != self._cached_len.get(sym, -1):
+                    cols_present = [c for c in feature_cols if c in df.columns]
+                    self.rolling_min_cache[sym] = df[cols_present].rolling(window=30, min_periods=1).mean()
+                    rolling_std = df[cols_present].rolling(window=30, min_periods=1).std()
+                    self.rolling_max_cache[sym] = rolling_std.replace(0.0, 1.0).fillna(1.0)
+                    self._cached_len[sym] = len(df)
+                    
+                df_mean = self.rolling_min_cache[sym]
+                df_std = self.rolling_max_cache[sym]
                 try:
                     row = df.iloc[-1]
+                    row_mean = df_mean.iloc[-1]
+                    row_std = df_std.iloc[-1]
                     vals = []
                     for col in feature_cols:
-                        val = row[col]
-                        if col in ["open", "high", "low", "close", "volume", "market_cap_usd"]:
-                            col_min = df[col].min()
-                            col_max = df[col].max()
-                            col_range = col_max - col_min if col_max > col_min else 1.0
-                            val = (val - col_min) / col_range
-                        vals.append(float(val) if not pd.isna(val) else 0.0)
+                        val = row[col] if not pd.isna(row[col]) else 0.0
+                        if col in row_mean.index:
+                            col_mean = row_mean[col] if not pd.isna(row_mean[col]) else 0.0
+                            col_std = row_std[col] if not pd.isna(row_std[col]) else 1.0
+                            if col_std == 0.0:
+                                col_std = 1.0
+                            val = (float(val) - col_mean) / col_std
+                        # Clip to [-5, 5] to handle outliers
+                        val = max(-5.0, min(5.0, float(val)))
+                        vals.append(val)
                     vals = np.array(vals, dtype=np.float32)
                 except Exception:
                     vals = np.zeros(len(feature_cols), dtype=np.float32)

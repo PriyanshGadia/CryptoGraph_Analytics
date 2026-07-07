@@ -26,8 +26,9 @@ from ml.models.stgcn import STGCNModel
 import json
 
 # Phase 9: XAI & Inference Attestation Integration
-from backend.app.core.gnn_attribution_explainer import GNNGradientAttributionExplainer
-from backend.app.core.inference_attester import InferenceAttester
+from backend.app.ml.gnn_attribution_explainer import GNNGradientAttributionExplainer
+from backend.app.ml.inference_attester import InferenceAttester
+import hashlib
 from ml.models.forecast_model import run_ensemble_forecast
 import pandas as pd
 
@@ -85,7 +86,7 @@ def _get_model_version(model_path: Path) -> str:
     """Extract a version string from the checkpoint, falling back to the
     file modification timestamp."""
     try:
-        ckpt = torch.load(model_path, map_location="cpu")
+        ckpt = torch.load(model_path, map_location="cpu", weights_only=True)
         cfg = ckpt.get("config", {})
         return cfg.get("version", model_path.stem)
     except Exception:
@@ -284,13 +285,31 @@ def run_inference() -> dict:
             feature_names=FEATURE_NAMES
         )
         
+        try:
+            with open(MODEL_PATH, "rb") as f:
+                checkpoint_sha256 = hashlib.sha256(f.read()).hexdigest()
+        except Exception:
+            checkpoint_sha256 = "unknown"
+            
+        try:
+            edge_str = json.dumps(graph_sequence[-1].edge_index.tolist(), sort_keys=True)
+            graph_digest = hashlib.sha256(edge_str.encode()).hexdigest()
+        except Exception:
+            graph_digest = "unknown"
+        
         # Generate Cryptographic Inference Attestation
-        attestation_result = attester.generate_inference_attestation(model_version, real_xai_features, direction)
+        attestation_result = attester.generate_inference_attestation(
+            model_version=model_version, 
+            features=real_xai_features, 
+            direction=direction,
+            checkpoint_sha256=checkpoint_sha256,
+            graph_digest=graph_digest
+        )
 
         predictions.append({
             "symbol": symbol,
             "direction": direction,
-            "confidence": round(confidence, 2),
+            "confidence": round(confidence / 100.0, 4), # SCALE DOWN TO 0.0-1.0 FOR SQLALCHEMY VALIDATOR
             "volatility_regime": vol_regime,
             "predicted_at": timestamp_now,
             "model_version": model_version,
@@ -299,54 +318,63 @@ def run_inference() -> dict:
             "attestation_hash": attestation_result["attestation_hash"]
         })
 
-    # ── 6. Batch-upsert into SQLite ──────────────────────────────────
-    from backend.app.db.database import engine, execute_with_retry
+    # ── 6. Batch-upsert into SQLite via SQLAlchemy ──────────────────────────────────
+    from backend.app.db.database import SessionLocal
+    from backend.app.db.models_sqla import SQLAAsset, SQLAPrediction
 
     def _write_predictions():
-        conn = sqlite3.connect(str(DB_PATH), timeout=30.0)
+        db = SessionLocal()
         try:
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            cursor.execute("PRAGMA journal_mode=WAL")
-            cursor.execute("PRAGMA busy_timeout=30000")
-            ph = ",".join("?" for _ in available_symbols)
-            rows = cursor.execute(
-                f"SELECT id, symbol FROM assets WHERE symbol IN ({ph})",
-                available_symbols,
-            ).fetchall()
-            sym_to_id = {r["symbol"]: r["id"] for r in rows}
+            # Get asset IDs
+            assets = db.query(SQLAAsset).filter(SQLAAsset.symbol.in_(available_symbols)).all()
+            sym_to_id = {a.symbol: a.id for a in assets}
 
             records = []
             for pred in predictions:
                 asset_id = sym_to_id.get(pred["symbol"])
                 if not asset_id:
                     continue
-                records.append((
-                    asset_id,                   # asset_id
-                    timestamp_now,              # timestamp
-                    pred["predicted_at"],       # predicted_at
-                    pred["direction"],          # direction
-                    pred["confidence"],         # confidence
-                    pred["volatility_regime"],  # volatility_regime
-                    json.dumps({"t_shap": pred["t_shap_attributions"], "attestation_hash": pred["attestation_hash"]}), # shap_values
-                    pred["model_version"],      # model_version
-                    pred["baseline_probability"],# baseline_probability
-                    pred["t_shap_attributions"],# t_shap_attributions
-                    pred["attestation_hash"]    # attestation_hash
-                ))
+                
+                # Check if it already exists to avoid unique constraint failure
+                existing = db.query(SQLAPrediction).filter_by(asset_id=asset_id, timestamp=timestamp_now).first()
+                if existing:
+                    # Update
+                    existing.predicted_at = pred["predicted_at"]
+                    existing.direction = pred["direction"]
+                    existing.confidence = pred["confidence"]
+                    existing.volatility_regime = pred["volatility_regime"]
+                    existing.shap_values = {"t_shap": pred["t_shap_attributions"], "attestation_hash": pred["attestation_hash"]}
+                    existing.model_version = pred["model_version"]
+                    existing.baseline_probability = pred["baseline_probability"]
+                    existing.t_shap_attributions = json.loads(pred["t_shap_attributions"]) if isinstance(pred["t_shap_attributions"], str) else pred["t_shap_attributions"]
+                    existing.attestation_hash = pred["attestation_hash"]
+                else:
+                    new_pred = SQLAPrediction(
+                        asset_id=asset_id,
+                        timestamp=timestamp_now,
+                        predicted_at=pred["predicted_at"],
+                        direction=pred["direction"],
+                        confidence=pred["confidence"],
+                        volatility_regime=pred["volatility_regime"],
+                        shap_values={"t_shap": pred["t_shap_attributions"], "attestation_hash": pred["attestation_hash"]},
+                        model_version=pred["model_version"],
+                        baseline_probability=pred["baseline_probability"],
+                        t_shap_attributions=json.loads(pred["t_shap_attributions"]) if isinstance(pred["t_shap_attributions"], str) else pred["t_shap_attributions"],
+                        attestation_hash=pred["attestation_hash"]
+                    )
+                    db.add(new_pred)
+                    records.append(new_pred)
 
-            if records:
-                cursor.executemany("""
-                    INSERT INTO predictions
-                        (asset_id, timestamp, predicted_at, direction,
-                         confidence, volatility_regime, shap_values, model_version, baseline_probability, t_shap_attributions, attestation_hash)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, records)
-                conn.commit()
+            if records or assets:
+                db.commit()
             
-            return sym_to_id, len(records)
+            return sym_to_id, len(predictions)
+        except Exception as e:
+            db.rollback()
+            print(f"Error writing predictions to db: {e}")
+            raise
         finally:
-            conn.close()
+            db.close()
 
     sym_to_id, rec_count = execute_with_retry(_write_predictions)
 

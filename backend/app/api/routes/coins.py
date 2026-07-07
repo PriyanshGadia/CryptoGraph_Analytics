@@ -50,7 +50,8 @@ async def get_coin_ohlcv(
             "source": "binance_live"
         }
     except Exception as e:
-        print(f"Error fetching OHLCV from Binance: {e}")
+        import logging
+        logging.getLogger(__name__).error(f"Error fetching OHLCV from Binance for {symbol}: {e}", exc_info=True)
         # Fallback to SQLite if Binance API fails
         from app.db.models_sqla import OHLCV
         from sqlalchemy import desc

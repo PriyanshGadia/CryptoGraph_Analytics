@@ -188,11 +188,11 @@ class FeatureStore:
                 "returns_7d": 0.0,
                 "volatility_7d": 0.0
             }
-            df = df.ffill()
+            df = df.interpolate(method='linear', limit_direction='both').fillna(0.0)
+            
             for col, val in fill_values.items():
                 if col in df.columns:
                     df[col] = df[col].fillna(val)
-            df = df.fillna(0.0)
 
             expected_cols = [
                 "open", "high", "low", "close", "volume",

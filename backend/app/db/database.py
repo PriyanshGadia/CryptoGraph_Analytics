@@ -5,9 +5,14 @@ from sqlalchemy.orm import sessionmaker
 import os
 from pathlib import Path
 
-# Local SQLite connection string - allow override via DATABASE_URL or DATABASE_PATH
+# Local connection string - allow override via DATABASE_URL
 db_url_env = os.getenv("DATABASE_URL")
 if db_url_env:
+    # Handle Heroku/Supabase style postgres:// URLs
+    if db_url_env.startswith("postgres://"):
+        db_url_env = db_url_env.replace("postgres://", "postgresql+psycopg2://", 1)
+    elif db_url_env.startswith("postgresql://"):
+        db_url_env = db_url_env.replace("postgresql://", "postgresql+psycopg2://", 1)
     SQLALCHEMY_DATABASE_URL = db_url_env
 else:
     db_path_env = os.getenv("DATABASE_PATH")

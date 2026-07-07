@@ -15,7 +15,7 @@ router = APIRouter(prefix="/portfolio", tags=["portfolio"])
 def get_portfolio_state(db: Session = Depends(get_db)) -> Dict[str, Any]:
     """Get the current state of the autonomous trading portfolio with live mark-to-market valuation."""
     # Get all portfolio history for the equity curve
-    history = db.query(PortfolioState).order_by(PortfolioState.timestamp.asc()).all()
+    history = db.query(PortfolioState).order_by(PortfolioState.timestamp.asc()).limit(1000).all()
     
     if not history:
         return {
@@ -37,7 +37,7 @@ def get_portfolio_state(db: Session = Depends(get_db)) -> Dict[str, Any]:
     initial_capital = history[0].total_value
     
     # Trade statistics
-    trades = db.query(TradeHistory).all()
+    trades = db.query(TradeHistory).order_by(desc(TradeHistory.timestamp)).limit(1000).all()
     total_trades = len(trades)
     
     # Win rate calculation (based on closed positions / sell orders with positive PnL)

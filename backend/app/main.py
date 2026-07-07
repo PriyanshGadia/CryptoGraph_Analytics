@@ -19,14 +19,17 @@ from app.api.routes.forecast import limiter
 import logging
 import asyncio
 from contextlib import asynccontextmanager
+from pythonjsonlogger import jsonlogger
 
 from app.core.config import settings, get_setting
 
-# Set up structured logging
-logging.basicConfig(
-    level=logging.INFO if settings.environment == "production" else logging.DEBUG,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-)
+# Set up structured JSON logging
+logger = logging.getLogger()
+logger.setLevel(logging.INFO if settings.environment == "production" else logging.DEBUG)
+logHandler = logging.StreamHandler()
+formatter = jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(name)s %(message)s')
+logHandler.setFormatter(formatter)
+logger.addHandler(logHandler)
 logger = logging.getLogger("cryptograph")
 
 # Move lazy imports here
@@ -44,17 +47,22 @@ import numpy as np
 if getattr(settings, 'sentry_dsn', None) and settings.sentry_dsn.strip():
     dsn_str = settings.sentry_dsn.strip()
     try:
-        import sentry_sdk
-        from sentry_sdk.integrations.fastapi import FastApiIntegration
-        sentry_sdk.init(
-            dsn=dsn_str,
-            environment=settings.environment,
-            integrations=[FastApiIntegration()],
-            traces_sample_rate=0.1
-        )
+        from circuitbreaker import circuit
+        @circuit(failure_threshold=2, recovery_timeout=30)
+        def init_sentry():
+            import sentry_sdk
+            from sentry_sdk.integrations.fastapi import FastApiIntegration
+            sentry_sdk.init(
+                dsn=dsn_str,
+                environment=settings.environment,
+                integrations=[FastApiIntegration()],
+                traces_sample_rate=0.1
+            )
+        
+        init_sentry()
         logger.info("Sentry initialized successfully.")
     except Exception as e:
-        logger.error(f"Sentry initialization failed: {e}. Continuing without Sentry monitoring.")
+        logger.error(f"Sentry initialization failed (Circuit Broken): {e}. Continuing without monitoring.")
 else:
     logger.info("Sentry initialization skipped (DSN is missing).")
 
@@ -69,13 +77,24 @@ async def lifespan(app: FastAPI):
 
     # Startup Security Validation: Ensure API_KEY is set and strongly entropic
     api_key_configured = get_setting("api_key")
-    if not api_key_configured or len(api_key_configured) < 32:
-        logger.error("[SECURITY ERROR] API_KEY is missing or too weak (must be >= 32 chars). Server startup aborted to prevent vulnerabilities.")
-        raise RuntimeError("API_KEY must be configured with at least 32 characters to start the server.")
+    import re
+    import secrets
+    
+    if not api_key_configured:
+        new_key = secrets.token_urlsafe(32)
+        logger.warning(f"[SECURITY ALERT] No API_KEY configured. Auto-generated secure key: {new_key}")
+        logger.warning("Please save this key and configure it in your environment.")
+        # If we had a mechanism to save it, we would. But we just set it in env for this session.
+        os.environ["API_KEY"] = new_key
+        api_key_configured = new_key
+    
+    if len(api_key_configured) < 32 or not re.match(r"^[a-zA-Z0-9_\-]+$", api_key_configured):
+        logger.error("[SECURITY ERROR] API_KEY is too weak. Must be >= 32 characters and URL-safe alphanumeric.")
+        raise RuntimeError("API_KEY must be configured with at least 32 characters and high entropy.")
     
     # Startup CORS Validation
+    frontend_url = get_setting("FRONTEND_URL")
     if settings.environment == "production":
-        frontend_url = get_setting("FRONTEND_URL")
         if not frontend_url or frontend_url == "http://localhost:3000":
             logger.error("[SECURITY ERROR] FRONTEND_URL is not explicitly configured in production.")
             raise RuntimeError("FRONTEND_URL must be configured in production to restrict CORS.")
@@ -222,7 +241,16 @@ app = FastAPI(
 from prometheus_fastapi_instrumentator import Instrumentator
 Instrumentator().instrument(app).expose(app)
 
-dynamic_origins = ["*"] if settings.environment == "development" else [get_setting("FRONTEND_URL")]
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+FastAPIInstrumentor.instrument_app(app)
+
+insecure_cors = os.environ.get("INSECURE_DEV_CORS", "false").lower() == "true"
+frontend_origin = get_setting("FRONTEND_URL")
+
+if insecure_cors and settings.environment == "development":
+    dynamic_origins = ["*"]
+else:
+    dynamic_origins = [frontend_origin] if frontend_origin else ["http://localhost:3000"]
 
 # Initialize CORS Middleware at module creation
 app.add_middleware(
@@ -245,19 +273,22 @@ from fastapi import Depends
 from app.api.deps import verify_api_key
 
 # Register routers with global authentication
-app.include_router(assets.router,      prefix="/api", dependencies=[Depends(verify_api_key)])
-app.include_router(graph.router,       prefix="/api", dependencies=[Depends(verify_api_key)])
-app.include_router(explain.router,     prefix="/api", dependencies=[Depends(verify_api_key)])
-app.include_router(forecast.router,    prefix="/api", dependencies=[Depends(verify_api_key)])
-app.include_router(status.router,      prefix="/api", dependencies=[Depends(verify_api_key)])
-app.include_router(coins.router,       prefix="/api", dependencies=[Depends(verify_api_key)])
-app.include_router(performance.router, prefix="/api", dependencies=[Depends(verify_api_key)])
-app.include_router(correlations.router,prefix="/api", dependencies=[Depends(verify_api_key)])
-app.include_router(sentiment_data.router,prefix="/api", dependencies=[Depends(verify_api_key)])
-app.include_router(screener.router,    prefix="/api", dependencies=[Depends(verify_api_key)])
-app.include_router(app_settings_route.router, prefix="/api", dependencies=[Depends(verify_api_key)])
-app.include_router(portfolio.router,   prefix="/api", dependencies=[Depends(verify_api_key)])
-app.include_router(stream.router,      prefix="/api", dependencies=[Depends(verify_api_key)])
+app.include_router(assets.router,      prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+app.include_router(graph.router,       prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+app.include_router(explain.router,     prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+app.include_router(forecast.router,    prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+app.include_router(status.router,      prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+app.include_router(coins.router,       prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+app.include_router(performance.router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+app.include_router(correlations.router,prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+app.include_router(sentiment_data.router,prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+app.include_router(screener.router,    prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+app.include_router(app_settings_route.router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+app.include_router(portfolio.router,   prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+app.include_router(stream.router,      prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+
+from app.api.routes import backtest
+app.include_router(backtest.router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
 
 # Lifespan context manager runs tasks automatically. No on_event('startup') needed.
 

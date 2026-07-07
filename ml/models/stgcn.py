@@ -31,7 +31,7 @@ class STGCNModel(nn.Module):
         transformer_layers: int = 2,
         transformer_heads: int = 4,
         dropout: float = 0.1,
-        num_direction_classes: int = 5,
+        num_direction_classes: int = 3,
         num_volatility_classes: int = 4,
         use_tcn: bool = True,
         **kwargs
@@ -110,7 +110,7 @@ class STGCNModel(nn.Module):
     @classmethod
     def load(cls, path: str, map_location: str = "cpu") -> "STGCNModel":
         """Load model from saved checkpoint."""
-        checkpoint = torch.load(path, map_location=map_location, weights_only=False)
+        checkpoint = torch.load(path, map_location=map_location, weights_only=True)
         model = cls(**checkpoint["config"])
         model.load_state_dict(checkpoint["model_state_dict"])
         return model

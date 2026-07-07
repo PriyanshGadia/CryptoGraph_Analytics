@@ -90,30 +90,39 @@ def run_lstm_forecast(
         
         LOOKBACK = _GLOBAL_LSTM_LOOKBACK
         
-        forecast_norm = []
-        window = list(normalized[-LOOKBACK:])
+        # Explicitly document that the localized min-max scaling serves as a bounding stationary transform for the LSTM
+        # Enable MC Dropout for uncertainty estimation
+        model.train() # This enables dropout
         
+        trajectories = []
         with torch.no_grad():
-            for _ in range(forecast_days):
-                x_in = torch.tensor(window[-LOOKBACK:], dtype=torch.float32).unsqueeze(0).unsqueeze(-1)
-                next_val = model(x_in).item()
-                # Clamp prediction to valid normalized range [0, 1] to prevent autoregressive explosion
-                next_val = max(0.0, min(1.0, next_val))
-                forecast_norm.append(next_val)
-                window.append(next_val)
+            for _ in range(30): # 30 MC paths
+                forecast_norm = []
+                window = list(normalized[-LOOKBACK:])
+                for _ in range(forecast_days):
+                    x_in = torch.tensor(window[-LOOKBACK:], dtype=torch.float32).unsqueeze(0).unsqueeze(-1)
+                    next_val = model(x_in).item()
+                    next_val = max(0.0, min(1.0, next_val))
+                    forecast_norm.append(next_val)
+                    window.append(next_val)
                 
-        forecast_prices = [p * price_range + price_min for p in forecast_norm]
+                trajectories.append([p * price_range + price_min for p in forecast_norm])
         
-        # Use forecast residuals from validation set, scaling with square root of time (Brownian motion assumption)
+        trajectories = np.array(trajectories)
+        forecast_prices = trajectories.mean(axis=0)
+        uncertainty = trajectories.std(axis=0) * 1.96
+        
+        # Then, apply √time scaling to the uncertainty to ensure it grows realistically.
         std_returns = np.std(np.diff(price_array)) if len(price_array) > 1 else price_range * 0.02
-        residual_std = _GLOBAL_LSTM_RESIDUAL_STD if _GLOBAL_LSTM_RESIDUAL_STD is not None else (std_returns * 1.5)
-        uncertainty = [residual_std * 1.96 * ((i + 1) ** 0.5) for i in range(forecast_days)]
+        time_scaling = np.array([(i + 1) ** 0.5 for i in range(forecast_days)])
+        # Combine model uncertainty with theoretical volatility
+        combined_uncertainty = uncertainty + (std_returns * time_scaling * 1.5)
         
         return {
             "forecast_prices": [round(float(p), 8) for p in forecast_prices],
-            "lower_bound":     [round(float(p - u), 8) for p, u in zip(forecast_prices, uncertainty)],
-            "upper_bound":     [round(float(p + u), 8) for p, u in zip(forecast_prices, uncertainty)],
-            "model_used":      "Pre-trained Global LSTM Forecaster"
+            "lower_bound":     [round(float(p - u), 8) for p, u in zip(forecast_prices, combined_uncertainty)],
+            "upper_bound":     [round(float(p + u), 8) for p, u in zip(forecast_prices, combined_uncertainty)],
+            "model_used":      "Pre-trained Global LSTM Forecaster (MC Dropout)"
         }
         
     except Exception as e:
@@ -146,13 +155,16 @@ def run_prophet_forecast(
         if len(df) < 14:
             return None
 
+        # Dynamic epoch tuning based on data size (longer history = fewer epochs needed)
+        dynamic_epochs = max(20, min(100, int(3000 / len(df)))) if len(df) > 0 else 50
+        
         model = NeuralProphet(
             n_forecasts=forecast_days,
             n_lags=14,
             yearly_seasonality=False,
             weekly_seasonality=True,
             daily_seasonality=False,
-            epochs=50,           # keep fast
+            epochs=dynamic_epochs,
             batch_size=16,
             learning_rate=0.01,
             verbose=False,
@@ -187,9 +199,11 @@ def run_prophet_forecast(
                 diff = (train_preds["y"] - train_preds[col]).dropna()
                 residuals.extend(diff.abs().tolist())
 
-        spread = float(np.std(residuals)) if residuals else float(
-            prices.std() * 0.05)
-        spread_95 = spread * 1.96
+        # Use EWMA to calculate residual standard deviation dynamically to handle non-stationary volatility clusters
+        returns = prices.pct_change().dropna()
+        ewma_vol = returns.ewm(span=14).std().iloc[-1] * prices.iloc[-1] if len(returns) > 14 else float(np.std(residuals)) if residuals else float(prices.std() * 0.05)
+        
+        spread_95 = ewma_vol * 1.96
         # Scale uncertainty with square root of time
         uncertainty = [spread_95 * ((i + 1) ** 0.5) for i in range(forecast_days)]
 
@@ -265,24 +279,12 @@ def run_ensemble_forecast(
     
     ensemble_prices = []
     
-    # Calculate inverse-variance weighted average for each day
+    # Calculate equal-weighted average for each day (robust to correlated errors in financial time series)
     for i in range(forecast_days):
         l_price = lstm_result["forecast_prices"][i]
         p_price = prophet_result["forecast_prices"][i]
         
-        # Approximate standard deviation from 95% confidence intervals (u = 1.96 * sigma)
-        l_sigma = (lstm_result["upper_bound"][i] - l_price) / 1.96
-        p_sigma = (prophet_result["upper_bound"][i] - p_price) / 1.96
-        
-        # Avoid division by zero
-        l_var = max(l_sigma**2, 1e-8)
-        p_var = max(p_sigma**2, 1e-8)
-        
-        # Inverse-variance weights
-        l_weight = (1.0 / l_var) / ((1.0 / l_var) + (1.0 / p_var))
-        p_weight = (1.0 / p_var) / ((1.0 / l_var) + (1.0 / p_var))
-        
-        weighted_price = (l_price * l_weight) + (p_price * p_weight)
+        weighted_price = (l_price + p_price) / 2.0
         ensemble_prices.append(weighted_price)
         
     # Take the wider confidence interval for safety

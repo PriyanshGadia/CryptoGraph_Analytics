@@ -40,8 +40,13 @@ def get_settings(db: Session = Depends(get_db)):
     values = {}
     configured = {}
     
+    ALLOWED_KEYS = ["groq_api_key"]
+    
     for record in settings_records:
         key = record.setting_key
+        if key not in ALLOWED_KEYS:
+            continue
+            
         raw_value = record.setting_value or ""
         
         if _is_sensitive(key):
@@ -64,7 +69,12 @@ def update_settings(update_data: SettingsUpdate, db: Session = Depends(get_db)):
     Skips empty strings for sensitive fields (user didn't change them).
     """
     # Fetch all existing records that match the keys we are updating
-    keys_to_update = list(update_data.settings.keys())
+    ALLOWED_KEYS = ["groq_api_key"]
+    keys_to_update = [k for k in update_data.settings.keys() if k in ALLOWED_KEYS]
+    
+    if not keys_to_update:
+        return {"status": "success", "message": "Updated 0 setting(s)"}
+        
     existing_records = db.query(AppSetting).filter(AppSetting.setting_key.in_(keys_to_update)).all()
     
     # Create a lookup dictionary
@@ -72,7 +82,8 @@ def update_settings(update_data: SettingsUpdate, db: Session = Depends(get_db)):
     
     updated_count = 0
     
-    for key, value in update_data.settings.items():
+    for key in keys_to_update:
+        value = update_data.settings.get(key, "")
         is_sensitive = _is_sensitive(key)
         
         # Skip empty sensitive fields — user didn't change them

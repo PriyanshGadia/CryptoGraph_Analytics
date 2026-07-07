@@ -1,6 +1,42 @@
 version: '3.8'
 
 services:
+  db:
+    image: postgres:15-alpine
+    container_name: cryptograph_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER:-crypto_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-crypto_pass}
+      POSTGRES_DB: ${DB_NAME:-cryptograph}
+    volumes:
+      - cryptograph_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-crypto_user} -d ${DB_NAME:-cryptograph}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  redis:
+    image: redis:7-alpine
+    container_name: cryptograph_redis
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
   backend:
     build:
       context: .
@@ -12,16 +48,32 @@ services:
       - ENVIRONMENT=production
       - API_KEY=${API_KEY}
       - FRONTEND_URL=http://localhost:3000
-    # Use internal Docker volume for SQLite to avoid permission issues with bind mounts
+      - DATABASE_URL=postgresql+psycopg2://${DB_USER:-crypto_user}:${DB_PASSWORD:-crypto_pass}@db:5432/${DB_NAME:-cryptograph}
+      - REDIS_URL=redis://redis:6379/0
     volumes:
       - cryptograph_db_data:/app/database
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/status"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
 
   frontend:
     build:
@@ -37,6 +89,17 @@ services:
       backend:
         condition: service_healthy
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
 
 volumes:
   cryptograph_db_data:
+  cryptograph_pg_data:

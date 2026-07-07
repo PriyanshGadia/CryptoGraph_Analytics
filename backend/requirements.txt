@@ -19,7 +19,7 @@ ccxt==4.4.52
 networkx==3.4.2
 pandas==2.2.3
 requests==2.32.3
-torch==2.6.0
+torch>=2.1.0
 websockets==14.2
 neuralprophet>=0.8.0
 alembic==1.14.1
@@ -27,3 +27,11 @@ prometheus-fastapi-instrumentator==8.0.2
 apscheduler==3.11.3
 circuitbreaker==2.0.0
 pytest
+redis==5.0.1
+psycopg2-binary==2.9.9
+python-json-logger
+opentelemetry-api
+opentelemetry-sdk
+opentelemetry-instrumentation-fastapi
+feast
+mlflow

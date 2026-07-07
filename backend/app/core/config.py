@@ -11,6 +11,7 @@ from the app_settings table first, falling back to pydantic-settings.
 """
 from typing import Optional
 from pydantic_settings import BaseSettings
+import os
 
 
 class Settings(BaseSettings):
@@ -24,7 +25,7 @@ class Settings(BaseSettings):
     sentry_dsn: Optional[str] = None
     model_artifact_path: str = "./artifacts/best_model.pt"
     environment: str = "development"
-    api_key: str
+    api_key: Optional[str] = None
 
     model_config = {
         "env_file": ".env",
@@ -54,6 +55,13 @@ def get_setting(key: str, default: str = None) -> Optional[str]:
     """
     if key in _settings_cache:
         return _settings_cache[key]
+        
+    # [Task 1: Secrets Management] Never fetch API keys from DB
+    if key.lower() == "api_key":
+        env_val = getattr(settings, key, None) or os.environ.get("API_KEY")
+        if env_val:
+            _settings_cache[key] = env_val
+        return env_val
         
     try:
         db = SessionLocal()

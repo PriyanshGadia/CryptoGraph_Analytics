@@ -56,20 +56,26 @@ try:
     _cipher = Fernet(_get_or_create_master_key())
 except Exception as e:
     logger.error(f"[Security] Failed to initialize encryption: {e}")
+    if settings.environment == "production":
+        raise RuntimeError(f"CRITICAL: Failed to initialize encryption cipher: {e}")
     _cipher = None
 
 def encrypt_secret(plain_text: str) -> str:
     """Encrypts a string into a base64 encoded token."""
-    if not _cipher or not plain_text:
+    if not plain_text:
         return plain_text
+    if not _cipher:
+        raise RuntimeError("CRITICAL: Encryption cipher is not initialized. Cannot encrypt secret safely.")
     # Prefix with ENC: to identify encrypted strings easily
     encrypted = _cipher.encrypt(plain_text.encode("utf-8"))
     return f"ENC:{encrypted.decode('utf-8')}"
 
 def decrypt_secret(cipher_text: str) -> str:
     """Decrypts an ENC: prefixed string back to plain text."""
-    if not _cipher or not cipher_text:
+    if not cipher_text:
         return cipher_text
+    if not _cipher:
+        raise RuntimeError("CRITICAL: Encryption cipher is not initialized. Cannot decrypt secret.")
         
     if cipher_text.startswith("ENC:"):
         actual_cipher = cipher_text[4:]

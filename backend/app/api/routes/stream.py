@@ -1,21 +1,19 @@
 import asyncio
 import json
 import time
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request
 from typing import List
 from pathlib import Path
 
 from app.core.streams.binance_ws import get_latest_features, LIVE_OHLCV_CACHE, get_global_market_state
+from app.api.deps import verify_ws_api_key
+from app.api.routes.forecast import limiter
+from app.core.state import ws_manager
 
 router = APIRouter(prefix="/stream", tags=["stream"])
 
-prediction_refresh_event: asyncio.Event = None
-
 def get_refresh_event() -> asyncio.Event:
-    global prediction_refresh_event
-    if prediction_refresh_event is None:
-        prediction_refresh_event = asyncio.Event()
-    return prediction_refresh_event
+    return ws_manager.prediction_refresh_event
 
 # Discover SYMBOLS from local database dynamically
 def get_db_symbols() -> List[str]:
@@ -30,7 +28,8 @@ def get_db_symbols() -> List[str]:
         finally:
             db.close()
     except Exception as e:
-        print(f"Error querying symbols from database: {e}")
+        import logging
+        logging.getLogger(__name__).error("Error querying symbols from database", exc_info=True)
         
     # Hardcoded fallback of all 50 database assets
     return [
@@ -46,12 +45,16 @@ SYMBOLS = get_db_symbols()
 
 
 @router.post("/broadcast")
-async def trigger_broadcast():
+@limiter.limit("5/minute")
+async def trigger_broadcast(request: Request):
     get_refresh_event().set()
     return {"status": "triggered"}
 
 @router.websocket("/ticker/{symbol}")
 async def stream_ticker(websocket: WebSocket, symbol: str):
+    if not await verify_ws_api_key(websocket):
+        await websocket.close(code=1008)
+        return
     await websocket.accept()
     sym = symbol.upper()
     try:
@@ -79,6 +82,9 @@ async def stream_ticker(websocket: WebSocket, symbol: str):
 
 @router.websocket("/market")
 async def stream_market(websocket: WebSocket):
+    if not await verify_ws_api_key(websocket):
+        await websocket.close(code=1008)
+        return
     await websocket.accept()
     try:
         while True:
@@ -98,25 +104,30 @@ async def stream_market(websocket: WebSocket):
     except WebSocketDisconnect:
         pass
 
-connected_clients: List[WebSocket] = []
 MAX_CLIENTS = 100
 
 @router.websocket("/predictions")
 async def stream_predictions(websocket: WebSocket):
-    if len(connected_clients) >= MAX_CLIENTS:
-        await websocket.accept()
-        await websocket.send_json({"error": "Server busy. Too many active connections."})
-        await websocket.close(code=1008) # Policy Violation
+    if not await verify_ws_api_key(websocket):
+        await websocket.close(code=1008)
         return
-
-    await websocket.accept()
-    connected_clients.append(websocket)
+        
+    async with ws_manager.predictions_lock:
+        if len(ws_manager.predictions_clients) >= MAX_CLIENTS:
+            await websocket.accept()
+            await websocket.send_json({"error": "Server busy. Too many active connections."})
+            await websocket.close(code=1008) # Policy Violation
+            return
+        await websocket.accept()
+        ws_manager.predictions_clients.append(websocket)
+        
     try:
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
-        if websocket in connected_clients:
-            connected_clients.remove(websocket)
+        async with ws_manager.predictions_lock:
+            if websocket in ws_manager.predictions_clients:
+                ws_manager.predictions_clients.remove(websocket)
 
 async def prediction_broadcast_loop():
     """Background task to broadcast predictions directly from SQLite database."""
@@ -129,74 +140,79 @@ async def prediction_broadcast_loop():
         except asyncio.TimeoutError:
             pass # Timeout reached, proceed with broadcast
 
-        
-        if not connected_clients:
-            continue
+        async with ws_manager.predictions_lock:
+            if not ws_manager.predictions_clients:
+                continue
+            active_clients = ws_manager.predictions_clients.copy()
             
         try:
             from app.db.database import SessionLocal
             from app.db.models_sqla import Prediction as SQLAPrediction, Asset
             from sqlalchemy import desc
+            import json
             
             db = SessionLocal()
-            res = db.query(SQLAPrediction, Asset).join(Asset).order_by(desc(SQLAPrediction.predicted_at)).all()
-            
-            latest_preds = {}
-            for pred, asset in res:
-                if asset.symbol not in latest_preds:
-                    latest_preds[asset.symbol] = pred
-            
-            # Sync SSOT with fresh prediction data while we have an open session
             try:
-                from app.core.streams.binance_ws import refresh_predictions_in_ssot
-                refresh_predictions_in_ssot(db)
-            except Exception:
-                pass
-            
-            db.close()
-            
-            predictions = []
-            for symbol in SYMBOLS:
-                pred = latest_preds.get(symbol)
-                if pred:
-                    predictions.append({
-                        "symbol": symbol,
-                        "direction": pred.direction or "neutral",
-                        "confidence": round(pred.confidence, 2) if pred.confidence else 0.0,
-                        "volatility_regime": pred.volatility_regime or "medium",
-                        "model_version": pred.model_version or "stgcn-v1.0",
-                        "attestation_hash": pred.attestation_hash
-                    })
+                res = db.query(SQLAPrediction, Asset).join(Asset).order_by(desc(SQLAPrediction.predicted_at)).limit(100).all()
+                latest_preds = {}
+                for pred, asset in res:
+                    if asset.symbol not in latest_preds:
+                        latest_preds[asset.symbol] = pred
                 
-            if predictions:
-                payload = json.dumps({"type": "LIVE_PREDICTIONS", "data": predictions})
-                for client in connected_clients:
-                    try:
-                        await client.send_text(payload)
-                    except Exception:
-                        pass
-                        
+                predictions = []
+                for symbol in SYMBOLS:
+                    pred = latest_preds.get(symbol)
+                    if pred:
+                        predictions.append({
+                            "symbol": symbol,
+                            "direction": pred.direction or "neutral",
+                            "confidence": round(pred.confidence, 2) if pred.confidence else 0.0,
+                            "volatility_regime": pred.volatility_regime or "medium",
+                            "model_version": pred.model_version or "stgcn-v1.0",
+                            "attestation_hash": pred.attestation_hash
+                        })
+                
+                if predictions:
+                    payload = json.dumps({"type": "LIVE_PREDICTIONS", "data": predictions})
+                    async def send_to_client(ws):
+                        try:
+                            await ws.send_text(payload)
+                        except Exception:
+                            async with ws_manager.predictions_lock:
+                                if ws in ws_manager.predictions_clients:
+                                    ws_manager.predictions_clients.remove(ws)
+                    await asyncio.gather(*(send_to_client(ws) for ws in active_clients))
+            finally:
+                db.close()
         except Exception as e:
-            print(f"[Stream] Error broadcasting live predictions: {e}")
+            import logging
+            logging.getLogger(__name__).error(f"[Stream] Error broadcasting live predictions: {e}", exc_info=True)
 
-screener_clients: List[WebSocket] = []
 
 @router.websocket("/screener")
 async def stream_screener(websocket: WebSocket):
+    if not await verify_ws_api_key(websocket):
+        await websocket.close(code=1008)
+        return
     await websocket.accept()
-    screener_clients.append(websocket)
+    async with ws_manager.screener_lock:
+        ws_manager.screener_clients.append(websocket)
     try:
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
-        screener_clients.remove(websocket)
+        async with ws_manager.screener_lock:
+            if websocket in ws_manager.screener_clients:
+                ws_manager.screener_clients.remove(websocket)
 
 async def screener_broadcast_loop():
     """Background task to broadcast SSOT state to screener."""
     while True:
         await asyncio.sleep(1)
-        if not screener_clients:
-            continue
+        async with ws_manager.screener_lock:
+            if not ws_manager.screener_clients:
+                continue
+            active_screener_clients = ws_manager.screener_clients.copy()
             
         state = get_global_market_state()
         payload_data = {}
@@ -210,8 +226,10 @@ async def screener_broadcast_loop():
                 
         if payload_data:
             payload = json.dumps({"type": "LIVE_PRICES", "data": payload_data})
-            for client in screener_clients:
+            for client in active_screener_clients:
                 try:
                     await client.send_text(payload)
                 except Exception:
-                    pass
+                    async with ws_manager.screener_lock:
+                        if client in ws_manager.screener_clients:
+                            ws_manager.screener_clients.remove(client)
