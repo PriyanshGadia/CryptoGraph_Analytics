@@ -1,10 +1,8 @@
 """Crypto Ensemble Forecaster API — main application entry point. Trigger reload."""
 
-import sentry_sdk
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sentry_sdk.integrations.fastapi import FastApiIntegration
 from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
 
@@ -42,10 +40,12 @@ from ml.models.forecast_model import run_lstm_forecast
 import pandas as pd
 import numpy as np
 
-# Initialize Sentry safely
+# Initialize Sentry safely without crashing on failure
 if getattr(settings, 'sentry_dsn', None) and settings.sentry_dsn.strip():
     dsn_str = settings.sentry_dsn.strip()
     try:
+        import sentry_sdk
+        from sentry_sdk.integrations.fastapi import FastApiIntegration
         sentry_sdk.init(
             dsn=dsn_str,
             environment=settings.environment,
@@ -54,9 +54,7 @@ if getattr(settings, 'sentry_dsn', None) and settings.sentry_dsn.strip():
         )
         logger.info("Sentry initialized successfully.")
     except Exception as e:
-        logger.error(f"Sentry initialization failed: {e}")
-        if settings.environment == "production":
-            raise RuntimeError(f"Sentry DSN is invalid in production: {e}")
+        logger.error(f"Sentry initialization failed: {e}. Continuing without Sentry monitoring.")
 else:
     logger.info("Sentry initialization skipped (DSN is missing).")
 
@@ -69,11 +67,11 @@ async def lifespan(app: FastAPI):
     logger.info("INFO: Running in single-worker stateless-in-memory mode optimized for low-memory (3GB) local environments.")
     logger.info("========================================")
 
-    # Startup Security Validation: Ensure API_KEY is set or fail closed
+    # Startup Security Validation: Ensure API_KEY is set and strongly entropic
     api_key_configured = get_setting("api_key")
-    if not api_key_configured:
-        logger.error("[SECURITY ERROR] API_KEY is not configured. Server startup aborted to prevent vulnerabilities.")
-        raise RuntimeError("API_KEY must be configured to start the server.")
+    if not api_key_configured or len(api_key_configured) < 32:
+        logger.error("[SECURITY ERROR] API_KEY is missing or too weak (must be >= 32 chars). Server startup aborted to prevent vulnerabilities.")
+        raise RuntimeError("API_KEY must be configured with at least 32 characters to start the server.")
     
     # Startup CORS Validation
     if settings.environment == "production":
