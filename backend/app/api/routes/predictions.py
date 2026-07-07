@@ -60,19 +60,18 @@ async def get_predictions(
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     query = db.query(SQLAPrediction, Asset).join(Asset).filter(SQLAPrediction.predicted_at >= cutoff)
     
-    if direction != "all":
-        query = query.filter(SQLAPrediction.direction == direction)
-        
-    if min_confidence > 0:
-        query = query.filter(SQLAPrediction.confidence >= min_confidence)
-        
-    res = query.order_by(desc(SQLAPrediction.predicted_at)).limit(min(1000, limit * 20)).all()
-    if not res:
-        query_fallback = db.query(SQLAPrediction, Asset).join(Asset)
+    def apply_filters(q):
         if direction != "all":
-            query_fallback = query_fallback.filter(SQLAPrediction.direction == direction)
+            q = q.filter(SQLAPrediction.direction == direction)
         if min_confidence > 0:
-            query_fallback = query_fallback.filter(SQLAPrediction.confidence >= min_confidence)
+            q = q.filter(SQLAPrediction.confidence >= min_confidence)
+        return q
+
+    query = apply_filters(query)
+    res = query.order_by(desc(SQLAPrediction.predicted_at)).limit(min(1000, limit * 20)).all()
+    
+    if not res:
+        query_fallback = apply_filters(db.query(SQLAPrediction, Asset).join(Asset))
         res = query_fallback.order_by(desc(SQLAPrediction.predicted_at)).limit(200).all()
     
     predictions = []

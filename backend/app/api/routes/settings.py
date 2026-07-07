@@ -25,7 +25,7 @@ class SettingsUpdate(BaseModel):
     settings: Dict[str, str]
 
 class SettingsResponse(BaseModel):
-    values: Dict[str, str]
+    values: Dict[str, Optional[str]]
     configured: Dict[str, bool]
 
 @router.get("")
@@ -49,8 +49,8 @@ def get_settings(db: Session = Depends(get_db)):
             decrypted = decrypt_secret(raw_value)
             has_value = bool(decrypted and decrypted.strip())
             configured[key] = has_value
-            # Return empty string — frontend should show placeholder
-            values[key] = ""
+            # Return None — frontend should show placeholder
+            values[key] = None
         else:
             values[key] = raw_value
             configured[key] = bool(raw_value)

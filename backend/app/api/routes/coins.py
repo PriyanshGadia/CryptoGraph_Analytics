@@ -52,32 +52,29 @@ async def get_coin_ohlcv(
     except Exception as e:
         print(f"Error fetching OHLCV from Binance: {e}")
         # Fallback to SQLite if Binance API fails
-        res = db.execute(text("""
-            SELECT timestamp, open, high, low, close, volume
-            FROM (
-                SELECT timestamp, open, high, low, close, volume
-                FROM ohlcv
-                WHERE asset_id = :asset_id
-                ORDER BY timestamp DESC
-                LIMIT 1500
-            ) sub
-            ORDER BY timestamp ASC
-        """), {"asset_id": asset.id}).fetchall()
+        from app.db.models_sqla import OHLCV
+        from sqlalchemy import desc
+        
+        db_ohlcv = db.query(OHLCV).filter(
+            OHLCV.asset_id == asset.id
+        ).order_by(desc(OHLCV.timestamp)).limit(1500).all()
+        
+        # Reverse to chronological order
+        db_ohlcv.reverse()
             
         data = []
         latest_timestamp = None
-        for row in res:
-            # Match Binance exact structure (which provides timestamps in ms)
-            ts_sec = datetime.fromisoformat(row[0]).timestamp()
+        for row in db_ohlcv:
+            ts_sec = row.timestamp.timestamp() if hasattr(row.timestamp, "timestamp") else datetime.fromisoformat(str(row.timestamp)).timestamp()
             latest_timestamp = ts_sec
             ts_ms = int(ts_sec * 1000)
             data.append({
                 "time": ts_ms,
-                "open": float(row[1]),
-                "high": float(row[2]),
-                "low": float(row[3]),
-                "close": float(row[4]),
-                "volume": float(row[5])
+                "open": float(row.open),
+                "high": float(row.high),
+                "low": float(row.low),
+                "close": float(row.close),
+                "volume": float(row.volume)
             })
             
         is_stale = False

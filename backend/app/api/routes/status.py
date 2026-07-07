@@ -42,8 +42,10 @@ async def get_data_status(db: Session = Depends(get_db)):
     }
 
 
+from fastapi import APIRouter, Depends, BackgroundTasks
+
 @router.post("/refresh-all")
-async def trigger_refresh_all(db: Session = Depends(get_db), api_key: str = Depends(get_api_key)):
+async def trigger_refresh_all(background_tasks: BackgroundTasks, db: Session = Depends(get_db), api_key: str = Depends(get_api_key)):
     """
     Manually triggers a full data refresh cycle:
     1. Refreshes live technicals (RSI, MACD, returns) from Binance via CCXT
@@ -69,23 +71,28 @@ async def trigger_refresh_all(db: Session = Depends(get_db), api_key: str = Depe
     except Exception as e:
         results["cache"] = f"error: {e}"
 
-    # 3. Trigger prediction inference pipeline
+    # 3. Trigger prediction inference pipeline in background to prevent event loop deadlock
     try:
-        import subprocess
-        from pathlib import Path
-        import os
-        
-        # Resolve the root directory (CryptoGraph_Analytics)
-        root_dir = Path(__file__).resolve().parent.parent.parent.parent.parent
-        script_path = root_dir / "ml" / "pipelines" / "inference_pipeline.py"
-        
-        env = os.environ.copy()
-        env["PYTHONPATH"] = str(root_dir)
-        
-        subprocess.run(["python", str(script_path)], check=True, cwd=str(root_dir), env=env)
-        results["inference"] = "pipeline completed"
+        def run_inference_bg():
+            import subprocess
+            from pathlib import Path
+            import os
+            import logging
+            log = logging.getLogger(__name__)
+            try:
+                root_dir = Path(__file__).resolve().parent.parent.parent.parent.parent
+                script_path = root_dir / "ml" / "pipelines" / "inference_pipeline.py"
+                env = os.environ.copy()
+                env["PYTHONPATH"] = str(root_dir)
+                subprocess.run(["python", str(script_path)], check=True, cwd=str(root_dir), env=env)
+                log.info("[Background Task] Inference pipeline completed successfully.")
+            except Exception as e:
+                log.error(f"[Background Task] Inference pipeline failed: {e}")
+                
+        background_tasks.add_task(run_inference_bg)
+        results["inference"] = "pipeline queued in background"
     except Exception as e:
-        results["inference"] = f"error: {e}"
+        results["inference"] = f"error queuing pipeline: {e}"
         
     # 4. Trigger prediction broadcast
     try:
