@@ -22,6 +22,10 @@ def _compute_correlation_graph(db: Session, top_n_edges: int = 100, mode: str = 
     Supports mode="live" (last 30 days), mode="historical" (last 90 days),
     mode="historical_30" (last 30 days historical), mode="projected" (30 day forecast),
     mode="projected_15" (15 day forecast).
+    
+    WARNING: The double-for-loop correlation extraction is O(N^2).
+    This function is strictly limited to 200 assets (approx 20,000 iterations). 
+    Do NOT increase the SQL LIMIT 200 without refactoring the numpy masking logic.
     """
     # 1. Fetch live 30-day returns to construct the canonical graph topology (so all modes share the exact same edges)
     since_live = datetime.now(timezone.utc) - timedelta(days=30)

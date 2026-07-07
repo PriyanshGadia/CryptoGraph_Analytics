@@ -13,9 +13,17 @@ services:
         value: "/opt/render/project/src"
       - key: ENVIRONMENT
         value: production
+      - key: FRONTEND_URL
+        fromService:
+          name: cryptograph-frontend
+          type: web
+          property: host
       # Add these securely via the Render dashboard:
-      # - key: GROQ_API_KEY
-      #   sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: API_KEY
+        sync: false
+    healthCheckPath: /health
     disk:
       name: sqlite-data
       mountPath: /opt/render/project/src

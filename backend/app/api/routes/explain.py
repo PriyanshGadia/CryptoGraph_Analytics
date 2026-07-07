@@ -7,6 +7,8 @@ from app.db.models_sqla import Asset, Prediction, AppSetting, AssetNews
 from app.db.models import ExplainResponse
 from app.core.security import decrypt_secret
 from groq import Groq
+from app.api.routes.forecast import limiter
+from fastapi import Request
 
 router = APIRouter(prefix="/explain", tags=["explain"])
 
@@ -28,14 +30,16 @@ def _filter_numeric_shap(shap_values: dict) -> dict:
     result = {}
     for k, v in shap_values.items():
         fval = _safe_float(v)
-        if fval != 0.0:
-            result[k] = fval
-    # Sort by absolute importance
+        result[k] = fval
+    # Sort by absolute importance (descending)
     sorted_items = sorted(result.items(), key=lambda x: abs(x[1]), reverse=True)
-    # Return top 10
-    return dict(sorted_items[:10])
+    # Return all values instead of truncating to preserve additive property
+    return dict(sorted_items)
 
 
+from app.core.cache import cached
+
+@cached(ttl_seconds=300)
 def generate_system_explanation(symbol: str, direction: str, confidence: float,
                                 shap_values: dict, t_shap: dict = None,
                                 db: Session = None) -> str:
@@ -55,12 +59,14 @@ def generate_system_explanation(symbol: str, direction: str, confidence: float,
     paragraphs = []
 
     # --- Paragraph 1: Core Prediction Summary ---
-    conf_adj = "high" if confidence >= 75 else "moderate" if confidence >= 60 else "low"
+    # Convert confidence [0.0, 1.0] to percentage for display
+    conf_pct = confidence * 100.0 if confidence <= 1.0 else confidence
+    conf_adj = "high" if conf_pct >= 75 else "moderate" if conf_pct >= 60 else "low"
     paragraphs.append(
-        f"Our ST-GCN model forecasts {symbol} to {dir_label} over the next 24 hours "
-        f"with {conf_adj} confidence ({confidence:.1f}%). "
-        f"This signal emerges from a convergence of technical momentum, cross-asset graph structure, "
-        f"and on-chain metrics analyzed simultaneously."
+        f"Our Ensemble Forecaster model predicts {symbol} to {dir_label} over the next 24 hours "
+        f"with {conf_adj} confidence ({conf_pct:.1f}%). "
+        f"This signal emerges from a convergence of technical momentum, market regime analysis, "
+        f"and cross-asset dynamics analyzed simultaneously."
     )
 
     # --- Paragraph 2: Feature-Driven Analysis ---
@@ -251,12 +257,16 @@ def generate_system_explanation(symbol: str, direction: str, confidence: float,
 
 
 @router.get("/{symbol}", response_model=ExplainResponse)
-def explain_prediction(symbol: str, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def explain_prediction(request: Request, symbol: str, db: Session = Depends(get_db)):
     """
     Returns AI-generated explanation for latest prediction.
     Uses Groq LLaMA if API key is set in app_settings, otherwise falls back
     to a comprehensive system-based XAI engine that requires no API key.
     """
+    # Sanitize symbol
+    symbol = "".join(c for c in symbol if c.isalnum() or c in "-_").upper()[:20]
+    
     asset = db.query(Asset).filter(Asset.symbol == symbol).first()
     if not asset:
         return ExplainResponse(symbol=symbol, explanation="Asset not found.", direction="unknown", confidence=0.0, top_features={})
@@ -303,7 +313,7 @@ def explain_prediction(symbol: str, db: Session = Depends(get_db)):
             if news_headlines:
                 news_str = "\nRecent news for this asset includes:\n" + "\n".join([f"- {h}" for h in news_headlines]) + "\nSynthesize the quantitative signal with the qualitative news."
 
-            prompt = f"""You are a crypto market analyst. The ST-GCN model predicts {symbol} will go {direction} with {confidence:.1f}% confidence over the next 24 hours.
+            prompt = f"""You are a crypto market analyst. The Ensemble model predicts {symbol} will go {direction} with {confidence:.1f}% confidence over the next 24 hours.
 The top contributing factors from the model are:
 {shap_str}
 {news_str}

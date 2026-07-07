@@ -39,8 +39,10 @@ settings = Settings()
 from app.db.database import SessionLocal
 from app.db.models_sqla import AppSetting
 from app.core.security import decrypt_secret
+from cachetools import TTLCache
 
-_settings_cache = {}
+# Cache settings for 60 seconds to prevent rapid DB queries, but allow dynamic reloading
+_settings_cache = TTLCache(maxsize=100, ttl=60)
 
 def get_setting(key: str, default: str = None) -> Optional[str]:
     """
@@ -48,7 +50,7 @@ def get_setting(key: str, default: str = None) -> Optional[str]:
     1. Checks the app_settings SQLite table (user-configured via Settings page)
     2. Falls back to the pydantic Settings object (.env / defaults)
     
-    Results are cached in-memory to prevent rapid DB queries and decryption overhead.
+    Results are cached in-memory with a TTL to prevent rapid DB queries and decryption overhead.
     """
     if key in _settings_cache:
         return _settings_cache[key]

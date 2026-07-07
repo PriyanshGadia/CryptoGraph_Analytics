@@ -6,8 +6,12 @@ Uses AES-128 in CBC mode with HMAC (Fernet).
 import base64
 import hashlib
 import os
+import logging
 from pathlib import Path
 from cryptography.fernet import Fernet
+from app.core.config import settings
+
+logger = logging.getLogger("cryptograph.security")
 
 # Master key file stored locally and gitignored for persistent local development key retention
 KEY_PATH = Path(__file__).parent.parent.parent / "master.key"
@@ -35,19 +39,23 @@ def _get_or_create_master_key() -> bytes:
         except Exception:
             pass
 
+    if settings.environment == "production":
+        raise RuntimeError("CRITICAL: CRYPTOGRAPH_MASTER_KEY environment variable is required in production. Refusing to write key to local disk.")
+
     new_key = Fernet.generate_key()
     try:
         with open(KEY_PATH, "wb") as f:
             f.write(new_key)
+        logger.warning(f"[Security] Generated new local master key at {KEY_PATH}. Do NOT use this in production.")
     except Exception as e:
-        print(f"[Security] Could not write master.key to disk: {e}")
+        logger.error(f"[Security] Could not write master.key to disk: {e}")
     return new_key
 
 # Initialize global cipher
 try:
     _cipher = Fernet(_get_or_create_master_key())
 except Exception as e:
-    print(f"[Security] Failed to initialize encryption: {e}")
+    logger.error(f"[Security] Failed to initialize encryption: {e}")
     _cipher = None
 
 def encrypt_secret(plain_text: str) -> str:
@@ -69,7 +77,7 @@ def decrypt_secret(cipher_text: str) -> str:
             decrypted = _cipher.decrypt(actual_cipher.encode("utf-8"))
             return decrypted.decode("utf-8")
         except Exception as e:
-            print(f"[Security] Failed to decrypt: {e}")
+            logger.error(f"[Security] Failed to decrypt: {e}")
             return ""
             
     # Return as-is if not encrypted

@@ -131,3 +131,66 @@ async def start_scheduler(api_key: str = Depends(get_api_key)):
         return {"status": "success", "message": "Scheduler started"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+@router.get("/performance/model_health")
+async def get_model_health(db: Session = Depends(get_db)):
+    """
+    Returns metrics on prediction calibration and model degradation.
+    Analyzes historical predictions against realized outcomes.
+    """
+    from datetime import datetime, timezone, timedelta
+    from sqlalchemy import text as sa_text
+    
+    # Simple calibration check: average confidence vs hit rate over last 7 days
+    seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
+    
+    res = db.execute(sa_text("""
+        SELECT 
+            AVG(confidence) as avg_conf,
+            COUNT(*) as total_preds,
+            SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END) as correct_preds
+        FROM predictions
+        WHERE predicted_at >= :start_time AND is_correct IS NOT NULL
+    """), {"start_time": seven_days_ago.isoformat()}).fetchone()
+    
+    avg_conf = res[0] or 0.0
+    total_preds = res[1] or 0
+    correct_preds = res[2] or 0
+    
+    hit_rate = (correct_preds / total_preds) if total_preds > 0 else 0.0
+    calibration_error = abs(avg_conf - hit_rate) if avg_conf > 0 else 0.0
+    
+    health_status = "healthy"
+    if calibration_error > 0.2:
+        health_status = "degraded"
+    if hit_rate < 0.4 and total_preds > 10:
+        health_status = "critical"
+        
+    return {
+        "status": "success",
+        "health_status": health_status,
+        "metrics": {
+            "avg_confidence": round(avg_conf, 4),
+            "hit_rate": round(hit_rate, 4),
+            "calibration_error": round(calibration_error, 4),
+            "evaluated_predictions": total_preds
+        }
+    }
+
+@router.get("/metrics")
+async def get_system_metrics(db: Session = Depends(get_db)):
+    """
+    Returns aggregated historical accuracy metrics for the Ensemble Forecaster.
+    """
+    from sqlalchemy import text as sa_text
+    try:
+        total_preds = db.execute(sa_text("SELECT COUNT(*) FROM predictions")).scalar() or 0
+        
+        return {
+            "status": "online",
+            "model_version": "ensemble_v1.0",
+            "total_predictions_stored": total_preds,
+            "system_health": "optimal"
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}

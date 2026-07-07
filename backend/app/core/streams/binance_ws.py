@@ -17,10 +17,10 @@ LIVE_OHLCV_CACHE: Dict[str, List[Dict]] = TTLCache(maxsize=1000, ttl=3600)
 CACHE_MAX_SIZE = 60  # Keep last 60 minutes
 
 # Static features cache (used by get_latest_features for ML)
-STATIC_FEATURES_CACHE: Dict[str, Dict] = {}
+STATIC_FEATURES_CACHE: Dict[str, Dict] = TTLCache(maxsize=1000, ttl=86400)
 
 # SINGLE SOURCE OF TRUTH State
-GLOBAL_MARKET_STATE: Dict[str, Dict] = {}
+GLOBAL_MARKET_STATE: Dict[str, Dict] = TTLCache(maxsize=1000, ttl=86400)
 
 # Mapping symbols to Binance symbols
 BINANCE_SYM_MAPPING = {
@@ -178,7 +178,7 @@ async def binance_ws_loop(symbols: List[str]):
                     source_used = name
                     break
                 except Exception as e:
-                    print(f"[XMR Price] {name} failed: {e}")
+                    logger.info(f"[XMR Price] {name} failed: {e}")
 
             if xmr_price is not None and "XMR" in GLOBAL_MARKET_STATE:
                 GLOBAL_MARKET_STATE["XMR"]["current_price"] = xmr_price
@@ -192,7 +192,7 @@ async def binance_ws_loop(symbols: List[str]):
                     GLOBAL_MARKET_STATE["XMR"]["market_cap_usd"] = circ_supply * xmr_price
             else:
                 # Both real sources failed. Freeze the price.
-                print("[XMR Price] All sources failed this cycle — holding last known price.")
+                logger.info("[XMR Price] All sources failed this cycle — holding last known price.")
                 if "XMR" in GLOBAL_MARKET_STATE:
                     GLOBAL_MARKET_STATE["XMR"]["price_source"] = "stale"
             
@@ -253,11 +253,15 @@ async def binance_ws_loop(symbols: List[str]):
                 logger.warning(f"CoinGecko fallback failed for {symbol}: {e}. Falling back to SQLite cache.")
                 # Tertiary Fallback: SQLite Cache
                 from app.db.models_sqla import OHLCV, Asset
+                from datetime import datetime, timedelta, timezone
                 asset = self.db.query(Asset).filter(Asset.symbol == symbol).first()
                 if asset:
                     ohlcv = self.db.query(OHLCV).filter(OHLCV.asset_id == asset.id).order_by(desc(OHLCV.timestamp)).first()
                     if ohlcv:
-                        return float(ohlcv.close)
+                        age = datetime.now(timezone.utc) - ohlcv.timestamp
+                        if age <= timedelta(minutes=5):
+                            return float(ohlcv.close)
+                        logger.warning(f"SQLite fallback for {symbol} is stale ({age.total_seconds()}s old).")
                 
                 # Quaternary Fallback: Static Emergency Dataset
                 static_emergency_prices = {
@@ -266,8 +270,8 @@ async def binance_ws_loop(symbols: List[str]):
                 }
                 return static_emergency_prices.get(symbol, 1.0) # Never return 0.0 to prevent division by zero
 
-    reconnect_delay = 1
-    max_reconnect_delay = 60
+    RECONNECT_DELAYS = [1, 2, 5, 10, 30, 60]
+    delay_index = 0
 
     while True:
         try:
@@ -281,7 +285,7 @@ async def binance_ws_loop(symbols: List[str]):
                 logger.info(f"[BinanceWS] Connected to live kline & ticker streams for {len(ws_symbols)} assets.")
                 
                 # Reset reconnect delay on successful connection
-                reconnect_delay = 1
+                delay_index = 0
                 
                 while True:
                     msg = await ws.recv()
@@ -349,9 +353,10 @@ async def binance_ws_loop(symbols: List[str]):
             finally:
                 db.close()
             
-            logger.info(f"[BinanceWS] Reconnecting in {reconnect_delay} seconds...")
-            await asyncio.sleep(reconnect_delay)
-            reconnect_delay = min(reconnect_delay * 2, max_reconnect_delay)
+            delay = RECONNECT_DELAYS[min(delay_index, len(RECONNECT_DELAYS)-1)]
+            logger.info(f"[BinanceWS] Reconnecting in {delay} seconds...")
+            await asyncio.sleep(delay)
+            delay_index += 1
 
 def get_latest_features() -> Dict[str, pd.DataFrame]:
     """Returns the latest 60-min window as pandas DataFrames per symbol, merged with static features."""

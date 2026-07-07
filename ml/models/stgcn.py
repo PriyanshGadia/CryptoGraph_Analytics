@@ -31,7 +31,7 @@ class STGCNModel(nn.Module):
         transformer_layers: int = 2,
         transformer_heads: int = 4,
         dropout: float = 0.1,
-        num_direction_classes: int = 3,
+        num_direction_classes: int = 5,
         num_volatility_classes: int = 4,
         use_tcn: bool = True,
         **kwargs
@@ -71,17 +71,19 @@ class STGCNModel(nn.Module):
         """
         Runs full spatio-temporal convolutions in a fully vectorized pipeline.
         
-        Returns: (direction_logits (N,3), volatility_logits (N,4)) or all four outputs
+        Returns: (direction_logits (N,5), volatility_logits (N,4)) or all four outputs
         """
         T = len(graph_sequence)
         if T == 0:
-            # Empty fallback
-            N = 0
-            device = next(self.parameters()).device
-            return torch.empty((0, 3), device=device), torch.empty((0, 4), device=device)
+            raise ValueError("Empty graph sequence provided to STGCNModel")
             
-        # 1. Ensure all graph snapshots have edge_type set
-        for graph in graph_sequence:
+        # 1. Ensure all graph snapshots have edge_type set and shape is valid
+        for i, graph in enumerate(graph_sequence):
+            if not hasattr(graph, "x") or graph.x is None:
+                raise ValueError(f"Graph {i} missing 'x' attribute")
+            if graph.x.shape[1] != self.config["in_features"]:
+                raise ValueError(f"Graph {i} has {graph.x.shape[1]} features, expected {self.config['in_features']}")
+                
             if not hasattr(graph, "edge_type") or graph.edge_type is None:
                 graph.edge_type = torch.zeros(graph.edge_index.shape[1], dtype=torch.long, device=graph.edge_index.device)
                 

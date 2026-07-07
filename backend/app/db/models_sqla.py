@@ -112,12 +112,12 @@ class Prediction(Base):
         if value is None:
             return None
         val = float(value)
-        # Enforce 0.0 - 100.0 percentage scale at ingestion boundary
-        if 0.0 <= val <= 1.0:
-            val = val * 100.0
-        if not (0.0 <= val <= 100.0):
-            raise ValueError(f"Confidence value {value} out of valid percentage range [0.0, 100.0]")
-        return round(val, 2)
+        # Enforce 0.0 - 1.0 probability scale at ingestion boundary
+        if val > 1.0 and val <= 100.0:
+            val = val / 100.0
+        if not (0.0 <= val <= 1.0):
+            raise ValueError(f"Confidence value {value} out of valid probability range [0.0, 1.0]")
+        return round(val, 4)
 
 class PortfolioState(Base):
     __tablename__ = "portfolio_state"

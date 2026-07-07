@@ -2,15 +2,14 @@
   <img src="https://img.shields.io/badge/Status-Active-00FFAA?style=for-the-badge&logo=rocket" alt="Status" />
   <img src="https://img.shields.io/badge/Next.js-14-black?style=for-the-badge&logo=next.js" alt="Next.js" />
   <img src="https://img.shields.io/badge/FastAPI-Python_3.11-009688?style=for-the-badge&logo=fastapi" alt="FastAPI" />
-  <img src="https://img.shields.io/badge/PyTorch-ST--GCN-EE4C2C?style=for-the-badge&logo=pytorch" alt="PyTorch" />
 
-  <p><b>An Experimental Research & Analytics Platform using Spatio-Temporal Graph Neural Networks (ST-GCN) for Cryptocurrency Market Analysis.</b></p>
+  <p><b>An Experimental Research & Analytics Platform using Ensemble Machine Learning for Cryptocurrency Market Analysis.</b></p>
 </div>
 
 <br />
 
 ## 🪐 What is this?
-Welcome to **Project Swarm**. CryptoGraph Analytics tracks 50 major crypto assets, evaluating them using an **ST-GCN (Spatio-Temporal Graph Convolutional Network)** to treat the crypto market as a single interconnected system.
+Welcome to **Project Swarm**. CryptoGraph Analytics tracks 50 major crypto assets, evaluating them using a robust **Ensemble Forecaster** to predict market movements.
 
 These neural predictions are piped into a React dashboard via WebSockets.
 
@@ -18,10 +17,9 @@ These neural predictions are piped into a React dashboard via WebSockets.
 
 ## ✨ Core Features
 
-* **🕸️ Swarm Map**: A spatial visualization of market clustering showing directional confidence.
 * **⚡ Live WebSocket Sync**: Fast price updates piped from Binance's WebSockets to the frontend.
 * **🔮 Predictive Engine**: On-demand forecasting utilizing an ensemble of `LSTM` and `NeuralProphet`.
-* **🤖 CIO Analyst Explanations**: Groq's `LLaMA 3.3 70B` acts as an analyst, reading the graph and explaining the AI's prediction (includes deterministic fallback if API is unavailable).
+* **🤖 CIO Analyst Explanations**: Groq's `LLaMA 3.3 70B` acts as an analyst, reading the data and explaining the AI's prediction (includes deterministic fallback if API is unavailable).
 * **🛡️ Fallback Resilience**: If Binance WebSocket disconnects, the system gracefully falls back to CoinGecko REST endpoints and local SQLite caching.
 
 ---

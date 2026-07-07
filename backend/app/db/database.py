@@ -18,7 +18,7 @@ else:
         db_path = base_dir / "cryptograph.db"
         SQLALCHEMY_DATABASE_URL = f"sqlite:///{db_path}"
 
-from sqlalchemy.pool import QueuePool
+from sqlalchemy.pool import NullPool
 
 # Configure connection arguments and engine events dynamically depending on active database dialect
 is_sqlite = SQLALCHEMY_DATABASE_URL.startswith("sqlite")
@@ -34,9 +34,7 @@ if is_sqlite:
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL, 
     connect_args=connect_args,
-    poolclass=QueuePool,
-    pool_size=20,
-    max_overflow=10
+    poolclass=NullPool
 )
 
 if is_sqlite:

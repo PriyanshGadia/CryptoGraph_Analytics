@@ -1,3 +1,5 @@
+import logging
+logger = logging.getLogger(__name__)
 """Specialized Analyst Agents for the MoA Swarm."""
 from app.core.agents.base import BaseAgent
 from sqlalchemy.orm import Session
@@ -27,7 +29,7 @@ class MacroEconomistAgent(BaseAgent):
                 return "MACRO_FALLBACK: Incomplete macroeconomic data available in the system."
                 
         except Exception as e:
-            print(f"[MacroEconomistAgent] Database query error: {e}")
+            logger.info(f"[MacroEconomistAgent] Database query error: {e}")
             return "MACRO_FALLBACK: Macroeconomic data query failed."
             
         system_prompt = (

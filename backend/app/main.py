@@ -1,4 +1,4 @@
-"""ST-GCN Crypto Forecasting API — main application entry point. Trigger reload."""
+"""Crypto Ensemble Forecaster API — main application entry point. Trigger reload."""
 
 import sentry_sdk
 import os
@@ -9,7 +9,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
 
 from app.api.routes import (
-    assets, predictions, graph, risk, explain,
+    assets, graph, explain,
     forecast, status, coins, performance,
     correlations, sentiment_data, screener, settings as app_settings_route,
     portfolio, stream
@@ -33,40 +33,64 @@ logger = logging.getLogger("cryptograph")
 
 # Move lazy imports here
 import os
-import sys
 from app.api.routes.stream import SYMBOLS, prediction_broadcast_loop, screener_broadcast_loop, get_refresh_event
 from app.core.streams.binance_ws import binance_ws_loop, populate_static_features, refresh_predictions_in_ssot
 from app.api.routes.screener import refresh_live_technicals
 from app.core.cache import _cache
-scripts_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "scripts"))
-if scripts_path not in sys.path:
-    sys.path.append(scripts_path)
-from enrich_assets import enrich_assets
+from app.services.enrich_assets import enrich_assets
+from ml.models.forecast_model import run_lstm_forecast
+import pandas as pd
+import numpy as np
 
 # Initialize Sentry safely
 if getattr(settings, 'sentry_dsn', None) and settings.sentry_dsn.strip():
     dsn_str = settings.sentry_dsn.strip()
-    if dsn_str.startswith("http") and "@" in dsn_str:  # Basic DSN format validation
-        try:
-            sentry_sdk.init(
-                dsn=dsn_str,
-                integrations=[FastApiIntegration()],
-                traces_sample_rate=0.1
-            )
-            logger.info("Sentry initialized successfully.")
-        except Exception as e:
-            logger.error(f"Sentry initialization failed: {e}")
-    else:
-        logger.info("Sentry initialization skipped (DSN is invalid or placeholder).")
+    try:
+        sentry_sdk.init(
+            dsn=dsn_str,
+            integrations=[FastApiIntegration()],
+            traces_sample_rate=0.1
+        )
+        logger.info("Sentry initialized successfully.")
+    except Exception as e:
+        logger.error(f"Sentry initialization failed: {e}")
+        if settings.environment == "production":
+            raise RuntimeError(f"Sentry DSN is invalid in production: {e}")
+else:
+    logger.info("Sentry initialization skipped (DSN is missing).")
+
+enrich_assets_lock = asyncio.Lock()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    logger.info("========================================")
+    logger.info("CryptoGraph Analytics API Starting Up...")
+    logger.info("WARNING: System must be run with workers=1 to prevent race conditions in WebSocket & DB streams.")
+    logger.info("========================================")
+
     # Startup Security Validation: Ensure API_KEY is set or fail closed
     api_key_configured = get_setting("api_key")
     if not api_key_configured:
         logger.error("[SECURITY ERROR] API_KEY is not configured. Server startup aborted to prevent vulnerabilities.")
         raise RuntimeError("API_KEY must be configured to start the server.")
     
+    # Startup CORS Validation
+    if settings.environment == "production":
+        frontend_url = get_setting("FRONTEND_URL")
+        if not frontend_url or frontend_url == "http://localhost:3000":
+            logger.error("[SECURITY ERROR] FRONTEND_URL is not explicitly configured in production.")
+            raise RuntimeError("FRONTEND_URL must be configured in production to restrict CORS.")
+            
+    # Pre-load Deep Learning Models to prevent latency spike on first request
+    try:
+        logger.info("Pre-loading models...")
+        # Create dummy data to initialize LSTM
+        dummy_prices = pd.Series(np.linspace(50000, 51000, 60))
+        run_lstm_forecast(dummy_prices, 1)
+        logger.info("Models pre-loaded successfully.")
+    except Exception as e:
+        logger.warning(f"Model pre-loading bypassed (expected if no model present yet): {e}")
+
     # Populate static cache using our synchronous DB session setup
     try:
         db = SessionLocal()
@@ -91,10 +115,17 @@ async def lifespan(app: FastAPI):
             db = SessionLocal()
             
             # 1a. Enrich Asset Metadata
-            try:
-                await asyncio.to_thread(enrich_assets)
-            except Exception as e:
-                logger.error(f"[Scheduler] Asset enrichment error: {e}", exc_info=True)
+            if not enrich_assets_lock.locked():
+                try:
+                    async with enrich_assets_lock:
+                        # Wrap sync block in a timeout to prevent scheduler backlog
+                        await asyncio.wait_for(asyncio.to_thread(enrich_assets), timeout=1800)
+                except asyncio.TimeoutError:
+                    logger.error("[Scheduler] Asset enrichment timed out after 30 minutes.")
+                except Exception as e:
+                    logger.error(f"[Scheduler] Asset enrichment error: {e}", exc_info=True)
+            else:
+                logger.warning("[Scheduler] Asset enrichment skipped as previous run is still executing.")
             
             # 1b. Refresh live technicals
             try:
@@ -161,8 +192,8 @@ async def lifespan(app: FastAPI):
                 logger.error(f"[Lifespan] Error awaiting cancelled task: {e}")
 
 app = FastAPI(
-    title="ST-GCN Crypto Forecasting API",
-    description="Spatio-Temporal Graph Neural Network financial forecasting platform",
+    title="Crypto Ensemble Forecaster API",
+    description="Machine Learning financial forecasting platform",
     version="1.0.0",
     lifespan=lifespan
 )
@@ -170,7 +201,7 @@ app = FastAPI(
 from prometheus_fastapi_instrumentator import Instrumentator
 Instrumentator().instrument(app).expose(app)
 
-dynamic_origins = ["*"] if settings.environment == "development" else [get_setting("FRONTEND_URL", "http://localhost:3000")]
+dynamic_origins = ["*"] if settings.environment == "development" else [get_setting("FRONTEND_URL")]
 
 # Initialize CORS Middleware at module creation
 app.add_middleware(
@@ -194,9 +225,7 @@ from app.api.deps import verify_api_key
 
 # Register routers with global authentication
 app.include_router(assets.router,      prefix="/api", dependencies=[Depends(verify_api_key)])
-app.include_router(predictions.router, prefix="/api", dependencies=[Depends(verify_api_key)])
 app.include_router(graph.router,       prefix="/api", dependencies=[Depends(verify_api_key)])
-app.include_router(risk.router,        prefix="/api", dependencies=[Depends(verify_api_key)])
 app.include_router(explain.router,     prefix="/api", dependencies=[Depends(verify_api_key)])
 app.include_router(forecast.router,    prefix="/api", dependencies=[Depends(verify_api_key)])
 app.include_router(status.router,      prefix="/api", dependencies=[Depends(verify_api_key)])

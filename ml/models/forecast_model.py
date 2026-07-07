@@ -53,19 +53,25 @@ def run_lstm_forecast(
         if _GLOBAL_LSTM_MODEL is None:
             # Search for pre-trained model checkpoint
             ckpt_path = None
-            possible_paths = [
+            env_artifact_path = os.environ.get("ARTIFACT_PATH")
+            possible_paths = []
+            if env_artifact_path:
+                possible_paths.append(Path(env_artifact_path) / "best_lstm.pt")
+                
+            possible_paths.extend([
                 Path(__file__).resolve().parent.parent.parent / "ml" / "artifacts" / "best_lstm.pt",
                 Path(__file__).resolve().parent / "best_lstm.pt",
                 Path("ml/artifacts/best_lstm.pt"),
                 Path("../ml/artifacts/best_lstm.pt")
-            ]
+            ])
             for p in possible_paths:
                 if p.exists() and p.is_file():
                     ckpt_path = p
                     break
                     
             if ckpt_path is None:
-                raise FileNotFoundError("Pre-trained LSTM model checkpoint not found.")
+                print("Pre-trained LSTM model checkpoint not found.")
+                return None
                 
             checkpoint = torch.load(str(ckpt_path), map_location="cpu")
             model = LSTMForecaster()
@@ -106,7 +112,7 @@ def run_lstm_forecast(
         
     except Exception as e:
         print(f"[LSTM Forecast Error] {e}")
-        raise RuntimeError(f"LSTM Deep Learning forecast failed: {e}")
+        return None
 
 
 def run_prophet_forecast(
@@ -194,6 +200,38 @@ def run_prophet_forecast(
         return None
 
 
+def run_mean_reversion_forecast(
+    prices: pd.Series,
+    forecast_days: int = 30
+) -> dict:
+    """
+    Fallback baseline model: Mean Reversion.
+    forecast = last_price + (last_price - mean_price) * decay
+    """
+    last_price = prices.iloc[-1]
+    mean_price = prices.mean()
+    std_price = prices.std()
+    
+    forecast_prices = []
+    current_price = last_price
+    decay = 0.85 # Decay factor towards mean
+    
+    for i in range(forecast_days):
+        # Pull towards mean
+        diff = mean_price - current_price
+        current_price = current_price + (diff * (1 - decay))
+        forecast_prices.append(current_price)
+        
+    uncertainty = [std_price * 1.96 * (i ** 0.5) for i in range(1, forecast_days + 1)]
+    
+    return {
+        "forecast_prices": [round(float(p), 8) for p in forecast_prices],
+        "lower_bound":     [round(float(p - u), 8) for p, u in zip(forecast_prices, uncertainty)],
+        "upper_bound":     [round(float(p + u), 8) for p, u in zip(forecast_prices, uncertainty)],
+        "model_used":      "Mean Reversion Baseline"
+    }
+
+
 def run_ensemble_forecast(
     prices: pd.Series,
     dates: pd.Series,
@@ -202,11 +240,18 @@ def run_ensemble_forecast(
     """
     Runs LSTM and Prophet, and weights their forecasts using Inverse-Variance Weighting (a form of meta-learning).
     This suppresses the contribution of the model that exhibits higher uncertainty on recent data.
-    If Prophet is unavailable, returns LSTM only.
+    Graceful degradation: LSTM -> Prophet -> Mean Reversion.
     """
     lstm_result   = run_lstm_forecast(prices, forecast_days)
     prophet_result = run_prophet_forecast(prices, dates, forecast_days)
     
+    if lstm_result is None and prophet_result is None:
+        return run_mean_reversion_forecast(prices, forecast_days)
+        
+    if lstm_result is None:
+        prophet_result["ensemble"] = False
+        return prophet_result
+        
     if prophet_result is None:
         lstm_result["ensemble"] = False
         return lstm_result

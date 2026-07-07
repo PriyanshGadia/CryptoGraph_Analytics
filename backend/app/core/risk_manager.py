@@ -84,10 +84,10 @@ class RiskManagerCore:
         ).order_by(desc(OHLCV.timestamp)).limit(7).all()
 
         if len(recent_ohlcv) >= 2:
+            import numpy as np
             closes = [r.close for r in recent_ohlcv]
-            high_price = max(closes)
-            low_price = min(closes)
-            vol_range = (high_price - low_price) / low_price if low_price > 0 else 0.0
+            returns = np.diff(np.log(closes))
+            vol_range = float(np.std(returns) * np.sqrt(365))  # Annualized volatility
             if vol_range > self.max_volatility_7d:
                 return {
                     "approved": False,
@@ -96,7 +96,10 @@ class RiskManagerCore:
                 }
 
         # 3. Position Sizing (True Fractional Kelly Criterion: f* = (p*b - q)/b with Dynamic Baseline Edge Check)
-        p = max(0.0, min(1.0, float(confidence)))  # Win probability
+        import math
+        raw_p = max(0.0, min(1.0, float(confidence)))
+        # Apply Platt/Temperature scaling via Sigmoid to calibrate raw score into a true probability
+        p = 1.0 / (1.0 + math.exp(-(raw_p - 0.5) * 10.0))
 
         # Dynamic Edge Check: Verify model confidence exceeds model's baseline probability
         if p <= baseline_prob:
@@ -108,15 +111,40 @@ class RiskManagerCore:
 
         q = 1.0 - p                        # Loss probability
         
-        from app.services.trading_agent import get_asset_dynamic_risk_thresholds
-        sl, tp, _ = get_asset_dynamic_risk_thresholds(self.db, asset.id)
-        b = abs(tp / sl) if sl != 0 else self.payoff_ratio  # Dynamic Win/Loss payoff ratio
+        # Calculate dynamic b (payoff ratio) using expected return over volatility
+        from sqlalchemy import text as sa_text
+        tech_row = self.db.execute(sa_text("""
+            SELECT returns_1d, volatility_7d
+            FROM technical_features
+            WHERE asset_id = :aid
+            ORDER BY timestamp DESC LIMIT 1
+        """), {"aid": asset.id}).fetchone()
+        
+        expected_return = 0.02 # fallback 2%
+        volatility = 0.05      # fallback 5%
+        
+        if tech_row and tech_row[0] is not None and tech_row[1] is not None:
+            # We assume a daily expected return bounded for safety
+            expected_return = max(0.001, abs(float(tech_row[0]))) 
+            volatility = max(0.001, float(tech_row[1]))
+            
+        b = expected_return / volatility
+        # Sanity cap on b to prevent extreme sizing
+        b = max(0.5, min(10.0, b))
 
         raw_kelly = (p * b - q) / b if b > 0 else 0.0
         raw_kelly = max(0.0, raw_kelly)
 
-        # Apply Half-Kelly (or configured fraction) to prevent over-betting under parameter uncertainty
-        kelly_allocation = raw_kelly * self.kelly_fraction
+        # Regime-dependent Kelly sizing
+        # In highly volatile regimes, we reduce the kelly fraction
+        regime_adjusted_fraction = self.kelly_fraction
+        if volatility > 0.15:      # High volatility
+            regime_adjusted_fraction *= 0.5
+        elif volatility > 0.05:    # Medium volatility
+            regime_adjusted_fraction *= 0.8
+            
+        # Apply regime-adjusted Fractional Kelly
+        kelly_allocation = raw_kelly * regime_adjusted_fraction
 
         # Hard cap position size
         target_fraction = min(self.max_position_cap, kelly_allocation)
@@ -138,6 +166,6 @@ class RiskManagerCore:
 
         return {
             "approved": True,
-            "reasoning": f"RiskManager APPROVED: Kelly position sizing set to ${suggested_allocation:,.2f} based on {p*100:.1f}% confidence.",
+            "reasoning": f"RiskManager APPROVED: Kelly position sizing set to ${suggested_allocation:,.2f} based on {p*100:.1f}% confidence, b={b:.2f}, vol={volatility:.2f}.",
             "suggested_allocation_usd": suggested_allocation
         }

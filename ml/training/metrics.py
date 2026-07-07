@@ -3,7 +3,7 @@ import pandas as pd
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 from ml.evaluation.finance_metrics import compute_all_finance_metrics
 
-DIRECTION_CLASS_NAMES  = ["down", "neutral", "up"]
+DIRECTION_CLASS_NAMES  = ["strong_down", "down", "neutral", "up", "strong_up"]
 VOLATILITY_CLASS_NAMES = ["low", "medium", "high", "extreme"]
 
 def compute_all_metrics(
@@ -39,8 +39,8 @@ def compute_all_metrics(
     full_per_class = f1_score(y_true, y_pred, labels=list(range(n_classes)), average=None, zero_division=0)
     
     # Map class names dynamically
-    class_names = DIRECTION_CLASS_NAMES if n_classes == 3 else (
-        ["strong_down", "down", "neutral", "up", "strong_up"] if n_classes == 5 else
+    class_names = DIRECTION_CLASS_NAMES if n_classes == 5 else (
+        ["down", "neutral", "up"] if n_classes == 3 else
         [f"class_{i}" for i in range(n_classes)]
     )
     

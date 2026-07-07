@@ -5,6 +5,7 @@ from sqlalchemy import text
 from datetime import datetime, timezone, timedelta
 import pandas as pd
 import numpy as np
+import asyncio
 from app.api.deps import get_db
 from app.db.models_sqla import Asset
 from app.core.cache import cached
@@ -14,7 +15,7 @@ router = APIRouter(prefix="/correlations", tags=["correlations"])
 
 @router.get("/matrix")
 @cached(ttl_seconds=300)
-def get_correlation_matrix(
+async def get_correlation_matrix(
     days: int = 30,
     basis: str = "Price Correlation",
     db: Session = Depends(get_db)
@@ -99,7 +100,9 @@ def get_correlation_matrix(
                 
         corr_matrix = pd.DataFrame(motif_matrix, index=aids, columns=aids).fillna(0.0)
     else:
-        corr_matrix = pivot.corr(method="pearson").fillna(0.0)
+        def _calc_corr(p):
+            return p.corr(method="pearson").fillna(0.0)
+        corr_matrix = await asyncio.to_thread(_calc_corr, pivot)
 
     # Ordered symbols
     ordered_asset_ids = corr_matrix.columns.tolist()
@@ -140,7 +143,7 @@ def get_correlation_matrix(
 
 @router.get("/sector-average")
 @cached(ttl_seconds=300)
-def get_sector_correlations(
+async def get_sector_correlations(
     days: int = 30,
     basis: str = "Price Correlation",
     db: Session = Depends(get_db)
@@ -219,7 +222,9 @@ def get_sector_correlations(
                 
         corr_matrix = pd.DataFrame(motif_matrix, index=aids, columns=aids).fillna(0.0)
     else:
-        corr_matrix = pivot.corr(method="pearson").fillna(0.0)
+        def _calc_corr(p):
+            return p.corr(method="pearson").fillna(0.0)
+        corr_matrix = await asyncio.to_thread(_calc_corr, pivot)
 
     sectors = sorted(set(asset_sector_map.values()))
     intra_sector = {}

@@ -8,8 +8,10 @@ import ccxt
 
 router = APIRouter(prefix="/coins", tags=["coins"])
 
+import asyncio
+
 @router.get("/{symbol}/ohlcv")
-def get_coin_ohlcv(
+async def get_coin_ohlcv(
     symbol: str,
     interval: str = "1h",
     db: Session = Depends(get_db)
@@ -21,7 +23,14 @@ def get_coin_ohlcv(
     try:
         exchange = ccxt.binance()
         market_symbol = f"{symbol.upper()}/USDT"
-        raw_ohlcv = exchange.fetch_ohlcv(market_symbol, timeframe=interval, limit=1500)
+        
+        # Wrap blocking CCXT network call in a separate thread
+        raw_ohlcv = await asyncio.to_thread(
+            exchange.fetch_ohlcv, 
+            market_symbol, 
+            timeframe=interval, 
+            limit=1500
+        )
         
         data = []
         for row in raw_ohlcv:
@@ -33,7 +42,12 @@ def get_coin_ohlcv(
                 "close": float(row[4]),
                 "volume": float(row[5])
             })
-        return data
+        return {
+            "data": data,
+            "data_freshness_timestamp": datetime.now(timezone.utc).isoformat(),
+            "staleness_warning": False,
+            "source": "binance_live"
+        }
     except Exception as e:
         print(f"Error fetching OHLCV from Binance: {e}")
         # Fallback to SQLite if Binance API fails
@@ -50,11 +64,14 @@ def get_coin_ohlcv(
         """), {"asset_id": asset.id}).fetchall()
             
         data = []
+        latest_timestamp = None
         for row in res:
             # Match Binance exact structure (which provides timestamps in ms)
-            ts = int(datetime.fromisoformat(row[0]).timestamp() * 1000)
+            ts_sec = datetime.fromisoformat(row[0]).timestamp()
+            latest_timestamp = ts_sec
+            ts_ms = int(ts_sec * 1000)
             data.append({
-                "time": ts,
+                "time": ts_ms,
                 "open": float(row[1]),
                 "high": float(row[2]),
                 "low": float(row[3]),
@@ -62,7 +79,17 @@ def get_coin_ohlcv(
                 "volume": float(row[5])
             })
             
-        return data
+        is_stale = False
+        if latest_timestamp:
+            age_seconds = datetime.now(timezone.utc).timestamp() - latest_timestamp
+            is_stale = age_seconds > 300  # Older than 5 minutes
+            
+        return {
+            "data": data,
+            "data_freshness_timestamp": datetime.fromtimestamp(latest_timestamp, tz=timezone.utc).isoformat() if latest_timestamp else None,
+            "staleness_warning": is_stale,
+            "source": "sqlite_fallback"
+        }
 
 @router.get("/{symbol}/indicators")
 def get_coin_indicators(

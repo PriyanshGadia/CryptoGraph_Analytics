@@ -36,7 +36,7 @@ def get_db_symbols() -> List[str]:
     return [
         "BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "AVAX", "LINK", "DOT",
         "MATIC", "UNI", "ATOM", "LTC", "BCH", "NEAR", "APT", "ICP", "STX", "FIL",
-        "XMR", "AR", "HBAR", "VET", "MKR", "INJ", "GRT", "OP", "THETA",
+        "AR", "HBAR", "VET", "MKR", "INJ", "GRT", "OP", "THETA",
         "LDO", "FET", "FTM", "TAO", "TIA", "SEI", "SUI", "PYTH", "JUP", "GALA",
         "AAVE", "ALGO", "SAND", "EGLD", "QNT", "SNX", "AXS", "CHZ", "MANA", "MINA",
         "DYDX"

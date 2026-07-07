@@ -1,6 +1,6 @@
 # Architecture Specification
 
-This document details the system design, component mapping, data flow, and technology choices for the ST-GCN Financial Forecasting Platform.
+This document details the system design, component mapping, data flow, and technology choices for the Crypto Ensemble Forecaster Platform.
 
 ## 1. System Diagram
 
@@ -33,12 +33,12 @@ Below is the high-level architecture diagram illustrating the integration betwee
 |                                        |                                        |
 |                                        v                                        |
 |                            +-----------+-----------+                            |
-|                            |  Dynamic Graph Builder|                            |
+|                            |  Dynamic Features     |                            |
 |                            +-----------+-----------+                            |
 |                                        |                                        |
 |                                        v                                        |
 |                            +-----------+-----------+                            |
-|                            |   ST-GCN Deep Model   |                            |
+|                            | LSTM & NeuralProphet  |                            |
 |                            +-----------+-----------+                            |
 |                                        |                                        |
 |                                        v                                        |
@@ -147,19 +147,18 @@ The flow of data through the system is structured as a linear sequence of transf
    - `store.py` reads raw data from Supabase, synchronizes dates, handles missing indices, and applies standard feature transforms (MACD, RSI, etc.).
    - `validator.py` ensures strict boundary checks (no NaN values, correct intervals).
 
-3. **Graph Construction**:
-   - `graph_builder.py` constructs a daily spatial graph. It correlates prices (using 30-day Pearson indices), maps sector classifications, and evaluates market-cap proportions to construct static/dynamic multi-relational edges.
+3. **Feature Engineering**:
+   - Technical indicators (MACD, RSI) are processed.
+   - Price correlations are mapped.
 
 4. **Model Forward Pass (Inference/Training)**:
-   - For a sequence of 30 timesteps, node features are projected to size 128.
-   - Graph features are processed through GATv2 layers to compute spatial representations.
-   - Spatially augmented sequences are compiled along the temporal axis via a Positional Temporal Transformer.
-   - Predictions are computed by the Multi-Task classifier heads.
+   - For a sequence of past timesteps, features are fed into an ensemble of LSTM and NeuralProphet models.
+   - Predictions are computed for the next 24 hours.
 
 5. **Predictions & Explanation**:
-   - Predictions are generated for Market Direction (5 classes) and Volatility Regime (4 classes).
-   - `explainability.py` extracts the local SHAP values representing feature importances.
-   - Predictions and SHAP inputs are upserted into the `predictions` table in Supabase.
+   - Predictions are generated for Market Direction and Volatility Regime.
+   - `explainability.py` extracts insights.
+   - Predictions and weights are upserted into the `predictions` table in Supabase (or local SQLite).
 
 6. **API Retrieval & Visualization**:
    - The FastAPI backend queries the latest predicted state.
@@ -175,6 +174,6 @@ The flow of data through the system is structured as a linear sequence of transf
 | **LLM Inference** | **Groq Cloud (llama-3.3-70b-versatile)** | Ultra-low latency inference engine. Utilizing LangChain integrations (`langchain-groq`), this configuration provides structured token generation for explanations without the performance bottlenecks of slower API providers. |
 | **Sentiment Data** | **CoinGecko Free API + Fear & Greed API** | Public, zero-cost data sources providing robust community indicators, public interest, and fear/greed metrics. Avoids complex OAuth credentials and rate-limiting payloads associated with Twitter/Reddit scraping. |
 | **Database** | **Supabase (PostgreSQL)** | Combines SQL relational integrity with instant API layers. Built-in Row Level Security (RLS) protects data tables, while indexing capability handles high-volume Spatio-Temporal snapshots. |
-| **ML Framework** | **PyTorch + PyTorch Geometric** | Standard-setting library for Graph Neural Networks. PyG's dynamic graph implementations and optimized CUDA kernels for `GATv2Conv` are necessary for running real-time spatial messaging across crypto asset nodes. |
+| **ML Framework** | **PyTorch + Prophet** | Standard library for deep learning combined with Prophet for robust time-series forecasting. |
 | **Backend API** | **FastAPI** | High-performance ASGI framework with auto-generated OpenAPI documentation, fast JSON parsing, and native async support. Easily handles background tasks (async inference triggers). |
 | **Frontend UI** | **Next.js 14 (TypeScript + Tailwind CSS + shadcn/ui)** | React framework offering Server-Side Rendering (SSR) and routing. Paired with Tailwind CSS for layout styling, `shadcn/ui` for premium modern component design, and `react-force-graph-2d` for interactive network visualizations. |

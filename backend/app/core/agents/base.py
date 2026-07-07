@@ -1,3 +1,5 @@
+import logging
+logger = logging.getLogger(__name__)
 """Base class for Autonomous AI Swarm Agents."""
 import asyncio
 from typing import Optional, Dict, Any
@@ -15,6 +17,23 @@ class BaseAgent:
         # Load API keys locally from database to satisfy no .env rule
         groq_key_record = db.query(AppSetting).filter(AppSetting.setting_key == "groq_api_key").first()
         self.groq_api_key = decrypt_secret(groq_key_record.setting_value) if groq_key_record else None
+
+    async def validate_groq_key(self) -> bool:
+        """Validates the API key. Returns False if invalid or missing."""
+        if not self.groq_api_key:
+            return False
+        try:
+            from groq import AsyncGroq
+            client = AsyncGroq(api_key=self.groq_api_key)
+            # Lightweight test call
+            await client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": "Say OK"}],
+                max_tokens=5
+            )
+            return True
+        except Exception:
+            return False
 
     async def _query_llm(self, prompt: str, system_prompt: str = "You are a specialized AI agent.", temperature: float = 0.3) -> Optional[str]:
         """Query the Groq LLaMA model. Returns None if key is missing or call fails."""
@@ -37,7 +56,7 @@ class BaseAgent:
             )
             return completion.choices[0].message.content
         except Exception as e:
-            print(f"[{self.name}] Groq API Failed: {e}. Initiating LLM Fallback Mesh...")
+            logger.info(f"[{self.name}] Groq API Failed: {e}. Initiating LLM Fallback Mesh...")
             return await self._fallback_llm_query(prompt, system_prompt)
 
     async def _fallback_llm_query(self, prompt: str, system_prompt: str) -> Optional[str]:
@@ -48,8 +67,8 @@ class BaseAgent:
         """
         try:
             import httpx
-            print(f"[{self.name}] Rerouting to local Ollama LLaMA-3 fallback at localhost:11434...")
-            async with httpx.AsyncClient(timeout=0.5) as client:
+            logger.info(f"[{self.name}] Rerouting to local Ollama LLaMA-3 fallback at localhost:11434...")
+            async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(
                     "http://127.0.0.1:11434/v1/chat/completions",
                     json={
@@ -65,10 +84,10 @@ class BaseAgent:
                     data = response.json()
                     return data["choices"][0]["message"]["content"]
                 else:
-                    print(f"[{self.name}] Local Ollama returned status {response.status_code}")
+                    logger.info(f"[{self.name}] Local Ollama returned status {response.status_code}")
                     return None
         except Exception as fallback_err:
-            print(f"[{self.name}] Fallback Mesh: Local Ollama check failed: {fallback_err}")
+            logger.info(f"[{self.name}] Fallback Mesh: Local Ollama check failed: {fallback_err}")
             return None
 
     async def analyze(self, *args, **kwargs) -> str:

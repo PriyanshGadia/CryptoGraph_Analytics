@@ -62,7 +62,15 @@ class STGCNTrainer:
             milestones=[warmup_epochs]
         )
         
-        dir_counts = config.get("direction_class_counts", [1, 1, 1])
+        import psutil
+        ram_gb = psutil.virtual_memory().total / (1024 ** 3)
+        if ram_gb < 6.0: # Enforce min 6GB RAM, but typically users have 4GB for prod
+            print(f"[WARNING] Available RAM is {ram_gb:.1f}GB. Training ST-GCN requires significant memory.")
+            print("[WARNING] DO NOT train on the production machine. Use Kaggle/Colab with GPU.")
+            # Since the user specifically has 4GB, we'll raise an error to prevent OOM crash in prod
+            raise MemoryError(f"Insufficient RAM ({ram_gb:.1f}GB < 6GB). Training blocked to prevent OOM crash on production machine.")
+            
+        dir_counts = config.get("direction_class_counts", [1, 1, 1, 1, 1])
         focal_gamma = config.get("focal_gamma", 2.0)
         label_smoothing = config.get("label_smoothing", 0.1)
         
