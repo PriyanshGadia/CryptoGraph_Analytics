@@ -11,9 +11,10 @@ def cached(ttl_seconds: int = 60):
         # We use a standard wrapper instead of async def since the endpoints are now synchronous
         @wraps(func)
         def wrapper(*args, **kwargs):
-            # Build cache key from function name + kwargs, omitting 'db' since it changes per request
-            cache_kwargs = {k: v for k, v in kwargs.items() if k != "db"}
-            key = f"{func.__name__}:{str(args)}:{str(cache_kwargs)}"
+            # Build cache key safely, omitting DB session objects
+            cache_kwargs = {k: v for k, v in kwargs.items() if k != "db" and not hasattr(v, "__session__")}
+            safe_args = [arg for arg in args if not hasattr(arg, "__session__")]
+            key = f"{func.__name__}:{str(safe_args)}:{str(cache_kwargs)}"
             
             now = time.time()
             if key in _cache:

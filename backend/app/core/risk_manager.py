@@ -17,7 +17,7 @@ class RiskManagerCore:
     def __init__(
         self,
         db: Session,
-        max_drawdown_limit: float = 0.15,      # 15% Max Drawdown halts all buying
+        max_drawdown_limit: float = 0.35,      # 35% Max Drawdown halts all buying
         max_volatility_7d: float = 0.40,        # 40% 7-day volatility halts buying
         payoff_ratio: float = 2.0,              # Expected reward-to-risk ratio (b)
         kelly_fraction: float = 0.5,            # Fractional Kelly multiplier (Half-Kelly)
@@ -53,20 +53,14 @@ class RiskManagerCore:
                 "suggested_allocation_usd": 0.0
             }
 
-        # 1. Check Portfolio Drawdown Circuit Breaker (30-day rolling window)
-        thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
-        recent_portfolios = self.db.query(PortfolioState).filter(
-            PortfolioState.timestamp >= thirty_days_ago
-        ).order_by(PortfolioState.timestamp.asc()).all()
+        # 1. Check Portfolio Drawdown Circuit Breaker (Global High-Water Mark)
+        from sqlalchemy import func
+        peak = self.db.query(func.max(PortfolioState.total_value)).scalar()
+        if peak is None:
+            peak = current_portfolio.total_value
 
-        if not recent_portfolios:
-            # Fallback to most recent 50 portfolio state snapshots
-            subq = self.db.query(PortfolioState.id).order_by(PortfolioState.timestamp.desc()).limit(50).subquery()
-            recent_portfolios = self.db.query(PortfolioState).filter(PortfolioState.id.in_(subq)).order_by(PortfolioState.timestamp.asc()).all()
-
-        if recent_portfolios:
-            peak = max(p.total_value for p in recent_portfolios)
-            current_drawdown = (peak - current_portfolio.total_value) / peak if peak > 0 else 0.0
+        if peak > 0:
+            current_drawdown = (peak - current_portfolio.total_value) / peak
             if current_drawdown > self.max_drawdown_limit:
                 return {
                     "approved": False,

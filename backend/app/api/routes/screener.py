@@ -32,6 +32,12 @@ def screen_assets(
     """
     state = get_global_market_state()
     
+    all_vols = [d.get("volatility_7d", 0.0) for d in state.values()]
+    if len(all_vols) > 0:
+        vol_thresholds = np.percentile(all_vols, [25, 50, 75, 90])
+    else:
+        vol_thresholds = [0.02, 0.035, 0.05, 0.065]
+    
     results = []
     for sym, data in state.items():
         # Apply filters
@@ -39,12 +45,12 @@ def screen_assets(
         conf = data.get("confidence", 0.0)
         if conf < min_confidence or conf > max_confidence: continue
         
-        # Calculate volatility regime
+        # Calculate dynamic volatility regime
         v = data.get("volatility_7d", 0.0)
         p_vol = "low"
-        if v > 0.065: p_vol = "extreme"
-        elif v > 0.040: p_vol = "high"
-        elif v > 0.025: p_vol = "medium"
+        if v > vol_thresholds[3]: p_vol = "extreme"
+        elif v > vol_thresholds[2]: p_vol = "high"
+        elif v > vol_thresholds[1]: p_vol = "medium"
             
         if volatility != "all" and p_vol != volatility: continue
         if sector != "all" and data.get("sector", "other") != sector: continue
@@ -95,6 +101,12 @@ def get_preset_scan(preset_name: str):
     state = get_global_market_state()
     desc_text = ""
     
+    all_vols = [d.get("volatility_7d", 0.0) for d in state.values()]
+    if len(all_vols) > 0:
+        vol_thresholds = np.percentile(all_vols, [25, 50, 75, 90])
+    else:
+        vol_thresholds = [0.02, 0.035, 0.05, 0.065]
+        
     if preset_name == "high_confidence_buys":
         desc_text = "ST-GCN predicts up/strong_up with >75% confidence"
     elif preset_name == "oversold_bounces":
@@ -119,9 +131,10 @@ def get_preset_scan(preset_name: str):
         a_mcap = data.get("market_cap_usd", 0.0)
         v = data.get("volatility_7d", 0.0)
         p_vol = "low"
-        if v > 0.065: p_vol = "extreme"
-        elif v > 0.040: p_vol = "high"
-        elif v > 0.025: p_vol = "medium"
+        if v > vol_thresholds[3]: p_vol = "extreme"
+        elif v > vol_thresholds[2]: p_vol = "high"
+        elif v > vol_thresholds[1]: p_vol = "medium"
+
 
         keep = True
         if preset_name == "high_confidence_buys":

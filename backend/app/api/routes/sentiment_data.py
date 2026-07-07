@@ -79,7 +79,25 @@ def _fg_label(fg: int) -> str:
 @router.get("/fear-greed-history")
 @cached(ttl_seconds=300)
 def get_fear_greed_history(days: int = 365, db: Session = Depends(get_db)):
-    """Returns synthetic fear & greed history computed from BTC technicals."""
+    """Returns fear & greed history from alternative.me, falling back to synthetic if needed."""
+    import requests
+    try:
+        resp = requests.get(f"https://api.alternative.me/fng/?limit={days}", timeout=5)
+        if resp.status_code == 200:
+            resp_data = resp.json()
+            if "data" in resp_data:
+                results = []
+                for item in resp_data["data"]:
+                    val = int(item["value"])
+                    ts = int(item["timestamp"])
+                    date_str = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d")
+                    results.append({"date": date_str, "fear_greed": val, "label": item["value_classification"]})
+                results.reverse() # API returns newest first
+                return results
+    except Exception as e:
+        import logging
+        logging.getLogger("cryptograph.sentiment").warning(f"Alternative.me API failed, using synthetic fallback: {e}")
+
     # Find BTC
     btc = db.query(Asset).filter(Asset.symbol == "BTC").first()
     if not btc:

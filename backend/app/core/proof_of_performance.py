@@ -48,15 +48,17 @@ def generate_daily_proof(db: Session, portfolio_id: int) -> str:
     def _build_merkle_root(hashes: list) -> str:
         if not hashes:
             return "0x0"
-        if len(hashes) == 1:
-            return hashes[0]
-        new_hashes = []
-        for i in range(0, len(hashes), 2):
-            left = hashes[i]
-            right = hashes[i+1] if i+1 < len(hashes) else left
-            combined = left + right
-            new_hashes.append(hashlib.sha256(combined.encode("utf-8")).hexdigest())
-        return _build_merkle_root(new_hashes)
+        
+        current_layer = list(hashes)
+        while len(current_layer) > 1:
+            new_layer = []
+            for i in range(0, len(current_layer), 2):
+                left = current_layer[i]
+                right = current_layer[i+1] if i+1 < len(current_layer) else left
+                combined = left + right
+                new_layer.append(hashlib.sha256(combined.encode("utf-8")).hexdigest())
+            current_layer = new_layer
+        return current_layer[0]
         
     import secrets
     nonce = secrets.token_hex(16)

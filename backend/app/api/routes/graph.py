@@ -60,15 +60,17 @@ def _compute_correlation_graph(db: Session, top_n_edges: int = 100, mode: str = 
 
     live_corr = pivot_live.corr(method="pearson").fillna(0.0)
 
-    # Build upper triangle of live correlations
+    # Build upper triangle of live correlations efficiently (vectorized)
     mask = np.triu(np.ones_like(live_corr, dtype=bool), k=1)
+    corr_vals = live_corr.values
+    indices = np.where(mask)
+    cols = list(live_corr.columns)
+    
     all_pairs = []
-    for i, aid_a in enumerate(live_corr.columns):
-        for j, aid_b in enumerate(live_corr.columns):
-            if mask[i][j]:
-                val = float(live_corr.iloc[i, j])
-                if not np.isnan(val):
-                    all_pairs.append((aid_a, aid_b, val))
+    for i, j in zip(indices[0], indices[1]):
+        val = float(corr_vals[i, j])
+        if not np.isnan(val):
+            all_pairs.append((cols[i], cols[j], val))
 
     # Ensure all nodes are connected (degree >= 1)
     connected_pairs = []

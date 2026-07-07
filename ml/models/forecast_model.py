@@ -8,6 +8,7 @@ from typing import Optional
 
 _GLOBAL_LSTM_MODEL = None
 _GLOBAL_LSTM_LOOKBACK = 14
+_GLOBAL_LSTM_RESIDUAL_STD = None
 
 def run_lstm_forecast(
     prices: pd.Series,  # 60 days of close prices, daily
@@ -79,6 +80,7 @@ def run_lstm_forecast(
             model.eval()
             
             _GLOBAL_LSTM_LOOKBACK = checkpoint.get("lookback", 14)
+            _GLOBAL_LSTM_RESIDUAL_STD = checkpoint.get("residual_std", None)
             _GLOBAL_LSTM_MODEL = model
         else:
             model = _GLOBAL_LSTM_MODEL
@@ -92,16 +94,17 @@ def run_lstm_forecast(
             for _ in range(forecast_days):
                 x_in = torch.tensor(window[-LOOKBACK:], dtype=torch.float32).unsqueeze(0).unsqueeze(-1)
                 next_val = model(x_in).item()
-                # Clamp prediction to prevent autoregressive explosion
-                next_val = max(-1.0, min(2.0, next_val))
+                # Clamp prediction to valid normalized range [0, 1] to prevent autoregressive explosion
+                next_val = max(0.0, min(1.0, next_val))
                 forecast_norm.append(next_val)
                 window.append(next_val)
                 
         forecast_prices = [p * price_range + price_min for p in forecast_norm]
         
-        # Calibration of confidence interval based on historical daily volatility of this specific asset
+        # Use forecast residuals from validation set, not historical returns
         std_returns = np.std(np.diff(price_array)) if len(price_array) > 1 else price_range * 0.02
-        uncertainty = [std_returns * 1.96 * (i ** 0.5) for i in range(1, forecast_days + 1)]
+        residual_std = _GLOBAL_LSTM_RESIDUAL_STD if _GLOBAL_LSTM_RESIDUAL_STD is not None else (std_returns * 1.5)
+        uncertainty = [residual_std * 1.96 * (1 + 0.1 * i) for i in range(forecast_days)]
         
         return {
             "forecast_prices": [round(float(p), 8) for p in forecast_prices],
