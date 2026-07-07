@@ -143,7 +143,7 @@ function PredictionStudio() {
   // Live WebSocket for Price Updates
   useEffect(() => {
     if (!selectedSymbol) return;
-    const ws = new WebSocket(`${WS_BASE}/api/stream/ticker/${selectedSymbol}`);
+    const ws = new WebSocket(`${WS_BASE}/api/stream/ticker/${selectedSymbol}?api_key=${process.env.NEXT_PUBLIC_API_KEY}`);
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.close) setLivePrice(data.close);

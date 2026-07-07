@@ -67,7 +67,7 @@ export default function ScreenerPage() {
   const updatesRef = useRef<Record<string, {price: number, volume: number}>>({});
   
   useEffect(() => {
-    const ws = new WebSocket(`${BASE.replace("http", "ws")}/api/stream/screener`);
+    const ws = new WebSocket(`${BASE.replace("http", "ws")}/api/stream/screener?api_key=${process.env.NEXT_PUBLIC_API_KEY}`);
     ws.onmessage = (event) => {
       try {
         const payload = JSON.parse(event.data);

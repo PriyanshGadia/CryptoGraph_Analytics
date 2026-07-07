@@ -9,12 +9,12 @@ import Link from "next/link";
 import { BlockchainLoader } from "@/components/BlockchainLoader";
 
 export default function Dashboard() {
-  const { data: statusData } = useSWR("/api/status", fetcher);
-  const { data: riskData } = useSWR("/api/risk", fetcher);
-  const { data: assets } = useSWR("/api/assets", fetcher);
-  const { data: graphData } = useSWR("/api/graph/latest", fetcher);
-  const { data: portfolio } = useSWR("/api/portfolio", fetcher);
-  const { data: validationMetrics } = useSWR("/api/predictions/validation-metrics", fetcher);
+  const { data: statusData } = useSWR("/api/v1/status", fetcher);
+  const { data: riskData } = useSWR("/api/v1/risk", fetcher);
+  const { data: assets } = useSWR("/api/v1/assets", fetcher);
+  const { data: graphData } = useSWR("/api/v1/graph/latest", fetcher);
+  const { data: portfolio } = useSWR("/api/v1/portfolio", fetcher);
+  const { data: validationMetrics } = useSWR("/api/v1/predictions/validation-metrics", fetcher);
   
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);

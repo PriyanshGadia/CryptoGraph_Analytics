@@ -14,12 +14,12 @@ const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const WS_BASE = BASE.replace(/^http/, "ws");
 
 export default function MarketPage() {
-  const { data: initialAssets, error, isLoading, mutate } = useSWR<any[]>("/api/screener", fetcher, {
+  const { data: initialAssets, error, isLoading, mutate } = useSWR<any[]>("/api/v1/screener", fetcher, {
     revalidateOnFocus: false,
     dedupingInterval: 30000,
   });
   
-  const { data: riskData } = useSWR<RiskData>("/api/risk", fetcher, {
+  const { data: riskData } = useSWR<RiskData>("/api/v1/risk", fetcher, {
     revalidateOnFocus: false,
     dedupingInterval: 30000,
   });
@@ -48,7 +48,7 @@ export default function MarketPage() {
   useEffect(() => {
       if (!initialAssets || initialAssets.length === 0) return;
 
-      const ws = new WebSocket(`${WS_BASE}/api/stream/market`);
+      const ws = new WebSocket(`${WS_BASE}/api/stream/market?api_key=${process.env.NEXT_PUBLIC_API_KEY}`);
       ws.onmessage = (event) => {
           try {
               const msg = JSON.parse(event.data);

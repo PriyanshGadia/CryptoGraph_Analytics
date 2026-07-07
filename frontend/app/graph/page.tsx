@@ -117,11 +117,11 @@ export default function GraphPage() {
     setMounted(true);
   }, []);
   
-  const { data: histData } = useSWR<GraphResponse>("/api/graph/latest?mode=historical", fetcher, { revalidateOnFocus: false, dedupingInterval: 60000 });
-  const { data: hist30Data } = useSWR<GraphResponse>("/api/graph/latest?mode=historical_30", fetcher, { revalidateOnFocus: false, dedupingInterval: 60000 });
-  const { data: liveData, error, isLoading, mutate } = useSWR<GraphResponse>("/api/graph/latest?mode=live", fetcher, { revalidateOnFocus: false, dedupingInterval: 60000 });
-  const { data: proj15Data } = useSWR<GraphResponse>("/api/graph/latest?mode=projected_15", fetcher, { revalidateOnFocus: false, dedupingInterval: 60000 });
-  const { data: proj30Data } = useSWR<GraphResponse>("/api/graph/latest?mode=projected", fetcher, { revalidateOnFocus: false, dedupingInterval: 60000 });
+  const { data: histData } = useSWR<GraphResponse>("/api/v1/graph/latest?mode=historical", fetcher, { revalidateOnFocus: false, dedupingInterval: 60000 });
+  const { data: hist30Data } = useSWR<GraphResponse>("/api/v1/graph/latest?mode=historical_30", fetcher, { revalidateOnFocus: false, dedupingInterval: 60000 });
+  const { data: liveData, error, isLoading, mutate } = useSWR<GraphResponse>("/api/v1/graph/latest?mode=live", fetcher, { revalidateOnFocus: false, dedupingInterval: 60000 });
+  const { data: proj15Data } = useSWR<GraphResponse>("/api/v1/graph/latest?mode=projected_15", fetcher, { revalidateOnFocus: false, dedupingInterval: 60000 });
+  const { data: proj30Data } = useSWR<GraphResponse>("/api/v1/graph/latest?mode=projected", fetcher, { revalidateOnFocus: false, dedupingInterval: 60000 });
 
   const graphRef = useRef<any>(null);
   const graphRef2D = useRef<any>(null);

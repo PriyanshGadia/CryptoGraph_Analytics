@@ -15,7 +15,7 @@ export function GlobalSearch() {
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
-  const { data: assets } = useSWR("/api/assets", fetcher, {
+  const { data: assets } = useSWR("/api/v1/assets", fetcher, {
     revalidateOnFocus: false,
     revalidateOnReconnect: false
   });

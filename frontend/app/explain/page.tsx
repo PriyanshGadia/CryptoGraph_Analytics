@@ -14,7 +14,7 @@ import dynamic from 'next/dynamic';
 const ForceGraph2D = dynamic(() => import('react-force-graph-2d'), { ssr: false });
 
 export default function ExplainPage() {
-  const { data: assets, isLoading: assetsLoading } = useSWR<Asset[]>("/api/assets", fetcher, {
+  const { data: assets, isLoading: assetsLoading } = useSWR<Asset[]>("/api/v1/assets", fetcher, {
     revalidateOnFocus: false,
     dedupingInterval: 30000,
   });

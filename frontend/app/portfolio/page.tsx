@@ -34,11 +34,11 @@ export default function PortfolioPage() {
     setMounted(true);
   }, []);
 
-  const { data: portfolio, error: pErr, mutate: mutatePortfolio } = useSWR<PortfolioResponse>("/api/portfolio", fetcher, {
+  const { data: portfolio, error: pErr, mutate: mutatePortfolio } = useSWR<PortfolioResponse>("/api/v1/portfolio", fetcher, {
     refreshInterval: 60000,
   });
   
-  const { data: tradesData, error: tErr, mutate: mutateTrades } = useSWR<PortfolioTradesResponse>("/api/portfolio/trades?limit=50", fetcher, {
+  const { data: tradesData, error: tErr, mutate: mutateTrades } = useSWR<PortfolioTradesResponse>("/api/v1/portfolio/trades?limit=50", fetcher, {
     refreshInterval: 60000,
   });
 

@@ -10,7 +10,7 @@ from app.api.routes import (
     assets, graph, explain,
     forecast, status, coins, performance,
     correlations, sentiment_data, screener, settings as app_settings_route,
-    portfolio, stream
+    portfolio, stream, predictions, risk, scheduler
 )
 from app.db.database import SessionLocal
 from app.db.models_sqla import AppSetting
@@ -25,12 +25,21 @@ from app.core.config import settings, get_setting
 
 # Set up structured JSON logging
 logger = logging.getLogger()
-logger.setLevel(logging.INFO if settings.environment == "production" else logging.DEBUG)
+logger.setLevel(logging.INFO) # Keep root at INFO to prevent library spam
+
 logHandler = logging.StreamHandler()
 formatter = jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(name)s %(message)s')
 logHandler.setFormatter(formatter)
 logger.addHandler(logHandler)
-logger = logging.getLogger("cryptograph")
+
+# Only set our specific application logger to DEBUG if in dev mode
+app_logger = logging.getLogger("cryptograph")
+app_logger.setLevel(logging.INFO if settings.environment == "production" else logging.DEBUG)
+logger = app_logger
+
+# Silence ultra-verbose third party loggers
+logging.getLogger("websockets").setLevel(logging.WARNING)
+logging.getLogger("websockets.client").setLevel(logging.WARNING)
 
 # Move lazy imports here
 import os
@@ -286,7 +295,9 @@ app.include_router(screener.router,    prefix="/api/v1", dependencies=[Depends(v
 app.include_router(app_settings_route.router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
 app.include_router(portfolio.router,   prefix="/api/v1", dependencies=[Depends(verify_api_key)])
 app.include_router(stream.router,      prefix="/api/v1", dependencies=[Depends(verify_api_key)])
-
+app.include_router(predictions.router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+app.include_router(risk.router,        prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+app.include_router(scheduler.router,   prefix="/api/v1", dependencies=[Depends(verify_api_key)])
 from app.api.routes import backtest
 app.include_router(backtest.router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
 

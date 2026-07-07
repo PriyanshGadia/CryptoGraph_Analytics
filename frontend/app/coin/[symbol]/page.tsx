@@ -131,7 +131,7 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
   // Live Ticker WebSocket
   useEffect(() => {
     if (!ohlcv || ohlcv.length === 0) return;
-    const ws = new WebSocket(`${WS_BASE}/api/stream/ticker/${symbol}`);
+    const ws = new WebSocket(`${WS_BASE}/api/stream/ticker/${symbol}?api_key=${process.env.NEXT_PUBLIC_API_KEY}`);
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
       const tickPrice = data.close;

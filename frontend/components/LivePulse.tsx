@@ -12,7 +12,7 @@ export function LivePulse() {
 
     const connect = () => {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-      const wsUrl = baseUrl.replace(/^http/, "ws") + "/api/stream/predictions";
+      const wsUrl = baseUrl.replace(/^http/, "ws") + "/api/v1/stream/predictions";
 
       ws = new WebSocket(wsUrl);
 

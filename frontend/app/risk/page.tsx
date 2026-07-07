@@ -83,13 +83,13 @@ export default function RiskPage() {
   const [mounted, setMounted] = useState(false);
   const palette = useChartPalette();
   
-  const { data, error, isLoading, mutate } = useSWR<RiskData>("/api/risk", fetcher, {
+  const { data, error, isLoading, mutate } = useSWR<RiskData>("/api/v1/risk", fetcher, {
     revalidateOnFocus: false, dedupingInterval: 30000, refreshInterval: 120000,
   });
-  const { data: preds } = useSWR<PredictionRow[]>("/api/predictions?limit=50", fetcher, {
+  const { data: preds } = useSWR<PredictionRow[]>("/api/v1/predictions?limit=50", fetcher, {
     revalidateOnFocus: false, dedupingInterval: 30000, refreshInterval: 120000,
   });
-  const { data: macro } = useSWR("/api/risk/macro", fetcher, {
+  const { data: macro } = useSWR("/api/v1/risk/macro", fetcher, {
     revalidateOnFocus: false, dedupingInterval: 30000, refreshInterval: 300000,
   });
 

@@ -14,7 +14,7 @@ function timeAgo(isoString: string | null): string {
 }
 
 export function StatusIndicator({ compact = false }: { compact?: boolean }) {
-  const { data } = useSWR("/api/status", fetcher, { refreshInterval: 60000 });
+  const { data } = useSWR("/api/v1/status", fetcher, { refreshInterval: 60000 });
 
   if (!data) return (
     <div className="flex items-center gap-3">
