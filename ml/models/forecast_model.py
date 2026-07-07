@@ -29,8 +29,11 @@ def run_lstm_forecast(
         import torch
         import torch.nn as nn
         import os
+        import logging
         from pathlib import Path
-        
+
+        logger = logging.getLogger(__name__)
+
         class LSTMForecaster(nn.Module):
             def __init__(self, hidden_size=64, num_layers=2, dropout=0.1):
                 super().__init__()
@@ -71,7 +74,7 @@ def run_lstm_forecast(
                     break
                     
             if ckpt_path is None:
-                print("Pre-trained LSTM model checkpoint not found.")
+                logger.error("Pre-trained LSTM model checkpoint not found.")
                 return None
                 
             checkpoint = torch.load(str(ckpt_path), map_location="cpu")
@@ -101,10 +104,10 @@ def run_lstm_forecast(
                 
         forecast_prices = [p * price_range + price_min for p in forecast_norm]
         
-        # Use forecast residuals from validation set, not historical returns
+        # Use forecast residuals from validation set, scaling with square root of time (Brownian motion assumption)
         std_returns = np.std(np.diff(price_array)) if len(price_array) > 1 else price_range * 0.02
         residual_std = _GLOBAL_LSTM_RESIDUAL_STD if _GLOBAL_LSTM_RESIDUAL_STD is not None else (std_returns * 1.5)
-        uncertainty = [residual_std * 1.96 * (1 + 0.1 * i) for i in range(forecast_days)]
+        uncertainty = [residual_std * 1.96 * ((i + 1) ** 0.5) for i in range(forecast_days)]
         
         return {
             "forecast_prices": [round(float(p), 8) for p in forecast_prices],
@@ -114,7 +117,7 @@ def run_lstm_forecast(
         }
         
     except Exception as e:
-        print(f"[LSTM Forecast Error] {e}")
+        logger.exception(f"Failed to load LSTM checkpoint: {e}")
         return None
 
 
@@ -187,7 +190,8 @@ def run_prophet_forecast(
         spread = float(np.std(residuals)) if residuals else float(
             prices.std() * 0.05)
         spread_95 = spread * 1.96
-        uncertainty = [spread_95 * (1 + i * 0.15) for i in range(forecast_days)]
+        # Scale uncertainty with square root of time
+        uncertainty = [spread_95 * ((i + 1) ** 0.5) for i in range(forecast_days)]
 
         return {
             "forecast_prices": [round(p, 8) for p in forecast_prices],
@@ -199,7 +203,7 @@ def run_prophet_forecast(
         }
 
     except Exception as e:
-        print(f"NeuralProphet forecast failed: {e}")
+        logger.exception(f"NeuralProphet forecast failed: {e}")
         return None
 
 

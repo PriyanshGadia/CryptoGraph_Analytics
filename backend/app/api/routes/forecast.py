@@ -74,6 +74,11 @@ async def get_forecast(request: Request, symbol: str, db: Session = Depends(get_
     df["close"]     = pd.to_numeric(df["close"])
     df = df.sort_values("timestamp").drop_duplicates("timestamp")
     
+    # Validation: drop NaNs and ensure minimum length for ML lookback
+    df = df.dropna(subset=["close", "timestamp"])
+    if len(df) < 14:
+        raise HTTPException(status_code=400, detail="Insufficient valid data for forecasting (minimum 14 periods required).")
+    
     prices = df["close"]
     dates  = df["timestamp"]
     db_last_price = float(prices.iloc[-1])
