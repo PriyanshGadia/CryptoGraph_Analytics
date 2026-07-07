@@ -26,3 +26,5 @@ neuralprophet>=0.8.0
 alembic==1.14.1
 prometheus-fastapi-instrumentator==8.0.2
 apscheduler==3.11.3
+circuitbreaker==2.0.0
+pytest

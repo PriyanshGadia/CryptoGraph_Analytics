@@ -13,7 +13,13 @@ except ImportError:
     _SupabaseClient = None  # type: ignore
 
 class DynamicGraphBuilder:
-    """Builds dynamic multi-relational graph for a given date."""
+    """Builds dynamic multi-relational graph for a given date.
+    
+    CRITICAL: This does NOT use a fixed graph structure. The ST-GCN receives
+    dynamic graphs recalculated iteratively (e.g. daily/hourly) using 
+    rolling 30-day Pearson correlation of returns and dynamic market cap weighting.
+    The SpatioTemporalGAT learns the dynamic importance of connections via Attention.
+    """
 
     def __init__(self, supabase_client: Optional[Any], asset_symbols: List[str], feature_dim: int = 24):
         self.client = supabase_client

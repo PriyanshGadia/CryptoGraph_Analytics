@@ -5,7 +5,7 @@ from sqlalchemy import desc
 from app.db.database import get_db
 from app.db.models_sqla import PortfolioState, TradeHistory, Asset, TradeDebate, OHLCV
 from pydantic import BaseModel, Field
-from app.core.trading_agent import execute_daily_trades
+from app.services.trading_agent import execute_daily_trades
 from app.core.auth import get_api_key
 from typing import Dict, Any, List
 

@@ -108,7 +108,7 @@ class RiskManagerCore:
 
         q = 1.0 - p                        # Loss probability
         
-        from app.core.trading_agent import get_asset_dynamic_risk_thresholds
+        from app.services.trading_agent import get_asset_dynamic_risk_thresholds
         sl, tp, _ = get_asset_dynamic_risk_thresholds(self.db, asset.id)
         b = abs(tp / sl) if sl != 0 else self.payoff_ratio  # Dynamic Win/Loss payoff ratio
 

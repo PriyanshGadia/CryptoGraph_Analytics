@@ -200,8 +200,9 @@ def run_ensemble_forecast(
     forecast_days: int = 30
 ) -> dict:
     """
-    Runs LSTM and Prophet, averages their forecasts.
-    If Prophet unavailable, returns LSTM only.
+    Runs LSTM and Prophet, and weights their forecasts using Inverse-Variance Weighting (a form of meta-learning).
+    This suppresses the contribution of the model that exhibits higher uncertainty on recent data.
+    If Prophet is unavailable, returns LSTM only.
     """
     lstm_result   = run_lstm_forecast(prices, forecast_days)
     prophet_result = run_prophet_forecast(prices, dates, forecast_days)
@@ -210,12 +211,28 @@ def run_ensemble_forecast(
         lstm_result["ensemble"] = False
         return lstm_result
     
-    # Average the two forecasts
-    ensemble_prices = [
-        (l + p) / 2
-        for l, p in zip(lstm_result["forecast_prices"],
-                        prophet_result["forecast_prices"])
-    ]
+    ensemble_prices = []
+    
+    # Calculate inverse-variance weighted average for each day
+    for i in range(forecast_days):
+        l_price = lstm_result["forecast_prices"][i]
+        p_price = prophet_result["forecast_prices"][i]
+        
+        # Approximate standard deviation from 95% confidence intervals (u = 1.96 * sigma)
+        l_sigma = (lstm_result["upper_bound"][i] - l_price) / 1.96
+        p_sigma = (prophet_result["upper_bound"][i] - p_price) / 1.96
+        
+        # Avoid division by zero
+        l_var = max(l_sigma**2, 1e-8)
+        p_var = max(p_sigma**2, 1e-8)
+        
+        # Inverse-variance weights
+        l_weight = (1.0 / l_var) / ((1.0 / l_var) + (1.0 / p_var))
+        p_weight = (1.0 / p_var) / ((1.0 / l_var) + (1.0 / p_var))
+        
+        weighted_price = (l_price * l_weight) + (p_price * p_weight)
+        ensemble_prices.append(weighted_price)
+        
     # Take the wider confidence interval for safety
     lower = [min(l, p) for l, p in zip(lstm_result["lower_bound"],
                                          prophet_result["lower_bound"])]
@@ -226,7 +243,7 @@ def run_ensemble_forecast(
         "forecast_prices": [round(float(p), 8) for p in ensemble_prices],
         "lower_bound":     [round(float(p), 8) for p in lower],
         "upper_bound":     [round(float(p), 8) for p in upper],
-        "model_used":      "LSTM+Prophet Ensemble",
+        "model_used":      "Inverse-Variance Weighted Ensemble (LSTM+Prophet)",
         "lstm_forecast":   lstm_result["forecast_prices"],
         "prophet_forecast": prophet_result["forecast_prices"],
         "ensemble":        True

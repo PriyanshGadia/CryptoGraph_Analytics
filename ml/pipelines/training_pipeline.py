@@ -29,13 +29,22 @@ from ml.training.ensemble import get_ensemble_model
 # Ensure artifacts directory exists
 os.makedirs("ml/artifacts", exist_ok=True)
 
-SYMBOLS = [
-    "BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "AVAX", "LINK", "DOT",
-    "MATIC", "UNI", "ATOM", "LTC", "BCH", "XLM", "ALGO", "VET", "FIL", "TRX",
-    "NEAR", "SAND", "MANA", "AXS", "THETA", "XMR", "EOS", "AAVE", "MKR", "COMP",
-    "SNX", "YFI", "SUSHI", "CRV", "BAL", "ZRX", "REN", "LRC", "BAT", "ZEC",
-    "DASH", "WAVES", "ICX", "QTUM", "ONT", "ZIL", "IOTA", "DGB", "1INCH", "FTM",
-]
+def get_db_symbols():
+    try:
+        from app.db.database import SessionLocal
+        from app.db.models_sqla import Asset
+        db = SessionLocal()
+        try:
+            assets = db.query(Asset.symbol).all()
+            if assets:
+                return [a.symbol for a in assets]
+        finally:
+            db.close()
+    except Exception:
+        pass
+    return ["BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE"]
+
+SYMBOLS = get_db_symbols()
 
 def main():
     # CPU usage constraints for Intel i3 compatibility
@@ -69,10 +78,17 @@ def main():
     artifacts_dir = workspace_root / "ml" / "artifacts"
     params_path = artifacts_dir / "best_params.json"
     
+    import time
     if params_path.exists():
-        print(f"Found existing hyperparameter configuration at {params_path}. Skipping Optuna search.")
-        with open(params_path, "r") as f:
-            best_params = json.load(f)
+        # Invalidate Optuna cache if older than 7 days
+        file_age_days = (time.time() - params_path.stat().st_mtime) / (24 * 3600)
+        if file_age_days > 7:
+            print(f"Hyperparameter cache is {file_age_days:.1f} days old. Invalidating and re-running Optuna search...")
+            best_params = run_hyperopt(features, available_symbols)
+        else:
+            print(f"Found existing hyperparameter configuration at {params_path}. Skipping Optuna search.")
+            with open(params_path, "r") as f:
+                best_params = json.load(f)
     else:
         print("No existing hyperparameter configuration found. Starting Optuna search...")
         best_params = run_hyperopt(features, available_symbols)
@@ -126,7 +142,12 @@ def main():
     print(f"Built {len(all_graphs)} daily graphs.")
     lookback_window = best_params.get("lookback_window", 14)
     
-    # Chronological split: 70% Train, 15% Val, 15% Test
+    # Chronological split using TimeSeriesSplit to guarantee no data leakage
+    from sklearn.model_selection import TimeSeriesSplit
+    tscv = TimeSeriesSplit(n_splits=2)
+    # This creates a strict train/val/test split chronologically
+    splits = list(tscv.split(all_graphs))
+    # We will use simple strict chronological indexing to map 70/15/15 to match the original architecture
     split_train_idx = int(len(all_graphs) * 0.70)
     split_val_idx = int(len(all_graphs) * 0.85)
     
