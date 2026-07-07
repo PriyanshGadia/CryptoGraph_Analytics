@@ -48,6 +48,7 @@ if getattr(settings, 'sentry_dsn', None) and settings.sentry_dsn.strip():
     try:
         sentry_sdk.init(
             dsn=dsn_str,
+            environment=settings.environment,
             integrations=[FastApiIntegration()],
             traces_sample_rate=0.1
         )
@@ -65,7 +66,7 @@ enrich_assets_lock = asyncio.Lock()
 async def lifespan(app: FastAPI):
     logger.info("========================================")
     logger.info("CryptoGraph Analytics API Starting Up...")
-    logger.info("WARNING: System must be run with workers=1 to prevent race conditions in WebSocket & DB streams.")
+    logger.info("INFO: Running in single-worker stateless-in-memory mode optimized for low-memory (3GB) local environments.")
     logger.info("========================================")
 
     # Startup Security Validation: Ensure API_KEY is set or fail closed
@@ -81,15 +82,21 @@ async def lifespan(app: FastAPI):
             logger.error("[SECURITY ERROR] FRONTEND_URL is not explicitly configured in production.")
             raise RuntimeError("FRONTEND_URL must be configured in production to restrict CORS.")
             
-    # Pre-load Deep Learning Models to prevent latency spike on first request
+    # Model Health Validation: Ensure artifacts exist
     try:
-        logger.info("Pre-loading models...")
-        # Create dummy data to initialize LSTM
-        dummy_prices = pd.Series(np.linspace(50000, 51000, 60))
-        run_lstm_forecast(dummy_prices, 1)
-        logger.info("Models pre-loaded successfully.")
+        from pathlib import Path
+        logger.info("Validating ML model artifacts...")
+        lstm_path = Path(__file__).resolve().parent.parent.parent / "ml" / "artifacts" / "best_lstm.pt"
+        if not lstm_path.exists():
+            logger.warning(
+                "[MODEL HEALTH] best_lstm.pt not found on disk. "
+                "The system will gracefully fall back to dynamic NeuralProphet and mean-reversion. "
+                "To ensure maximum accuracy, please run the offline pre-training pipeline."
+            )
+        else:
+            logger.info("ML model artifacts validated successfully.")
     except Exception as e:
-        logger.warning(f"Model pre-loading bypassed (expected if no model present yet): {e}")
+        logger.warning(f"Model validation bypassed: {e}")
 
     # Populate static cache using our synchronous DB session setup
     try:
@@ -106,7 +113,9 @@ async def lifespan(app: FastAPI):
         
     # Set up proper cron-like scheduler for background tasks
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    from concurrent.futures import ThreadPoolExecutor
     scheduler = AsyncIOScheduler()
+    bg_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="bg_tasks")
     
     async def scheduled_refresh_job():
         """Scheduled hourly refresh executed by APScheduler."""
@@ -118,8 +127,8 @@ async def lifespan(app: FastAPI):
             if not enrich_assets_lock.locked():
                 try:
                     async with enrich_assets_lock:
-                        # Wrap sync block in a timeout to prevent scheduler backlog
-                        await asyncio.wait_for(asyncio.to_thread(enrich_assets), timeout=1800)
+                        # Wrap sync block in a timeout to prevent scheduler backlog using dedicated executor
+                        await asyncio.wait_for(asyncio.get_event_loop().run_in_executor(bg_executor, enrich_assets), timeout=1800)
                 except asyncio.TimeoutError:
                     logger.error("[Scheduler] Asset enrichment timed out after 30 minutes.")
                 except Exception as e:
@@ -129,13 +138,23 @@ async def lifespan(app: FastAPI):
             
             # 1b. Refresh live technicals
             try:
-                await asyncio.to_thread(refresh_live_technicals, db)
+                await asyncio.get_event_loop().run_in_executor(bg_executor, refresh_live_technicals, db)
             except Exception as e:
                 logger.error(f"[Scheduler] Technicals error: {e}", exc_info=True)
             
-            # 2. Clear response cache
+            # 2. Pre-compute heavy correlation matrices
+            try:
+                from app.api.routes.correlations import precompute_correlations_sync
+                logger.info("[Scheduler] Pre-computing correlation matrices...")
+                await asyncio.get_event_loop().run_in_executor(bg_executor, precompute_correlations_sync, db)
+            except Exception as e:
+                logger.error(f"[Scheduler] Correlation pre-compute error: {e}", exc_info=True)
+                
+            # 3. Clear response cache (this clears any standard API responses, but we seeded the correlation cache directly)
             try:
                 _cache.clear()
+                # Re-seed the correlations after clear
+                await asyncio.to_thread(precompute_correlations_sync, db)
             except Exception as e:
                 logger.error(f"[Scheduler] Cache error: {e}")
                 

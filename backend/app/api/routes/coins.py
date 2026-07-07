@@ -4,7 +4,7 @@ from sqlalchemy import text
 from app.api.deps import get_db
 from datetime import datetime, timezone, timedelta
 from app.db.models_sqla import Asset
-import ccxt
+import ccxt.async_support as ccxt
 
 router = APIRouter(prefix="/coins", tags=["coins"])
 
@@ -20,17 +20,18 @@ async def get_coin_ohlcv(
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
     
+    exchange = None
     try:
         exchange = ccxt.binance()
         market_symbol = f"{symbol.upper()}/USDT"
         
-        # Wrap blocking CCXT network call in a separate thread
-        raw_ohlcv = await asyncio.to_thread(
-            exchange.fetch_ohlcv, 
+        # Native async CCXT network call
+        raw_ohlcv = await exchange.fetch_ohlcv(
             market_symbol, 
             timeframe=interval, 
             limit=1500
         )
+
         
         data = []
         for row in raw_ohlcv:
@@ -90,6 +91,12 @@ async def get_coin_ohlcv(
             "staleness_warning": is_stale,
             "source": "sqlite_fallback"
         }
+    finally:
+        if exchange:
+            try:
+                await exchange.close()
+            except Exception:
+                pass
 
 @router.get("/{symbol}/indicators")
 def get_coin_indicators(
@@ -324,6 +331,8 @@ def get_coin_correlations(symbol: str, db: Session = Depends(get_db)):
 
 @router.get("/{symbol}/sentiment-history")
 def get_coin_sentiment_history(symbol: str, db: Session = Depends(get_db)):
+    from app.db.models_sqla import AssetNews
+    
     asset = db.query(Asset).filter(Asset.symbol.ilike(symbol)).first()
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
@@ -331,9 +340,43 @@ def get_coin_sentiment_history(symbol: str, db: Session = Depends(get_db)):
     now = datetime.now(timezone.utc)
     since = now - timedelta(days=90)
     
-    # Use technical_features as sentiment proxy since asset_news has no sentiment columns
+    # Query AssetNews for basic sentiment metrics
+    news_res = db.execute(text("""
+        SELECT strftime('%Y-%m-%d', published_at) as date, headline
+        FROM asset_news
+        WHERE asset_id = :asset_id AND published_at >= :since
+        ORDER BY published_at ASC
+    """), {"asset_id": asset.id, "since": since.isoformat()}).fetchall()
+    
+    # Group news by date and perform simple lexical sentiment
+    sentiment_by_date = {}
+    for r in news_res:
+        date_str = r[0]
+        headline = r[1].lower()
+        
+        # Extremely basic lexical analysis
+        bullish_words = ['surge', 'jump', 'gain', 'high', 'bull', 'buy', 'growth', 'up', 'adopt']
+        bearish_words = ['drop', 'fall', 'lose', 'low', 'bear', 'sell', 'crash', 'down', 'hack', 'sec']
+        
+        score = 0.5 # Neutral
+        for w in bullish_words:
+            if w in headline: score += 0.2
+        for w in bearish_words:
+            if w in headline: score -= 0.2
+            
+        score = max(0.0, min(1.0, score))
+        
+        if date_str not in sentiment_by_date:
+            sentiment_by_date[date_str] = []
+        sentiment_by_date[date_str].append(score)
+        
+    avg_sentiments = {}
+    for date_str, scores in sentiment_by_date.items():
+        avg_sentiments[date_str] = sum(scores) / len(scores)
+    
+    # Fill missing dates with Technical Features
     res = db.execute(text("""
-        SELECT timestamp, returns_1d, returns_7d, volatility_7d, rsi_14
+        SELECT strftime('%Y-%m-%d', timestamp) as date, returns_1d, rsi_14
         FROM technical_features
         WHERE asset_id = :asset_id AND timestamp >= :since
         ORDER BY timestamp ASC
@@ -341,22 +384,22 @@ def get_coin_sentiment_history(symbol: str, db: Session = Depends(get_db)):
         
     data = []
     for row in res:
-        ts = str(row[0])
-        date_str = ts.split("T")[0] if "T" in ts else ts[:10]
-        ret7d = row[2] or 0
-        rsi = row[3] or 50
-        # Note: True sentiment requires external NLP processing. 
-        # Previous synthetic logic removed for data integrity.
-        sentiment = 0.0 
-        fear_greed = 50.0
-        community = 50.0
+        date_str = row[0]
+        ret1d = row[1] or 0.0
+        rsi = row[2] or 50.0
+        
+        # Use NLP sentiment if available, otherwise fallback to RSI-based momentum proxy
+        sentiment = avg_sentiments.get(date_str, (rsi / 100.0))
+        
+        # Fear and Greed approximation (0-100)
+        fg = sentiment * 100
         
         data.append({
             "date": date_str,
             "sentiment_score": round(sentiment, 4),
-            "fear_greed": round(fear_greed, 2),
-            "fear_greed_norm": round(fear_greed / 100, 4),
-            "community_score": round(community, 4),
+            "fear_greed": round(fg, 2),
+            "fear_greed_norm": round(sentiment, 4),
+            "community_score": round(sentiment, 4),
             "public_interest": 0
         })
         

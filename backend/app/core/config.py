@@ -42,7 +42,7 @@ from app.core.security import decrypt_secret
 from cachetools import TTLCache
 
 # Cache settings for 60 seconds to prevent rapid DB queries, but allow dynamic reloading
-_settings_cache = TTLCache(maxsize=100, ttl=60)
+_settings_cache = TTLCache(maxsize=100, ttl=5)
 
 def get_setting(key: str, default: str = None) -> Optional[str]:
     """

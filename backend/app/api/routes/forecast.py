@@ -17,9 +17,6 @@ from slowapi.util import get_remote_address
 from cachetools import TTLCache
 import json
 from pathlib import Path
-root_dir = Path(__file__).resolve().parents[4]
-if str(root_dir) not in sys.path:
-    sys.path.insert(0, str(root_dir))
 
 from ml.models.forecast_model import run_ensemble_forecast
 from app.core.streams.binance_ws import get_global_market_state
@@ -100,34 +97,32 @@ async def get_forecast(request: Request, symbol: str, db: Session = Depends(get_
     stgcn_conf = stgcn_pred["confidence"]
 
     # 4. Cache-aware Real PyTorch LSTM / Ensemble Forecast
-    # Includes ssot_updated_at in the key to invalidate whenever new tick arrives
-    cache_key = f"{symbol}_{dates.iloc[-1].strftime('%Y-%m-%d')}_{stgcn_dir}_{round(stgcn_conf, 1)}_{round(last_price, 2)}_{ssot_updated_at}"
+    # Only cache based on daily boundaries and flagship model signals
+    cache_key = f"{symbol}_{dates.iloc[-1].strftime('%Y-%m-%d')}_{stgcn_dir}_{round(stgcn_conf, 1)}"
     if cache_key in ml_forecast_cache:
         forecast = ml_forecast_cache[cache_key]
     else:
-        # Run actual PyTorch LSTM time-series forecast model in a separate thread
-        raw_forecast_res = await asyncio.to_thread(run_ensemble_forecast, prices, dates, 30)
+        # Run actual PyTorch LSTM time-series forecast model in a separate thread with a 30s timeout
+        try:
+            raw_forecast_res = await asyncio.wait_for(
+                asyncio.to_thread(run_ensemble_forecast, prices, dates, 30),
+                timeout=30.0
+            )
+        except asyncio.TimeoutError:
+            raise HTTPException(status_code=504, detail="Deep Learning Forecast generation timed out.")
+            
         raw_f_prices = raw_forecast_res.get("forecast_prices", [])
         
         if not raw_f_prices or raw_forecast_res.get("model_used") == "unavailable":
             err_msg = raw_forecast_res.get("error", "Forecast model execution failed.")
             raise HTTPException(status_code=500, detail=f"Deep Learning Forecast generation failed: {err_msg}")
             
-        raw_l_bound = raw_forecast_res.get("lower_bound", [])
-        raw_u_bound = raw_forecast_res.get("upper_bound", [])
+        f_prices = [round(float(p), 8) for p in raw_f_prices]
+        l_bound = [round(float(p), 8) for p in raw_forecast_res.get("lower_bound", [])]
+        u_bound = [round(float(p), 8) for p in raw_forecast_res.get("upper_bound", [])]
         
-        # Scale/shift forecast proportionally to live_price if real-time ticker available
-        shift_ratio = (live_price / db_last_price) if (live_price > 0 and db_last_price > 0) else 1.0
-        
-        f_prices = [round(float(p * shift_ratio), 8) for p in raw_f_prices]
-        l_bound = [round(float(p * shift_ratio), 8) for p in raw_l_bound]
-        u_bound = [round(float(p * shift_ratio), 8) for p in raw_u_bound]
-        
-        raw_lstm = raw_forecast_res.get("lstm_forecast", raw_f_prices)
-        raw_prophet = raw_forecast_res.get("prophet_forecast", raw_f_prices)
-        
-        lstm_f = [round(float(p * shift_ratio), 8) for p in raw_lstm]
-        prophet_f = [round(float(p * shift_ratio), 8) for p in raw_prophet]
+        lstm_f = [round(float(p), 8) for p in raw_forecast_res.get("lstm_forecast", raw_f_prices)]
+        prophet_f = [round(float(p), 8) for p in raw_forecast_res.get("prophet_forecast", raw_f_prices)]
         
         forecast = {
             "forecast_prices": f_prices,

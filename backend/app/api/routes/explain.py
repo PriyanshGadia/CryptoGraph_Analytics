@@ -42,7 +42,7 @@ from app.core.cache import cached
 @cached(ttl_seconds=300)
 def generate_system_explanation(symbol: str, direction: str, confidence: float,
                                 shap_values: dict, t_shap: dict = None,
-                                db: Session = None) -> str:
+                                live_tech: dict = None) -> str:
     """
     Rich, analyst-quality XAI explanation that requires NO API key.
     Produces natural-language insight from SHAP values, T-SHAP attributions,
@@ -72,27 +72,7 @@ def generate_system_explanation(symbol: str, direction: str, confidence: float,
     # --- Paragraph 2: Feature-Driven Analysis ---
     numeric_shap = _filter_numeric_shap(shap_values)
 
-    # If no SHAP data, try to fetch live technicals from DB
-    live_tech = {}
-    if db:
-        try:
-            asset = db.query(Asset).filter(Asset.symbol == symbol).first()
-            if asset:
-                from sqlalchemy import text as sa_text
-                tech_row = db.execute(sa_text("""
-                    SELECT rsi_14, macd, macd_signal, returns_1d, returns_7d, volatility_7d, atr_14, bb_width
-                    FROM technical_features
-                    WHERE asset_id = :aid
-                    ORDER BY timestamp DESC LIMIT 1
-                """), {"aid": asset.id}).fetchone()
-                if tech_row:
-                    keys = ["rsi_14", "macd", "macd_signal", "returns_1d", "returns_7d",
-                            "volatility_7d", "atr_14", "bb_width"]
-                    for k, v in zip(keys, tech_row):
-                        if v is not None:
-                            live_tech[k] = float(v)
-        except Exception:
-            pass
+    live_tech = live_tech or {}
 
     # Merge SHAP with live tech for richer context
     context = {**live_tech}
@@ -297,9 +277,30 @@ def explain_prediction(request: Request, symbol: str, db: Session = Depends(get_
     groq_key_record = db.query(AppSetting).filter(AppSetting.setting_key == "groq_api_key").first()
     groq_api_key = decrypt_secret(groq_key_record.setting_value) if groq_key_record and groq_key_record.setting_value else None
 
+    # Pre-fetch live technicals to pass into the pure generator
+    live_tech = {}
+    try:
+        from sqlalchemy import text as sa_text
+        tech_row = db.execute(sa_text("""
+            SELECT rsi_14, macd, macd_signal, returns_1d, returns_7d, volatility_7d, atr_14, bb_width
+            FROM technical_features
+            WHERE asset_id = :aid
+            ORDER BY timestamp DESC LIMIT 1
+        """), {"aid": asset.id}).fetchone()
+        if tech_row:
+            keys = ["rsi_14", "macd", "macd_signal", "returns_1d", "returns_7d",
+                    "volatility_7d", "atr_14", "bb_width"]
+            for k, v in zip(keys, tech_row):
+                if v is not None:
+                    live_tech[k] = float(v)
+    except Exception:
+        pass
+
     if not groq_api_key:
         # System-based XAI — no API key needed
-        sys_resp = generate_system_explanation(symbol, direction, confidence, raw_shap, t_shap_data, db=db)
+        sys_resp = generate_system_explanation(
+            symbol, direction, confidence, raw_shap, t_shap_data, live_tech=live_tech
+        )
         explanation = sys_resp["explanation"]
         bull_case = sys_resp["bull_case"]
         bear_case = sys_resp["bear_case"]

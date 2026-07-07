@@ -8,22 +8,14 @@ import numpy as np
 import asyncio
 from app.api.deps import get_db
 from app.db.models_sqla import Asset
-from app.core.cache import cached
+from app.core.cache import cached, _cache
 
 router = APIRouter(prefix="/correlations", tags=["correlations"])
 
-
-@router.get("/matrix")
-@cached(ttl_seconds=300)
-async def get_correlation_matrix(
-    days: int = 30,
-    basis: str = "Price Correlation",
-    db: Session = Depends(get_db)
-):
-    """Computes correlation matrix for all assets using local DB."""
+def precompute_correlations_sync(db: Session, days: int = 30, basis: str = "Price Correlation"):
+    """Synchronous heavy lifter intended for the APScheduler background task."""
     since = datetime.now(timezone.utc) - timedelta(days=days)
 
-    # Batched query for all technical features in range
     rows = db.execute(text("""
         SELECT asset_id, timestamp, returns_1d
         FROM technical_features
@@ -31,7 +23,6 @@ async def get_correlation_matrix(
     """), {"since": since.isoformat()}).fetchall()
 
     if not rows:
-        # Fallback to computing 1d log returns directly from OHLCV close prices
         ohlcv_rows = db.execute(text("""
             SELECT asset_id, timestamp, close
             FROM ohlcv
@@ -48,23 +39,22 @@ async def get_correlation_matrix(
             rows = [(r.asset_id, r.date, r.returns_1d) for r in stacked.itertuples() if pd.notna(r.returns_1d)]
 
     if not rows:
-        return {"symbols": [], "matrix": [], "top_pairs": [], "period_days": days}
+        return None, None
 
     df = pd.DataFrame(rows, columns=["asset_id", "timestamp", "returns_1d"])
     df["date"] = df["timestamp"].apply(lambda x: str(x).split("T")[0] if isinstance(x, str) else str(x)[:10])
 
-    # Load assets
     assets = db.query(Asset).all()
     asset_map = {a.id: a for a in assets}
+    asset_sector_map = {a.id: (a.sector or "other") for a in assets}
 
-    # Pivot
     pivot = df.pivot_table(index="date", columns="asset_id", values="returns_1d")
     pivot = pivot.ffill()
     min_periods = max(1, int(len(pivot) * 0.5))
     pivot = pivot.dropna(axis=1, thresh=min_periods)
 
     if pivot.shape[1] < 2:
-        return {"symbols": [], "matrix": [], "top_pairs": [], "period_days": days}
+        return None, None
 
     if basis == "Motif Similarity":
         latest_tech_query = text("""
@@ -100,9 +90,8 @@ async def get_correlation_matrix(
                 
         corr_matrix = pd.DataFrame(motif_matrix, index=aids, columns=aids).fillna(0.0)
     else:
-        def _calc_corr(p):
-            return p.corr(method="pearson").fillna(0.0)
-        corr_matrix = await asyncio.to_thread(_calc_corr, pivot)
+        # User fix: method="spearman" instead of "pearson" for outlier resistance
+        corr_matrix = pivot.corr(method="spearman").fillna(0.0)
 
     # Ordered symbols
     ordered_asset_ids = corr_matrix.columns.tolist()
@@ -113,7 +102,6 @@ async def get_correlation_matrix(
 
     matrix_values = corr_matrix.fillna(0).values.tolist()
 
-    # Top correlated pairs
     mask = np.triu(np.ones_like(corr_matrix, dtype=bool), k=1)
     corr_matrix.index.name = "asset_a"
     corr_matrix.columns.name = "asset_b"
@@ -133,99 +121,14 @@ async def get_correlation_matrix(
             "sector_b": info_b.sector if info_b else "other",
         })
 
-    return {
+    matrix_data = {
         "symbols": ordered_symbols,
         "matrix": matrix_values,
         "top_pairs": top_pairs,
         "period_days": days,
     }
 
-
-@router.get("/sector-average")
-@cached(ttl_seconds=300)
-async def get_sector_correlations(
-    days: int = 30,
-    basis: str = "Price Correlation",
-    db: Session = Depends(get_db)
-):
-    """Returns average intra-sector and inter-sector correlations using local DB."""
-    since = datetime.now(timezone.utc) - timedelta(days=days)
-
-    rows = db.execute(text("""
-        SELECT asset_id, timestamp, returns_1d
-        FROM technical_features
-        WHERE timestamp >= :since
-    """), {"since": since.isoformat()}).fetchall()
-
-    if not rows:
-        ohlcv_rows = db.execute(text("""
-            SELECT asset_id, timestamp, close
-            FROM ohlcv
-            WHERE timestamp >= :since
-            ORDER BY timestamp ASC
-        """), {"since": since.isoformat()}).fetchall()
-        
-        if ohlcv_rows:
-            df_raw = pd.DataFrame(ohlcv_rows, columns=["asset_id", "timestamp", "close"])
-            df_raw["date"] = df_raw["timestamp"].apply(lambda x: str(x).split("T")[0] if isinstance(x, str) else str(x)[:10])
-            piv_close = df_raw.pivot_table(index="date", columns="asset_id", values="close").ffill()
-            piv_ret = np.log(piv_close / piv_close.shift(1))
-            stacked = piv_ret.unstack().reset_index(name="returns_1d")
-            rows = [(r.asset_id, r.date, r.returns_1d) for r in stacked.itertuples() if pd.notna(r.returns_1d)]
-
-    if not rows:
-        return {"sectors": [], "matrix": [], "intra_sector": {}}
-
-    df = pd.DataFrame(rows, columns=["asset_id", "timestamp", "returns_1d"])
-    df["date"] = df["timestamp"].apply(lambda x: str(x).split("T")[0] if isinstance(x, str) else str(x)[:10])
-
-    assets = db.query(Asset).all()
-    asset_sector_map = {a.id: (a.sector or "other") for a in assets}
-
-    pivot = df.pivot_table(index="date", columns="asset_id", values="returns_1d")
-    pivot = pivot.ffill().dropna(axis=1, thresh=max(1, len(pivot) // 2))
-
-    if pivot.shape[1] < 2:
-        return {"sectors": [], "matrix": [], "intra_sector": {}}
-
-    if basis == "Motif Similarity":
-        latest_tech_query = text("""
-            SELECT t1.asset_id, t1.returns_1d, t1.volatility_7d, t1.rsi_14, t1.macd, t1.macd_signal
-            FROM technical_features t1
-            JOIN (
-                SELECT asset_id, MAX(timestamp) as max_ts
-                FROM technical_features
-                GROUP BY asset_id
-            ) t2 ON t1.asset_id = t2.asset_id AND t1.timestamp = t2.max_ts
-        """)
-        latest_tech_rows = db.execute(latest_tech_query).fetchall()
-        
-        tech_vectors = {}
-        for r in latest_tech_rows:
-            aid = r[0]
-            ret = (r[1] or 0.0) * 10
-            vol = (r[2] or 0.0) * 10
-            rsi = ((r[3] or 50.0) - 50) / 50
-            macd = r[4] or 0.0
-            sig = r[5] or 0.0
-            vec = np.array([ret, vol, rsi, macd, sig])
-            norm = np.linalg.norm(vec)
-            tech_vectors[aid] = vec / norm if norm > 0 else np.zeros(5)
-
-        aids = pivot.columns.tolist()
-        motif_matrix = np.zeros((len(aids), len(aids)))
-        for i, aid_a in enumerate(aids):
-            for j, aid_b in enumerate(aids):
-                vec_a = tech_vectors.get(aid_a, np.zeros(5))
-                vec_b = tech_vectors.get(aid_b, np.zeros(5))
-                motif_matrix[i, j] = float(np.dot(vec_a, vec_b))
-                
-        corr_matrix = pd.DataFrame(motif_matrix, index=aids, columns=aids).fillna(0.0)
-    else:
-        def _calc_corr(p):
-            return p.corr(method="pearson").fillna(0.0)
-        corr_matrix = await asyncio.to_thread(_calc_corr, pivot)
-
+    # Sectors Calculation
     sectors = sorted(set(asset_sector_map.values()))
     intra_sector = {}
     sector_matrix = []
@@ -257,7 +160,6 @@ async def get_sector_correlations(
 
         sector_matrix.append(row_vals)
 
-    # Clean NaN
     for key, val in intra_sector.items():
         try:
             if val is None or np.isnan(val):
@@ -272,8 +174,48 @@ async def get_sector_correlations(
             except (TypeError, ValueError):
                 sector_matrix[i][j] = 0.0
 
-    return {
+    sector_data = {
         "sectors": sectors,
         "matrix": sector_matrix,
         "intra_sector": intra_sector,
     }
+    
+    # Store directly in cache
+    _cache[f"/correlations/matrix_cache_{days}_{basis}"] = matrix_data
+    _cache[f"/correlations/sector_cache_{days}_{basis}"] = sector_data
+    
+    return matrix_data, sector_data
+
+
+@router.get("/matrix")
+async def get_correlation_matrix(
+    days: int = 30,
+    basis: str = "Price Correlation",
+    db: Session = Depends(get_db)
+):
+    """Returns pre-computed correlation matrix, bypassing heavy on-the-fly Pandas operations."""
+    cache_key = f"/correlations/matrix_cache_{days}_{basis}"
+    data = _cache.get(cache_key)
+    
+    if data:
+        return data
+        
+    # If cache is entirely empty (e.g. startup), return a safe empty struct
+    # We do NOT run the Pandas code here to avoid thread starvation.
+    return {"symbols": [], "matrix": [], "top_pairs": [], "period_days": days}
+
+
+@router.get("/sector-average")
+async def get_sector_correlations(
+    days: int = 30,
+    basis: str = "Price Correlation",
+    db: Session = Depends(get_db)
+):
+    """Returns pre-computed sector correlations, bypassing heavy on-the-fly Pandas operations."""
+    cache_key = f"/correlations/sector_cache_{days}_{basis}"
+    data = _cache.get(cache_key)
+    
+    if data:
+        return data
+        
+    return {"sectors": [], "matrix": [], "intra_sector": {}}

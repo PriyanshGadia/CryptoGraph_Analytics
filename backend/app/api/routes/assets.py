@@ -2,10 +2,12 @@
 from fastapi import APIRouter
 from app.db.models import Asset
 from app.core.streams.binance_ws import get_global_market_state
+from app.core.cache import cached
 
 router = APIRouter(prefix="/assets", tags=["assets"])
 
 @router.get("", response_model=list[Asset])
+@cached(ttl_seconds=5)
 def get_assets():
     """
     Returns all tracked assets with latest price and prediction from SSOT.
