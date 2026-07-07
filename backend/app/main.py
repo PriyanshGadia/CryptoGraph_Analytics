@@ -94,7 +94,11 @@ async def lifespan(app: FastAPI):
                 "To ensure maximum accuracy, please run the offline pre-training pipeline."
             )
         else:
-            logger.info("ML model artifacts validated successfully.")
+            logger.info("ML model artifacts validated successfully. Pre-loading into cache...")
+            prices = pd.Series(np.linspace(100, 200, 60))
+            dates = pd.Series(pd.date_range("2026-01-01", periods=60))
+            await asyncio.to_thread(run_lstm_forecast, prices, dates, 30)
+            logger.info("LSTM model pre-loaded successfully.")
     except Exception as e:
         logger.warning(f"Model validation bypassed: {e}")
 

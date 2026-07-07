@@ -31,18 +31,24 @@ class ChiefInvestmentOfficerAgent(BaseAgent):
         bad_trades = self.db.query(TradeHistory).filter(TradeHistory.overseer_grade == 1).order_by(desc(TradeHistory.timestamp)).limit(5).all()
         good_trades = self.db.query(TradeHistory).filter(TradeHistory.overseer_grade == 5).order_by(desc(TradeHistory.timestamp)).limit(5).all()
         
+        from app.core.data_sanitizer import sanitize_text
+        
         rlhf_context = ""
         if bad_trades:
             rlhf_context += "\n\n--- PAST MISTAKES TO AVOID (1-Star Trades) ---\n"
             for t in bad_trades:
-                rlhf_context += f"Trade: {t.side.upper()} {t.symbol}. CIO Reason: {t.reason}\n"
-                rlhf_context += f"Overseer Feedback: \"{t.overseer_notes}\"\n"
+                s_reason = sanitize_text(t.reason or "")
+                s_notes = sanitize_text(t.overseer_notes or "")
+                rlhf_context += f"Trade: {t.side.upper()} {t.symbol}. CIO Reason: {s_reason}\n"
+                rlhf_context += f"Overseer Feedback: \"{s_notes}\"\n"
                 
         if good_trades:
             rlhf_context += "\n\n--- SUCCESSFUL PATTERNS TO REPEAT (5-Star Trades) ---\n"
             for t in good_trades:
-                rlhf_context += f"Trade: {t.side.upper()} {t.symbol}. CIO Reason: {t.reason}\n"
-                rlhf_context += f"Overseer Feedback: \"{t.overseer_notes}\"\n"
+                s_reason = sanitize_text(t.reason or "")
+                s_notes = sanitize_text(t.overseer_notes or "")
+                rlhf_context += f"Trade: {t.side.upper()} {t.symbol}. CIO Reason: {s_reason}\n"
+                rlhf_context += f"Overseer Feedback: \"{s_notes}\"\n"
 
         system_prompt = (
             "You are the Chief Investment Officer (CIO) of an autonomous crypto hedge fund. "

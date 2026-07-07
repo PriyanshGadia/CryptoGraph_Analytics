@@ -115,7 +115,7 @@ async def get_forecast(request: Request, symbol: str, db: Session = Depends(get_
         
         if not raw_f_prices or raw_forecast_res.get("model_used") == "unavailable":
             err_msg = raw_forecast_res.get("error", "Forecast model execution failed.")
-            raise HTTPException(status_code=500, detail=f"Deep Learning Forecast generation failed: {err_msg}")
+            raise HTTPException(status_code=503, detail=f"Deep Learning Forecast generation failed: {err_msg}")
             
         f_prices = [round(float(p), 8) for p in raw_f_prices]
         l_bound = [round(float(p), 8) for p in raw_forecast_res.get("lower_bound", [])]
