@@ -180,7 +180,7 @@ def cleanup_distributed(is_distributed: bool):
 # ============================================================================
 @dataclass
 class TrainingConfig:
-    lookback_days: int = 60
+    lookback_days: int = 30
     forecast_horizon: int = 1
     feature_dim: int = 24
     target_col: str = "returns_1d"
@@ -189,15 +189,15 @@ class TrainingConfig:
     use_cache: bool = True
     cache_max_age_hours: float = 24.0
 
-    hidden_dim: int = 1024
-    gat_heads_1: int = 8
-    gat_heads_2: int = 8
-    transformer_layers: int = 8
-    transformer_heads: int = 16
+    hidden_dim: int = 256
+    gat_heads_1: int = 4
+    gat_heads_2: int = 4
+    transformer_layers: int = 6
+    transformer_heads: int = 8
     dropout: float = 0.20
     use_tcn: bool = True
 
-    batch_size: int = 64                 # per-GPU; global = batch_size * world_size under DDP
+    batch_size: int = 16                 # per-GPU; global = batch_size * world_size under DDP
     max_epochs: int = 300
     learning_rate: float = 5e-4
     weight_decay: float = 1e-4
