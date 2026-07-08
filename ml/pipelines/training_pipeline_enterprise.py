@@ -1611,6 +1611,7 @@ def _build_dataset_from_scratch(config: TrainingConfig, symbols: List[str]) -> T
                 f"Available: {list(df.columns)}"
             )
         proc_features[sym] = df
+        log(f"  [pipeline debug] {sym}: returns_1d head={df['returns_1d'].head().values.tolist()}, std={df['returns_1d'].std()}")
 
     # Log a sample of the index type for debugging future timezone issues.
     sample_sym = available_symbols[0]

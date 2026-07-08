@@ -202,6 +202,7 @@ class FeatureStore:
                 df["returns_1d"] = close.pct_change(1)
                 df["returns_7d"] = close.pct_change(7)
                 df["volatility_7d"] = df["returns_1d"].rolling(7).std()
+                print(f"  [yfinance debug] {symbol}: returns_1d head={df['returns_1d'].head().values.tolist()}, std={df['returns_1d'].std()}")
 
                 # Sentiment placeholders (no API available on Kaggle)
                 df["sentiment_score"] = 0.0
@@ -260,6 +261,7 @@ class FeatureStore:
                     df = df.reset_index()
                     df.columns = ["timestamp"] + list(df.columns[1:])
 
+                print(f"  [yfinance debug] {symbol}: final returns_1d head={df['returns_1d'].head().values.tolist()}, std={df['returns_1d'].std()}")
                 out[symbol] = df
                 print(f"  [yfinance] {symbol}: {len(df)} rows loaded")
 
