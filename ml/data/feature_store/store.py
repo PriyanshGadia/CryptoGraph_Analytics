@@ -137,8 +137,9 @@ class FeatureStore:
                 if isinstance(df_raw.columns, pd.MultiIndex):
                     df_raw.columns = df_raw.columns.get_level_values(0)
 
-                if "Close" not in df_raw.columns or df_raw["Close"].isnull().all():
-                    print(f"  [yfinance] {symbol}: FAILED (Download returned NaN or missing Close price)")
+                close_vals = df_raw["Close"].values.astype(float)
+                if "Close" not in df_raw.columns or len(close_vals) < 5 or np.all(np.isnan(close_vals)) or np.nanstd(close_vals) < 1e-6:
+                    print(f"  [yfinance] {symbol}: FAILED (Download returned constant, NaN, or insufficient Close prices)")
                     continue
 
                 df = pd.DataFrame(index=df_raw.index)
