@@ -1,10 +1,10 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
-import axios from "axios";
+import React, { createContext, useContext, useEffect } from "react";
+import { useAppStore, Currency, CURRENCY_SYMBOLS } from "@/lib/store";
 
-// Default to USD
-export type Currency = "USD" | "EUR" | "GBP" | "JPY" | "AUD" | "CAD" | "CHF" | "CNY" | "INR";
+export type { Currency };
+export { CURRENCY_SYMBOLS };
 
 interface CurrencyContextType {
   currency: Currency;
@@ -15,47 +15,15 @@ interface CurrencyContextType {
 
 const CurrencyContext = createContext<CurrencyContextType | undefined>(undefined);
 
-export const CURRENCY_SYMBOLS: Record<Currency, string> = {
-  USD: "$", EUR: "€", GBP: "£", JPY: "¥", AUD: "A$", CAD: "C$", CHF: "CHF", CNY: "¥", INR: "₹"
-};
-
 export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currency, setCurrency] = useState<Currency>("USD");
-  const [exchangeRate, setExchangeRate] = useState<number>(1.0);
-  const [ratesCache, setRatesCache] = useState<Record<string, number>>({ USD: 1.0 });
+  const currency = useAppStore((state) => state.currency);
+  const setCurrency = useAppStore((state) => state.setCurrency);
+  const exchangeRate = useAppStore((state) => state.exchangeRate);
+  const initializeSettings = useAppStore((state) => state.initializeSettings);
 
-  // Load saved currency preference from local storage on mount
   useEffect(() => {
-    const saved = localStorage.getItem("preferredCurrency") as Currency;
-    if (saved && CURRENCY_SYMBOLS[saved]) {
-      setCurrency(saved);
-    }
-
-    // Fetch live rates from a free API
-    const fetchRates = async () => {
-      try {
-        const res = await axios.get("https://open.er-api.com/v6/latest/USD");
-        if (res.data && res.data.rates) {
-          setRatesCache(res.data.rates);
-          if (saved && res.data.rates[saved]) {
-            setExchangeRate(res.data.rates[saved]);
-          }
-        }
-      } catch (err) {
-        console.error("Failed to fetch exchange rates", err);
-      }
-    };
-    fetchRates();
-  }, []);
-
-  // Update exchange rate when currency changes
-  const handleSetCurrency = (c: Currency) => {
-    setCurrency(c);
-    localStorage.setItem("preferredCurrency", c);
-    if (ratesCache[c]) {
-      setExchangeRate(ratesCache[c]);
-    }
-  };
+    initializeSettings();
+  }, [initializeSettings]);
 
   const formatPrice = (priceInUsd: number, decimals?: number) => {
     if (priceInUsd === null || priceInUsd === undefined) return `${CURRENCY_SYMBOLS[currency]}0.00`;
@@ -75,7 +43,7 @@ export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   return (
-    <CurrencyContext.Provider value={{ currency, setCurrency: handleSetCurrency, exchangeRate, formatPrice }}>
+    <CurrencyContext.Provider value={{ currency, setCurrency, exchangeRate, formatPrice }}>
       {children}
     </CurrencyContext.Provider>
   );

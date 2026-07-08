@@ -4,7 +4,7 @@ from app.db.database import get_db
 from app.api.deps import verify_api_key
 from app.db.models import AppSetting
 from app.core.security import encrypt_secret, decrypt_secret
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Dict, Any, Optional
 
 router = APIRouter(prefix="/settings", tags=["settings"], dependencies=[Depends(verify_api_key)])
@@ -23,6 +23,17 @@ def _mask_value(value: str) -> str:
 
 class SettingsUpdate(BaseModel):
     settings: Dict[str, str]
+
+    @field_validator("settings")
+    @classmethod
+    def validate_settings_keys(cls, v: Dict[str, str]) -> Dict[str, str]:
+        ALLOWED_KEYS = ["groq_api_key"]
+        for key, val in v.items():
+            if key not in ALLOWED_KEYS:
+                raise ValueError(f"Setting key '{key}' is not allowed.")
+            if key == "groq_api_key" and val and len(val.strip()) < 10:
+                raise ValueError("Groq API key must be at least 10 characters long.")
+        return v
 
 class SettingsResponse(BaseModel):
     values: Dict[str, Optional[str]]

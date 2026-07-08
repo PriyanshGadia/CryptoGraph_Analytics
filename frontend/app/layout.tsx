@@ -5,6 +5,7 @@ import { Console } from "@/components/Console";
 import { GlobalSearch } from "@/components/GlobalSearch";
 import { CurrencyProvider } from "@/components/CurrencyContext";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { OnboardingTour } from "@/components/OnboardingTour";
 
 import { AppLoaderWrapper } from "@/components/AppLoaderWrapper";
 
@@ -29,6 +30,7 @@ export default function RootLayout({
       <body className="font-sans antialiased">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <CurrencyProvider>
+            <OnboardingTour />
             {/* Background Texture Overlay */}
             <div className="fixed inset-0 z-[-1] pointer-events-none opacity-[0.03] dark:opacity-[0.05] bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPjxyZWN0IHdpZHRoPSI0IiBoZWlnaHQ9IjQiIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wMSIvPjxwYXRoIGQ9Ik0wIDBMMCA0TDEgNEwxIDBaTTAgM0w0IDNMNCA0TDAgNFoiIGZpbGw9IiMwMDAiIGZpbGwtb3BhY2l0eT0iMC4wNSIvPjwvc3ZnPg==')] mix-blend-overlay"></div>
 

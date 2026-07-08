@@ -9,9 +9,9 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import { BlockchainLoader } from "@/components/BlockchainLoader";
 import { DIRECTION_TOKENS, Direction } from "@/lib/design-tokens";
 import { useCurrency } from "@/components/CurrencyContext";
+import { useWebSocket } from "@/lib/useWebSocket";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-const WS_BASE = BASE.replace(/^http/, "ws");
 
 export default function MarketPage() {
   const { data: initialAssets, error, isLoading, mutate } = useSWR<any[]>("/api/v1/screener", fetcher, {
@@ -45,46 +45,42 @@ export default function MarketPage() {
 
   const updatesRef = useRef<Record<string, any>>({});
 
+  const { status: wsStatus } = useWebSocket("api/v1/stream/market", {
+    shouldConnect: !!(initialAssets && initialAssets.length > 0),
+    onMessage: (msg) => {
+      if (msg.type === "MARKET_UPDATE") {
+        Object.assign(updatesRef.current, msg.data);
+      }
+    },
+  });
+
   useEffect(() => {
-      if (!initialAssets || initialAssets.length === 0) return;
+    if (!initialAssets || initialAssets.length === 0) return;
 
-      const ws = new WebSocket(`${WS_BASE}/api/v1/stream/market?api_key=${process.env.NEXT_PUBLIC_API_KEY}`);
-      ws.onmessage = (event) => {
-          try {
-              const msg = JSON.parse(event.data);
-              if (msg.type === "MARKET_UPDATE") {
-                  Object.assign(updatesRef.current, msg.data);
-              }
-          } catch (e) {
-              console.error("WS Parse Error", e);
-          }
-      };
-
-      const interval = setInterval(() => {
-          if (Object.keys(updatesRef.current).length === 0) return;
+    const interval = setInterval(() => {
+      if (Object.keys(updatesRef.current).length === 0) return;
+      
+      setAssets(prev => prev.map(asset => {
+        const liveData = updatesRef.current[asset.symbol];
+        if (liveData) {
+          const prevClose = (asset as any).base_price || (asset.current_price / (1 + (asset.price_change_24h_pct || 0) / 100));
+          const newPctChange = prevClose > 0 ? ((liveData.close - prevClose) / prevClose) * 100 : 0;
           
-          setAssets(prev => prev.map(asset => {
-              const liveData = updatesRef.current[asset.symbol];
-              if (liveData) {
-                  const prevClose = (asset as any).base_price || (asset.current_price / (1 + (asset.price_change_24h_pct || 0) / 100));
-                  const newPctChange = prevClose > 0 ? ((liveData.close - prevClose) / prevClose) * 100 : 0;
-                  
-                  return {
-                      ...asset,
-                      current_price: liveData.close,
-                      price_change_24h_pct: newPctChange,
-                  };
-              }
-              return asset;
-          }));
-          
-          updatesRef.current = {};
-      }, 1000);
+          return {
+            ...asset,
+            current_price: liveData.close,
+            price_change_24h_pct: newPctChange,
+          };
+        }
+        return asset;
+      }));
+      
+      updatesRef.current = {};
+    }, 1000);
 
-      return () => {
-          ws.close();
-          clearInterval(interval);
-      };
+    return () => {
+      clearInterval(interval);
+    };
   }, [initialAssets]);
 
   if (!mounted) {
@@ -153,6 +149,16 @@ export default function MarketPage() {
                 <span className="flex items-center gap-2 px-4 py-2 glass border-text/10 rounded-sm text-xs font-mono text-text shadow-lg">
                     <Activity size={14} className="text-accent" />
                     Conf: {avgConfidence}%
+                </span>
+                <span className={`flex items-center gap-2 px-4 py-2 border rounded-sm text-xs font-mono font-bold glass transition-all duration-300 ${
+                  wsStatus === "connected" 
+                    ? "bg-success/10 text-success border-success/30 shadow-[0_0_15px_rgba(34,197,94,0.2)]" 
+                    : wsStatus === "connecting"
+                      ? "bg-warning/10 text-warning border-warning/30 animate-pulse"
+                      : "bg-danger/10 text-danger border-danger/30"
+                }`}>
+                  <span className={`w-2 h-2 rounded-full ${wsStatus === "connected" ? "bg-success" : wsStatus === "connecting" ? "bg-warning" : "bg-danger"}`} />
+                  {wsStatus === "connected" ? "STREAM ON" : wsStatus === "connecting" ? "SYNCING" : "OFFLINE"}
                 </span>
                 {riskData && (
                     <span className={`flex items-center gap-2 px-4 py-2 border rounded-sm text-xs font-mono font-bold glass ${regimeColor}`}>

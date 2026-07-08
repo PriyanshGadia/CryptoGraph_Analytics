@@ -186,3 +186,16 @@ class Forecast(Base):
 
     asset = relationship("Asset")
 
+
+class ModelRegistry(Base):
+    """Audited run configurations, artifact hashes, and metrics validated via validation subsets."""
+    __tablename__ = "model_registry"
+
+    id = Column(Integer, primary_key=True, index=True)
+    version = Column(String, unique=True, index=True, nullable=False)
+    wandb_run_id = Column(String, nullable=True)
+    metrics = Column(JSON, nullable=True)
+    artifact_path = Column(String, nullable=True)
+    deployed_at = Column(DateTime(timezone=True), server_default=func.now())
+
+

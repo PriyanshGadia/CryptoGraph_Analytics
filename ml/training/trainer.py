@@ -63,12 +63,16 @@ class STGCNTrainer:
         )
         
         import psutil
+        import os
         ram_gb = psutil.virtual_memory().total / (1024 ** 3)
-        if ram_gb < 6.0: # Enforce min 6GB RAM, but typically users have 4GB for prod
-            print(f"[WARNING] Available RAM is {ram_gb:.1f}GB. Training ST-GCN requires significant memory.")
-            print("[WARNING] DO NOT train on the production machine. Use Kaggle/Colab with GPU.")
-            # Since the user specifically has 4GB, we'll raise an error to prevent OOM crash in prod
-            raise MemoryError(f"Insufficient RAM ({ram_gb:.1f}GB < 6GB). Training blocked to prevent OOM crash on production machine.")
+        bypass = os.environ.get("BYPASS_MEM_CHECK", "false").lower() == "true" or os.environ.get("FORCE_TRAIN", "false").lower() == "true"
+        if ram_gb < 6.0:
+            print(f"[WARNING] Available RAM is {ram_gb:.1f}GB. ST-GCN training is optimized for >=6GB.")
+            if not bypass:
+                print("[WARNING] Insufficient RAM. Training blocked to prevent OOM crash. Set env FORCE_TRAIN=True or BYPASS_MEM_CHECK=True to override.")
+                raise MemoryError(f"Insufficient RAM ({ram_gb:.1f}GB < 6GB). Training blocked.")
+            else:
+                print("[WARNING] Insufficient RAM, but bypass flag set. Proceeding with risk of memory starvation.")
             
         dir_counts = config.get("direction_class_counts", [1, 1, 1, 1, 1])
         focal_gamma = config.get("focal_gamma", 2.0)

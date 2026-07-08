@@ -15,6 +15,7 @@ from app.core.streams.binance_ws import get_global_market_state
 router = APIRouter(prefix="/screener", tags=["screener"])
 
 @router.get("/")
+@cached(ttl_seconds=300)
 def screen_assets(
     direction: str = "all",        # all,strong_up,up,neutral,down,strong_down
     min_confidence: float = 0.0,   # 0.0 to 100.0
@@ -94,6 +95,7 @@ def screen_assets(
     return results
 
 @router.get("/presets/{preset_name}")
+@cached(ttl_seconds=300)
 def get_preset_scan(preset_name: str):
     """
     Returns results for named preset scans using SSOT state.

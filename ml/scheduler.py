@@ -28,12 +28,50 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
+def get_retraining_interval() -> int:
+    """Helper to dynamically resolve retraining frequency from Env or DB settings."""
+    freq = os.environ.get("RETRAINING_FREQUENCY", "").lower()
+    if not freq:
+        try:
+            import sqlite3
+            from pathlib import Path
+            db_candidates = [
+                Path(__file__).resolve().parent.parent / "backend" / "cryptograph.db",
+                Path(__file__).resolve().parent / "backend" / "cryptograph.db",
+                Path("backend/cryptograph.db")
+            ]
+            db_path = next((p for p in db_candidates if p.exists()), None)
+            if db_path:
+                conn = sqlite3.connect(str(db_path))
+                row = conn.execute("SELECT setting_value FROM app_settings WHERE setting_key = 'retraining_frequency'").fetchone()
+                conn.close()
+                if row and row[0]:
+                    freq = row[0].lower()
+        except Exception:
+            pass
+            
+    if not freq:
+        freq = "weekly"  # default
+        
+    if freq == "daily":
+        return 86400
+    elif freq == "weekly":
+        return 604800
+    elif freq == "monthly":
+        return 2592000
+    else:
+        try:
+            return int(freq)
+        except ValueError:
+            return 604800
+
 INTERVALS = {
     "ohlcv":         300,     # 5 minutes
     "features":      21600,   # 6 hours
     "predictions":   86400,   # 24 hours
     "enrich_assets": 86400,   # 24 hours - refreshes market cap daily
     "trading":       86400,   # 24 hours - runs MoA trading daily
+    "retraining":    get_retraining_interval(), # configurable
 }
 
 SCRIPTS = {
@@ -42,6 +80,7 @@ SCRIPTS = {
     "predictions":   "pipelines/inference_pipeline.py",
     "enrich_assets": "data/ingestion/enrich_assets.py",
     "trading":       "../backend/app/core/trading_agent.py",
+    "retraining":    "pipelines/training_pipeline.py",
 }
 
 last_run = {k: 0.0 for k in SCRIPTS}

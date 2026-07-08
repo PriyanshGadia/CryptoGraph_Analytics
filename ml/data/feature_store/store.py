@@ -14,7 +14,46 @@ _DB_CANDIDATES = [
 DB_PATH: Optional[Path] = next((p for p in _DB_CANDIDATES if p.exists()), _DB_CANDIDATES[0])
 
 class FeatureStore:
-    """Central interface for loading model-ready features from SQLite."""
+    """Central interface for loading model-ready features from SQLite.
+
+    ### Schema Constraints and Feature Layout
+    The Feature Store serves exactly 24 features (or 27 when tvl, revenue, active_users are enabled).
+    The features must be returned in the following layout:
+    1.  `open`: float, raw opening price.
+    2.  `high`: float, raw high price.
+    3.  `low`: float, raw low price.
+    4.  `close`: float, raw close price.
+    5.  `volume`: float, raw trade volume.
+    6.  `rsi_14`: float, Relative Strength Index, bounded [0.0, 100.0], default fill = 50.0.
+    7.  `macd`: float, Moving Average Convergence Divergence indicator.
+    8.  `macd_signal`: float, MACD signal line.
+    9.  `atr_14`: float, Average True Range.
+    10. `bb_width`: float, Bollinger Band Width.
+    11. `returns_1d`: float, 1-day percentage return, default fill = 0.0.
+    12. `returns_7d`: float, 7-day simple return, default fill = 0.0.
+    13. `volatility_7d`: float, 7-day rolling standard deviation of returns, default fill = 0.0.
+    14. `sentiment_score`: float, market sentiment normalized [-1.0, 1.0], default fill = 0.0.
+    15. `fear_greed_norm`: float, normalized Fear & Greed index [0.0, 1.0], default fill = 0.5.
+    16. `community_score`: float, social community metric.
+    17. `public_interest`: float, public interest metric.
+    18. `sentiment_rolling_3d`: float, 3-day sentiment rolling mean, default fill = 0.0.
+    19. `sentiment_momentum`: float, sentiment momentum indicator, default fill = 0.0.
+    20. `market_cap_usd`: float, asset market capitalization.
+    21. `fed_rate`: float, effective Federal Funds rate, default fill = 5.25.
+    22. `cpi`: float, Consumer Price Index, default fill = 3.0.
+    23. `inflation`: float, Breakeven Inflation rate, default fill = 2.5.
+    24. `vix`: float, CBOE Volatility Index, default fill = 15.0.
+
+    Optional 25-27: `tvl` (float), `revenue` (float), `active_users` (float) when feature_dim=27.
+
+    ### Normalization & Data Cleaning
+    To prevent training-serving skew, both training and inference pipelines load features using
+    this interface, which automatically applies the following normalization and cleaning:
+    - Zero-padding missing values.
+    - Interpolating missing records linearly along the time axis.
+    - Default neutral values filled for key indicators (e.g. RSI = 50.0, Sentiment = 0.0). Bounded
+      parameters are clipped to their logical bounds (RSI to [0,100], Fear & Greed to [0,1]).
+    """
 
     def __init__(self, db_path: Optional[Path] = None) -> None:
         """Initialize with a path to the local SQLite database."""

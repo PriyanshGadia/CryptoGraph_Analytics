@@ -13,9 +13,9 @@ import {
 import { TrendingUp, TrendingDown, Minus, Brain,
          BarChart2, AlertTriangle, CheckCircle, Terminal, Lock, Clock, Target, Layers, Info, X, Shield } from "lucide-react"
 import { DirectionBadge } from "@/components/ui/DirectionBadge"
+import { useWebSocket } from "@/lib/useWebSocket";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
-const WS_BASE = BASE.replace(/^http/, "ws")
 
 import { fetcher, api } from "@/lib/api"
 
@@ -138,15 +138,12 @@ function PredictionStudio() {
   }, [selectedSymbol])
 
   // Live WebSocket for Price Updates
-  useEffect(() => {
-    if (!selectedSymbol) return;
-    const ws = new WebSocket(`${WS_BASE}/api/v1/stream/ticker/${selectedSymbol}?api_key=${process.env.NEXT_PUBLIC_API_KEY}`);
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
+  const { status: wsStatus } = useWebSocket(`api/v1/stream/ticker/${selectedSymbol?.toLowerCase()}`, {
+    shouldConnect: !!selectedSymbol,
+    onMessage: (data) => {
       if (data.close) setLivePrice(data.close);
-    };
-    return () => ws.close();
-  }, [selectedSymbol]);
+    }
+  });
 
   const runForecast = async (symbol: string) => {
     setForecastLoading(true)
@@ -371,9 +368,18 @@ function PredictionStudio() {
                 </h1>
                 <div className="text-text/90 text-3xl pt-2 flex items-center gap-4 font-mono font-bold tracking-tight">
                     <span className={`transition-colors duration-300 ${livePrice ? 'text-accent drop-shadow-[0_0_10px_rgba(var(--accent),0.5)]' : 'text-text'}`}>${formatPrice(currentDisplayPrice)}</span>
-                    <span className="text-xs font-sans font-medium uppercase tracking-widest text-text-muted flex items-center gap-2 bg-surface/50 px-3 py-1 rounded-full border border-text/5">
-                        {livePrice ? <span className="relative flex h-2.5 w-2.5"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-accent"></span></span> : null}
-                        Live Price
+                    <span className={`text-xs font-sans font-black uppercase tracking-widest flex items-center gap-2 border px-3.5 py-1 rounded-full transition-all duration-300 ${
+                      wsStatus === "connected" 
+                        ? "bg-success/15 text-success border-success/20 shadow-[0_0_10px_rgba(34,197,94,0.2)]" 
+                        : wsStatus === "connecting"
+                          ? "bg-warning/15 text-warning border-warning/20 animate-pulse"
+                          : "bg-danger/15 text-danger border-danger/20"
+                    }`}>
+                      <span className="relative flex h-2 w-2">
+                        {wsStatus === "connected" && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span>}
+                        <span className={`relative inline-flex rounded-full h-2 w-2 ${wsStatus === "connected" ? "bg-success" : wsStatus === "connecting" ? "bg-warning" : "bg-danger"}`}></span>
+                      </span>
+                      {wsStatus === "connected" ? "LIVE STREAM" : wsStatus === "connecting" ? "SYNCING" : "OFFLINE"}
                     </span>
                 </div>
               </div>

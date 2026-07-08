@@ -173,7 +173,10 @@ def generate_system_explanation(symbol: str, direction: str, confidence: float,
 
     # --- Paragraph 3: Graph Topology (T-SHAP) ---
     if t_shap and isinstance(t_shap, dict):
-        attr_pct = t_shap.get("attributions_pct", {})
+        attr_pct = t_shap.get("attributions_pct")
+        if not attr_pct or not isinstance(attr_pct, dict):
+            total_abs = sum(abs(_safe_float(v)) for k, v in t_shap.items() if k != "attributions_pct") or 1.0
+            attr_pct = {k: 100.0 * abs(_safe_float(v)) / total_abs for k, v in t_shap.items() if k != "attributions_pct"}
         if attr_pct and isinstance(attr_pct, dict):
             sorted_attr = sorted(attr_pct.items(), key=lambda x: abs(_safe_float(x[1])), reverse=True)
             top_2 = sorted_attr[:2]
@@ -250,7 +253,7 @@ def explain_prediction(request: Request, symbol: str, db: Session = Depends(get_
     asset = db.query(Asset).filter(Asset.symbol == symbol).first()
     if not asset:
         return ExplainResponse(symbol=symbol, explanation="Asset not found.", direction="unknown", confidence=0.0, top_features={})
-
+    
     pred = db.query(Prediction).filter(Prediction.asset_id == asset.id).order_by(desc(Prediction.predicted_at)).first()
 
     if not pred:
@@ -258,11 +261,42 @@ def explain_prediction(request: Request, symbol: str, db: Session = Depends(get_
 
     direction = pred.direction or "unknown"
     confidence = pred.confidence or 0.0
+
+    import json
+    
+    # Try parsing shap_values
     raw_shap = pred.shap_values or {}
+    if isinstance(raw_shap, str):
+        try:
+            raw_shap = json.loads(raw_shap)
+        except Exception:
+            raw_shap = {}
+            
+    # Try parsing t_shap_attributions
     t_shap_data = pred.t_shap_attributions  # May be dict or None
+    if isinstance(t_shap_data, str):
+        try:
+            t_shap_data = json.loads(t_shap_data)
+        except Exception:
+            t_shap_data = None
+
+    # Retrieve feature attributions from t_shap_attributions or shap_values["t_shap"]
+    attributions = None
+    if t_shap_data and isinstance(t_shap_data, dict):
+        attributions = {k: v for k, v in t_shap_data.items() if k != "attributions_pct"}
+    elif raw_shap and isinstance(raw_shap, dict) and "t_shap" in raw_shap:
+        t_shap_val = raw_shap["t_shap"]
+        if isinstance(t_shap_val, dict):
+            attributions = {k: v for k, v in t_shap_val.items() if k != "attributions_pct"}
+
+    if not attributions:
+        if isinstance(raw_shap, dict):
+            attributions = {k: v for k, v in raw_shap.items() if k not in ["t_shap", "attestation_hash"]}
+        else:
+            attributions = {}
 
     # Filter SHAP values for Pydantic — only keep numeric entries
-    numeric_shap = _filter_numeric_shap(raw_shap)
+    numeric_shap = _filter_numeric_shap(attributions)
 
     # Fetch recent news
     news_records = db.query(AssetNews).filter(AssetNews.asset_id == asset.id).order_by(desc(AssetNews.published_at)).limit(3).all()

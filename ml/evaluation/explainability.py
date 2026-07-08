@@ -203,7 +203,7 @@ def explain_all_assets(
 
         if db_session is not None:
             try:
-                from app.db.models_sqla import Asset, Prediction
+                from app.db.models import Asset, Prediction
                 from sqlalchemy import desc
 
                 asset = (

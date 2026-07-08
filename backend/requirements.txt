@@ -33,3 +33,6 @@ python-json-logger
 opentelemetry-api
 opentelemetry-sdk
 opentelemetry-instrumentation-fastapi
+celery>=5.3.0
+tenacity>=8.2.0
+torch-geometric>=2.4.0

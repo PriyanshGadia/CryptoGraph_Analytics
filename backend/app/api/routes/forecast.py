@@ -12,16 +12,12 @@ from app.api.deps import get_db
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from app.db.models import Asset, OHLCV, Prediction as SQLAPrediction, Forecast as SQLAForecast
-from slowapi import Limiter
-from slowapi.util import get_remote_address
+from app.core.limiter import limiter
 from cachetools import TTLCache
 import json
 from pathlib import Path
-
 from ml.models.forecast_model import run_ensemble_forecast
 from app.core.streams.binance_ws import get_global_market_state
-
-limiter = Limiter(key_func=get_remote_address)
 # 1-hour TTL cache for ML forecast models to eliminate wait times
 ml_forecast_cache = TTLCache(maxsize=100, ttl=3600)
 
@@ -103,10 +99,21 @@ async def get_forecast(request: Request, symbol: str, db: Session = Depends(get_
 
     # 4. Cache-aware Real PyTorch LSTM / Ensemble Forecast
     # Only cache based on daily boundaries and flagship model signals
-    cache_key = f"{symbol}_{dates.iloc[-1].strftime('%Y-%m-%d')}_{stgcn_dir}_{round(stgcn_conf, 1)}"
-    if cache_key in ml_forecast_cache:
-        forecast = ml_forecast_cache[cache_key]
-    else:
+    cache_key_redis = f"cryptograph:forecast:{symbol.upper()}_{dates.iloc[-1].strftime('%Y-%m-%d')}_{stgcn_dir}_{round(stgcn_conf, 1)}"
+    cache_key_local = f"{symbol.upper()}_{dates.iloc[-1].strftime('%Y-%m-%d')}_{stgcn_dir}_{round(stgcn_conf, 1)}"
+    
+    from app.core.cache import redis_get, redis_set
+    
+    # Try Redis first
+    forecast = redis_get(cache_key_redis)
+    if not forecast:
+        # Try local cache
+        if cache_key_local in ml_forecast_cache:
+            forecast = ml_forecast_cache[cache_key_local]
+            # Populate Redis if it was missing
+            redis_set(cache_key_redis, forecast, ttl_seconds=3600)
+            
+    if not forecast:
         # Run actual PyTorch LSTM time-series forecast model in a separate thread with a 30s timeout
         try:
             raw_forecast_res = await asyncio.wait_for(
@@ -138,7 +145,9 @@ async def get_forecast(request: Request, symbol: str, db: Session = Depends(get_
             "model_used": raw_forecast_res.get("model_used", "Pre-trained Global LSTM Forecaster"),
             "ensemble": raw_forecast_res.get("ensemble", False)
         }
-        ml_forecast_cache[cache_key] = forecast
+        ml_forecast_cache[cache_key_local] = forecast
+        redis_set(cache_key_redis, forecast, ttl_seconds=3600)
+
     
     # 5. Extract Deep Learning Metrics
     lstm_forecast_arr = forecast.get("lstm_forecast", forecast["forecast_prices"])

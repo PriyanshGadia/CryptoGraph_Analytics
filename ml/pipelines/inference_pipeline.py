@@ -11,6 +11,8 @@ from pathlib import Path
 root_dir = Path(__file__).resolve().parent.parent.parent
 if str(root_dir) not in sys.path:
     sys.path.append(str(root_dir))
+if str(root_dir / "backend") not in sys.path:
+    sys.path.append(str(root_dir / "backend"))
 
 import sqlite3
 import uuid
@@ -26,8 +28,8 @@ from ml.models.stgcn import STGCNModel
 import json
 
 # Phase 9: XAI & Inference Attestation Integration
-from backend.app.ml.gnn_attribution_explainer import GNNGradientAttributionExplainer
-from backend.app.ml.inference_attester import InferenceAttester
+from app.ml.gnn_attribution_explainer import GNNGradientAttributionExplainer
+from app.ml.inference_attester import InferenceAttester
 import hashlib
 from ml.models.forecast_model import run_ensemble_forecast
 import pandas as pd
@@ -276,14 +278,26 @@ def run_inference() -> dict:
             real_xai_features = {"BTC-ETH Correlation": 0.88, "On-Chain Volume": 1.2, "Order Book Imbalance": -0.5}
         
         # Generate GNN Gradient Attribution values using PyTorch model gradients
-        xai_result = xai_explainer.explain_prediction(
-            symbol=symbol,
-            features=real_xai_features,
-            model=model,
-            graph_sequence=graph_sequence,
-            asset_idx=idx,
-            feature_names=FEATURE_NAMES
-        )
+        if gate_passed and 'model' in locals():
+            xai_result = xai_explainer.explain_prediction(
+                symbol=symbol,
+                features=real_xai_features,
+                model=model,
+                graph_sequence=graph_sequence,
+                asset_idx=idx,
+                feature_names=FEATURE_NAMES
+            )
+        else:
+            xai_result = {
+                "rsi_14": 0.0,
+                "macd": 0.0,
+                "volatility_7d": 0.0,
+                "attributions_pct": {
+                    "rsi_14": 33.33,
+                    "macd": 33.33,
+                    "volatility_7d": 33.33
+                }
+            }
         
         try:
             with open(MODEL_PATH, "rb") as f:
@@ -311,7 +325,7 @@ def run_inference() -> dict:
             "direction": direction,
             "confidence": round(confidence / 100.0, 4), # SCALE DOWN TO 0.0-1.0 FOR SQLALCHEMY VALIDATOR
             "volatility_regime": vol_regime,
-            "predicted_at": timestamp_now,
+            "predicted_at": now,
             "model_version": model_version,
             "baseline_probability": 0.3333,
             "t_shap_attributions": json.dumps(xai_result),
@@ -319,8 +333,8 @@ def run_inference() -> dict:
         })
 
     # ── 6. Batch-upsert into SQLite via SQLAlchemy ──────────────────────────────────
-    from backend.app.db.database import SessionLocal
-    from backend.app.db.models_sqla import SQLAAsset, SQLAPrediction
+    from app.db.database import SessionLocal, execute_with_retry, engine
+    from app.db.models import Asset as SQLAAsset, Prediction as SQLAPrediction
 
     def _write_predictions():
         db = SessionLocal()
@@ -336,7 +350,7 @@ def run_inference() -> dict:
                     continue
                 
                 # Check if it already exists to avoid unique constraint failure
-                existing = db.query(SQLAPrediction).filter_by(asset_id=asset_id, timestamp=timestamp_now).first()
+                existing = db.query(SQLAPrediction).filter_by(asset_id=asset_id, timestamp=now).first()
                 if existing:
                     # Update
                     existing.predicted_at = pred["predicted_at"]
@@ -351,7 +365,7 @@ def run_inference() -> dict:
                 else:
                     new_pred = SQLAPrediction(
                         asset_id=asset_id,
-                        timestamp=timestamp_now,
+                        timestamp=now,
                         predicted_at=pred["predicted_at"],
                         direction=pred["direction"],
                         confidence=pred["confidence"],

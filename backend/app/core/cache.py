@@ -70,3 +70,31 @@ def cached(ttl_seconds: int = 60):
             return result
         return wrapper
     return decorator
+
+
+def redis_get(key: str) -> Any:
+    """Retrieve JSON-deserialized object from Redis if client is connected."""
+    if redis_client:
+        try:
+            val = redis_client.get(key)
+            if val:
+                return json.loads(val)
+        except Exception:
+            pass
+    return None
+
+
+def redis_set(key: str, value: Any, ttl_seconds: int = None) -> bool:
+    """Serialize and store object in Redis if client is connected."""
+    if redis_client:
+        try:
+            serialized = json.dumps(value)
+            if ttl_seconds:
+                redis_client.setex(key, ttl_seconds, serialized)
+            else:
+                redis_client.set(key, serialized)
+            return True
+        except Exception:
+            pass
+    return False
+

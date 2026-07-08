@@ -166,9 +166,12 @@ def get_portfolio_trades(limit: int = 100, offset: int = 0, db: Session = Depend
         "total": total
     }
 
+from pydantic import field_validator
+import re
+
 class GradeTradeRequest(BaseModel):
     grade: int = Field(..., ge=1, le=5)
-    notes: str = ""
+    notes: str = Field("", max_length=500)
 
 @router.post("/trades/{trade_id}/grade")
 def grade_trade(trade_id: int, payload: GradeTradeRequest, db: Session = Depends(get_db), api_key: str = Depends(get_api_key)):
@@ -183,7 +186,14 @@ def grade_trade(trade_id: int, payload: GradeTradeRequest, db: Session = Depends
     return {"status": "success"}
 
 class ConfirmTradeRequest(BaseModel):
-    tx_hash: str
+    tx_hash: str = Field(..., min_length=66, max_length=66)
+
+    @field_validator("tx_hash")
+    @classmethod
+    def validate_tx_hash(cls, v: str) -> str:
+        if not re.match(r"^0x[a-fA-F0-9]{64}$", v):
+            raise ValueError("Simulated transaction hash must be 0x followed by 64 hex characters.")
+        return v
 
 @router.post("/trades/{trade_id}/confirm")
 def confirm_web3_trade(trade_id: int, payload: ConfirmTradeRequest, db: Session = Depends(get_db), api_key: str = Depends(get_api_key)):

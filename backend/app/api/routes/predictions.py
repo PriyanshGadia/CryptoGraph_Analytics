@@ -11,10 +11,23 @@ from app.api.routes.forecast import limiter
 router = APIRouter(prefix="/predictions", tags=["predictions"])
 
 from typing import List
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
+import re
 
 class BatchPredictionRequest(BaseModel):
-    symbols: List[str]
+    symbols: List[str] = Field(..., min_length=1)
+
+    @field_validator("symbols")
+    @classmethod
+    def validate_symbols_list(cls, v: List[str]) -> List[str]:
+        if len(v) > 100:
+            raise ValueError("Batch request cannot exceed 100 symbols.")
+        for symbol in v:
+            if not symbol or len(symbol) < 2 or len(symbol) > 10:
+                raise ValueError(f"Symbol '{symbol}' must be between 2 and 10 characters.")
+            if not re.match(r"^[a-zA-Z0-9_\-]+$", symbol):
+                raise ValueError(f"Symbol '{symbol}' must be alphanumeric URL-safe.")
+        return [sym.upper() for sym in v]
 
 @router.post("/batch", response_model=list[Prediction])
 async def get_batch_predictions(
@@ -197,66 +210,17 @@ async def get_prediction_history(symbol: str, db: Session = Depends(get_db)):
 async def trigger_inference(request: Request, background_tasks: BackgroundTasks, api_key: str = Depends(get_api_key)):
     """
     Triggers fresh inference run asynchronously.
-    Refreshes technicals, then calls ml/pipelines/inference_pipeline.py as subprocess in background.
-    Returns immediately: {"status": "triggered", "message": "Inference pipeline started"}
+    Refreshes technicals, then calls ml/pipelines/inference_pipeline.py.
     """
-    async def run_inference_subprocess():
-        import asyncio
-        from datetime import datetime, timezone
-        from app.db.database import SessionLocal
-        from app.db.models import AppSetting
-        from app.api.routes.screener import refresh_live_technicals
-        
-        db = SessionLocal()
-        lock_key = "inference_trigger_lock"
-        try:
-            # Simple lock
-            lock_setting = db.query(AppSetting).filter_by(setting_key=lock_key).with_for_update().first()
-            now_ts = datetime.now(timezone.utc).timestamp()
-            if lock_setting:
-                try:
-                    if now_ts - float(lock_setting.setting_value) < 300:
-                        print("[Scheduler] Inference already running. Skipping.")
-                        return
-                except Exception as e:
-                    import logging
-                    logging.getLogger(__name__).error(f"Failed to calculate direction for {symbol}: {e}", exc_info=True)
-                lock_setting.setting_value = str(now_ts)
-            else:
-                lock_setting = AppSetting(setting_key=lock_key, setting_value=str(now_ts))
-                db.add(lock_setting)
-            db.commit()
-            
-            print("[Scheduler] Refreshing live technicals...")
-            await asyncio.wait_for(asyncio.to_thread(refresh_live_technicals, db=db), timeout=60.0)
-            
-            print("[Scheduler] Running inference pipeline...")
-            from ml.pipelines.inference_pipeline import main as run_inference_main
-            await asyncio.wait_for(asyncio.to_thread(run_inference_main), timeout=300.0)
-            
-            print("[Scheduler] Inference completed.")
-            
-            # Refresh SSOT so /api/assets immediately reflects new confidence scores
-            from app.core.streams.binance_ws import refresh_predictions_in_ssot
-            await asyncio.to_thread(refresh_predictions_in_ssot, db)
-            print("[Scheduler] SSOT prediction cache refreshed.")
-            
-        except asyncio.TimeoutError:
-            print("[Scheduler] Inference pipeline timed out.")
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).error(f"[Scheduler] Error: {e}", exc_info=True)
-        finally:
-            try:
-                lock_setting = db.query(AppSetting).filter_by(setting_key=lock_key).first()
-                if lock_setting:
-                    lock_setting.setting_value = "0"
-                    db.commit()
-            except Exception as e:
-                import logging
-                logging.getLogger(__name__).error(f"Failed to release lock: {e}", exc_info=True)
-            finally:
-                db.close()
-            
-    background_tasks.add_task(run_inference_subprocess)
-    return {"status": "triggered", "message": "Full pipeline triggered in background"}
+    from app.tasks import run_inference_pipeline_task
+    from app.core.celery_app import celery_app
+    
+    if celery_app.conf.task_always_eager:
+        # Fallback to FastAPI BackgroundTasks to prevent blocking the HTTP response
+        background_tasks.add_task(run_inference_pipeline_task)
+        return {"status": "triggered", "message": "Inference pipeline started in background task (eager fallback)"}
+    else:
+        # Trigger true Celery worker task asynchronously
+        run_inference_pipeline_task.delay()
+        return {"status": "triggered", "message": "Inference pipeline task sent to Celery queue"}
+

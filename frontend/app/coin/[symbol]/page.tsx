@@ -11,6 +11,7 @@ import useSWR from "swr";
 import { fetcher, api } from "@/lib/api";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { DirectionBadge } from "@/components/ui/DirectionBadge";
+import { useWebSocket } from "@/lib/useWebSocket";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const WS_BASE = BASE.replace(/^http/, "ws");
@@ -129,11 +130,9 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
   }, [ohlcv]);
 
   // Live Ticker WebSocket
-  useEffect(() => {
-    if (!ohlcv || ohlcv.length === 0) return;
-    const ws = new WebSocket(`${WS_BASE}/api/v1/stream/ticker/${symbol}?api_key=${process.env.NEXT_PUBLIC_API_KEY}`);
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
+  const { status: wsStatus } = useWebSocket(`api/v1/stream/ticker/${symbol.toLowerCase()}`, {
+    shouldConnect: !!(ohlcv && ohlcv.length > 0),
+    onMessage: (data) => {
       const tickPrice = data.close;
 
       setLivePrice(tickPrice);
@@ -165,9 +164,8 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
           }
         }
       }
-    };
-    return () => ws.close();
-  }, [symbol, ohlcv]);
+    }
+  });
   
   // Lightweight charts initialization
   useEffect(() => {
@@ -382,6 +380,16 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
                       {asset.sector}
                     </span>
                   )}
+                  <span className={`flex items-center gap-1 px-2 py-0.5 border rounded-sm text-[9px] font-mono font-bold tracking-wider transition-all duration-300 ${
+                    wsStatus === "connected" 
+                      ? "bg-success/15 text-success border-success/30 shadow-[0_0_10px_rgba(34,197,94,0.2)]" 
+                      : wsStatus === "connecting"
+                        ? "bg-warning/15 text-warning border-warning/30 animate-pulse"
+                        : "bg-danger/15 text-danger border-danger/30"
+                  }`}>
+                    <span className={`w-1 h-1 rounded-full ${wsStatus === "connected" ? "bg-success" : wsStatus === "connecting" ? "bg-warning" : "bg-danger"}`} />
+                    {wsStatus === "connected" ? "LIVE" : wsStatus === "connecting" ? "SYNC" : "OFFLINE"}
+                  </span>
                 </div>
                 <div className="flex items-center mt-4 gap-4">
                     <div className={`text-4xl font-mono font-black tracking-tighter transition-colors duration-300 ${livePrice ? 'text-accent drop-shadow-[0_0_10px_rgba(var(--accent),0.3)]' : 'text-text'}`}>

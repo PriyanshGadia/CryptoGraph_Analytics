@@ -1,31 +1,41 @@
-FROM python:3.12-slim
+# Stage 1: Build dependencies
+FROM python:3.12-slim AS builder
+
+WORKDIR /build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY backend/requirements*.txt ./
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir --prefix=/install -r requirements.txt && \
+    if [ -f requirements-optional.txt ]; then pip install --no-cache-dir --prefix=/install -r requirements-optional.txt || true; fi
+
+# Stage 2: Final runner image
+FROM python:3.12-slim AS runner
 
 WORKDIR /app
 
-# Install build dependencies
+# Install runtime dependencies (curl for health check)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install
-COPY backend/requirements*.txt ./
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt && \
-    if [ -f requirements-optional.txt ]; then pip install --no-cache-dir -r requirements-optional.txt || true; fi
-
 # Add non-root user
-RUN useradd -m cryptograph
+RUN useradd -m cryptograph && \
+    mkdir -p /app/database && \
+    chown -R cryptograph:cryptograph /app
 
-# Copy backend code explicitly to avoid path ambiguity
-COPY backend/app /app/app
-COPY backend/scripts /app/scripts
-COPY ml /app/ml
-COPY backend/alembic /app/alembic
-COPY backend/alembic.ini /app/alembic.ini
+# Copy python packages from builder
+COPY --from=builder --chown=cryptograph:cryptograph /install /usr/local
 
-# Set permissions
-RUN chown -R cryptograph:cryptograph /app
+# Copy backend code explicitly
+COPY --chown=cryptograph:cryptograph backend/app /app/app
+COPY --chown=cryptograph:cryptograph backend/scripts /app/scripts
+COPY --chown=cryptograph:cryptograph ml /app/ml
+COPY --chown=cryptograph:cryptograph backend/alembic /app/alembic
+COPY --chown=cryptograph:cryptograph backend/alembic.ini /app/alembic.ini
 
 # Switch to non-root user
 USER cryptograph

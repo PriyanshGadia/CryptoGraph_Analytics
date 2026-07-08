@@ -12,6 +12,7 @@ import { TableSkeleton } from "@/components/PageSkeleton";
 import { useCurrency, CURRENCY_SYMBOLS } from "@/components/CurrencyContext";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { DirectionBadge } from "@/components/ui/DirectionBadge";
+import { useWebSocket } from "@/lib/useWebSocket";
 
 const VolatilityChip = ({ level }: { level: string }) => {
   const v = level?.toLowerCase() || "medium";
@@ -66,19 +67,15 @@ export default function ScreenerPage() {
   
   const updatesRef = useRef<Record<string, {price: number, volume: number}>>({});
   
-  useEffect(() => {
-    const ws = new WebSocket(`${BASE.replace("http", "ws")}/api/v1/stream/screener?api_key=${process.env.NEXT_PUBLIC_API_KEY}`);
-    ws.onmessage = (event) => {
-      try {
-        const payload = JSON.parse(event.data);
-        if (payload.type === "LIVE_PRICES" && payload.data) {
-          Object.assign(updatesRef.current, payload.data);
-        }
-      } catch (e) {
-        console.error(e);
+  const { status: wsStatus } = useWebSocket("api/v1/stream/screener", {
+    onMessage: (payload) => {
+      if (payload.type === "LIVE_PRICES" && payload.data) {
+        Object.assign(updatesRef.current, payload.data);
       }
-    };
-    
+    },
+  });
+  
+  useEffect(() => {
     const interval = setInterval(() => {
       if (Object.keys(updatesRef.current).length > 0) {
         setLiveData(prev => ({...prev, ...updatesRef.current}));
@@ -87,7 +84,6 @@ export default function ScreenerPage() {
     }, 1000);
     
     return () => {
-      ws.close();
       clearInterval(interval);
     };
   }, []);
@@ -343,6 +339,16 @@ export default function ScreenerPage() {
                 {results ? results.length : "..."}
             </span>
             Assets Discovered
+            <span className={`flex items-center gap-1.5 px-2.5 py-1 border rounded-sm text-[9px] font-mono font-bold transition-all duration-300 ${
+              wsStatus === "connected" 
+                ? "bg-success/15 text-success border-success/30 shadow-[0_0_10px_rgba(34,197,94,0.2)]" 
+                : wsStatus === "connecting"
+                  ? "bg-warning/15 text-warning border-warning/30 animate-pulse"
+                  : "bg-danger/15 text-danger border-danger/30"
+            }`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${wsStatus === "connected" ? "bg-success" : wsStatus === "connecting" ? "bg-warning" : "bg-danger"}`} />
+              {wsStatus === "connected" ? "LIVE STREAM" : wsStatus === "connecting" ? "SYNCING" : "OFFLINE"}
+            </span>
           </h2>
           <div className="flex flex-wrap gap-3">
             <button 
@@ -403,7 +409,7 @@ export default function ScreenerPage() {
                   };
                   
                   return (
-                  <tr key={i} className="hover:bg-text/[0.02] transition-colors group">
+                  <tr key={i} className="hover:bg-text/[0.02] transition-colors group" style={{ contentVisibility: "auto", containIntrinsicSize: "auto 76px" }}>
                     <td className="px-6 py-4">
                       <Link href={`/coin/${row.symbol}`} className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full bg-surface/50 border border-text/10 flex items-center justify-center font-bold text-xs shadow-inner">

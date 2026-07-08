@@ -88,3 +88,62 @@ def decrypt_secret(cipher_text: str) -> str:
             
     # Return as-is if not encrypted
     return cipher_text
+
+import time
+import json
+import hashlib
+import hmac
+from typing import Optional
+
+def create_jwt_token(payload: dict, expires_in: int = 3600) -> str:
+    """Creates a base64url encoded HMAC-SHA256 JWT-like token."""
+    header = {"alg": "HS256", "typ": "JWT"}
+    
+    # Add expiration timestamp
+    token_payload = payload.copy()
+    token_payload["exp"] = int(time.time()) + expires_in
+    
+    def b64url(data: bytes) -> str:
+        return base64.urlsafe_b64encode(data).decode('utf-8').replace('=', '').strip()
+        
+    header_b64 = b64url(json.dumps(header).encode('utf-8'))
+    payload_b64 = b64url(json.dumps(token_payload).encode('utf-8'))
+    
+    message = f"{header_b64}.{payload_b64}".encode('utf-8')
+    signing_key = _get_or_create_master_key()
+    signature = hmac.new(signing_key, message, hashlib.sha256).digest()
+    signature_b64 = b64url(signature)
+    
+    return f"{header_b64}.{payload_b64}.{signature_b64}"
+
+def verify_jwt_token(token: str) -> Optional[dict]:
+    """Verifies the token signature and returns the payload if valid."""
+    try:
+        parts = token.split(".")
+        if len(parts) != 3:
+            return None
+            
+        header_b64, payload_b64, signature_b64 = parts
+        
+        # Verify signature
+        message = f"{header_b64}.{payload_b64}".encode('utf-8')
+        signing_key = _get_or_create_master_key()
+        expected_sig = hmac.new(signing_key, message, hashlib.sha256).digest()
+        
+        def b64decode(s: str) -> bytes:
+            padding = '=' * (4 - len(s) % 4)
+            return base64.urlsafe_b64decode(s + padding)
+            
+        if not hmac.compare_digest(b64decode(signature_b64), expected_sig):
+            return None
+            
+        # Parse payload and check expiration
+        payload = json.loads(b64decode(payload_b64).decode('utf-8'))
+        if payload.get("exp", 0) < time.time():
+            return None # Expired
+            
+        return payload
+    except Exception as e:
+        logger.error(f"[Security] JWT verification failed: {e}")
+        return None
+

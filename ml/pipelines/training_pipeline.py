@@ -17,6 +17,8 @@ os.environ["WANDB_MODE"] = "disabled"
 root_dir = Path(__file__).resolve().parent.parent.parent
 if str(root_dir) not in sys.path:
     sys.path.append(str(root_dir))
+if str(root_dir / "backend") not in sys.path:
+    sys.path.append(str(root_dir / "backend"))
 
 from ml.data.feature_store.store import FeatureStore
 from ml.graph.graph_builder import DynamicGraphBuilder
@@ -32,7 +34,7 @@ os.makedirs("ml/artifacts", exist_ok=True)
 def get_db_symbols():
     try:
         from app.db.database import SessionLocal
-        from app.db.models_sqla import Asset
+        from app.db.models import Asset
         db = SessionLocal()
         try:
             assets = db.query(Asset.symbol).all()
@@ -382,11 +384,67 @@ def main():
         "fed_rate", "cpi", "inflation", "vix"
     ]
     graph_sequences_dict = {sym: test_graphs[-1][0] for sym in available_symbols}
-    explain_all_assets(model, graph_sequences_dict, feature_names, db_session=None)
+    try:
+        from app.db.database import SessionLocal
+        db = SessionLocal()
+        explain_all_assets(model, graph_sequences_dict, feature_names, db_session=db)
+        db.close()
+    except Exception as e:
+        print(f"Skipping database attribution update due to error: {e}")
+        explain_all_assets(model, graph_sequences_dict, feature_names, db_session=None)
     
     print("\n[Step 6] Registering model in SQLite...")
-    # Registering model checkpoint
-    model.save("ml/artifacts/best_model.pt")
+    
+    # Register in SQLite database model_registry
+    try:
+        from app.db.database import SessionLocal, Base, engine
+        from app.db.models import ModelRegistry
+        
+        # Ensure the table exists in SQLite
+        Base.metadata.create_all(bind=engine)
+        
+        db = SessionLocal()
+        
+        wandb_run_id = None
+        if hasattr(trainer, 'tracker') and trainer.tracker and trainer.tracker.run:
+            wandb_run_id = trainer.tracker.run.id
+            
+        version = f"stgcn-v{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
+        if wandb_run_id:
+            version = f"stgcn-{wandb_run_id}"
+            
+        # Update model's internal version configuration
+        model.config["version"] = version
+        model.save("ml/artifacts/best_model.pt")
+        
+        metrics = metrics_log if 'metrics_log' in locals() else {}
+        
+        # Check if version exists to avoid duplication
+        existing = db.query(ModelRegistry).filter_by(version=version).first()
+        if existing:
+            existing.wandb_run_id = wandb_run_id
+            existing.metrics = metrics
+            existing.artifact_path = str(best_model_path)
+            existing.deployed_at = datetime.now(timezone.utc)
+        else:
+            reg_entry = ModelRegistry(
+                version=version,
+                wandb_run_id=wandb_run_id,
+                metrics=metrics,
+                artifact_path=str(best_model_path),
+                deployed_at=datetime.now(timezone.utc)
+            )
+            db.add(reg_entry)
+            
+        db.commit()
+        print(f"Model registered in SQLite model_registry: version={version}")
+    except Exception as dbe:
+        print(f"Failed to register model in DB: {dbe}")
+    finally:
+        try:
+            db.close()
+        except Exception:
+            pass
     
     print("\nTraining pipeline complete")
 

@@ -2,6 +2,8 @@
 
 This document details the system design, component mapping, data flow, and technology choices for the Crypto Ensemble Forecaster Platform.
 
+---
+
 ## 1. System Diagram
 
 Below is the high-level architecture diagram illustrating the integration between the external data sources, the ML pipeline, the storage layer, the API backend, and the interactive frontend.
@@ -11,75 +13,61 @@ Below is the high-level architecture diagram illustrating the integration betwee
 |                               EXTERNAL DATA SOURCES                             |
 |                                                                                 |
 |  +-------------------+       +--------------------+      +-------------------+  |
-|  | Binance API (USDT) |       | FRED Macro API     |      | CoinGecko API     |  |
+|  | Binance WebSocket |       | FRED Macro API     |      | CoinGecko API     |  |
 |  +---------+---------+       +---------+----------+      +---------+---------+  |
 |            |                           |                           |            |
 +------------|---------------------------|---------------------------|------------+
-             |                           |                           |
+             | (Real-time Ticker)        | (Daily Ingestion)         | (Sentiment Data)
              v                           v                           v
-+------------|---------------------------|---------------------------|------------+
-|            |                           |                           |            |
-|            +-----------------------+   |   +-----------------------+            |
-|                                    |   |   |                                    |
-|                                    v   v   v                                    |
-|                            +-----------+-----------+                            |
-|                            |   ETL Pipeline (ML)   |                            |
-|                            +-----------+-----------+                            |
-|                                        |                                        |
-|                                        v                                        |
-|                            +-----------+-----------+                            |
-|                            |     Feature Store     |                            |
-|                            +-----------+-----------+                            |
-|                                        |                                        |
-|                                        v                                        |
-|                            +-----------+-----------+                            |
-|                            |  Dynamic Features     |                            |
-|                            +-----------+-----------+                            |
-|                                        |                                        |
-|                                        v                                        |
-|                            +-----------+-----------+                            |
-|                            | LSTM & NeuralProphet  |                            |
-|                            +-----------+-----------+                            |
-|                                        |                                        |
-|                                        v                                        |
-|                            +-----------+-----------+                            |
-|                            |  Explainability (SHAP)|                            |
-|                            +-----------+-----------+                            |
-|                                        |                                        |
-|                                        | (Upsert Predictions & Features)        |
-|                                        v                                        |
-|  +-------------------------------------+-------------------------------------+  |
-|  |                                 DATABASE                                  |  |
++---------------------------------------------------------------------------------+
+|                               BACKEND SERVICES                                  |
+|                                                                                 |
+|  +---------------------------------------------------------------------------+  |
+|  |                           FastAPI Core Server                             |  |
 |  |                                                                           |  |
-|  |                         +-----------------------+                         |  |
-|  |                         |   Supabase Database   |                         |  |
-|  |                         +-----------+-----------+                         |  |
-|  +-------------------------------------|-------------------------------------+  |
-|                                        |                                        |
-|                                        | (Read / Query via Service Role)        |
-|                                        v                                        |
-|  +-------------------------------------+-------------------------------------+  |
-|  |                                 BACKEND API                               |  |
+|  |   +-----------------------+                    +-----------------------+  |  |
+|  |   |   Binance WS Loop     |                    |   APScheduler Tasks   |  |  |
+|  |   +-----------+-----------+                    +-----------+-----------+  |  |
+|  |               | (Cache Updates)                            |              |  |
+|  |               v                                            v              |  |
+|  |      [In-Memory Cache] <------------------------- [ETL & Inference Run]   |  |
+|  |               ^                                            | (DB Write)   |  |
+|  |               | (REST Read)                                v              |  |
+|  |   +-----------+-----------+                    +-----------+-----------+  |  |
+|  |   |   API Route Handlers  |                    |      SQLAlchemy       |  |  |
+|  |   +-----------+-----------+                    +-----------+-----------+  |  |
+|  |               | (X-API-Key Secured)                        | (SQL Dialect)|  |
+|  +---------------|--------------------------------------------|---------------+  |
+|                  |                                            |                  |
+|                  |                                            v                  |
+|  +---------------|--------------------------------------------|---------------+  |
+|  |               |                                            |               |  |
+|  |               |                  DATABASE                  |               |  |
+|  |               |                                            |               |  |
+|  |               |            +-------------------+           |               |  |
+|  |               |            |   Local SQLite    |<----------+               |  |
+|  |               |            | (cryptograph.db)  | (Dev Mode)                |  |
+|  |               |            +-------------------+                           |  |
+|  |               |                                                            |  |
+|  |               |            +-------------------+                           |  |
+|  |               |            | Supabase Postgres |<----------+               |  |
+|  |               |            |  (DATABASE_URL)   | (Prod Mode)               |  |
+|  |               |            +-------------------+                           |  |
+|  |               |                                                            |  |
+|  +---------------|------------------------------------------------------------+  |
+|                  | (Secure JSON over REST / WS)                                  |
++------------------|---------------------------------------------------------------+
+                   |
+                   v
++---------------------------------------------------------------------------------+
+|                                 CLIENT LAYER                                    |
+|                                                                                 |
+|  +---------------------------------------------------------------------------+  |
+|  |                         Next.js 14 Dashboard App                          |  |
 |  |                                                                           |  |
-|  |                         +-----------------------+                         |  |
-|  |                         |   FastAPI Application |                         |  |
-|  |                         +-----------+-----------+                         |  |
-|  |                                     |                                     |  |
-|  |                                     v (LangChain / Groq API Calls)        |  |
-|  |                         +-----------+-----------+                         |  |
-|  |                         |      Groq Cloud       |                         |  |
-|  |                         | (Llama 3.3 70B Model) |                         |  |
-|  |                         +-----------------------+                         |  |
-|  +-------------------------------------|-------------------------------------+  |
-|                                        |                                        |
-|                                        | (JSON REST API Response)               |
-|                                        v                                        |
-|  +-------------------------------------+-------------------------------------+  |
-|  |                                  FRONTEND                                 |  |
-|  |                                                                           |  |
-|  |                       +---------------------------+                       |  |
-|  |                       |  Next.js 14 Dashboard App  |                       |  |
-|  |                       +---------------------------+                       |  |
+|  |     - Authenticates REST/WS queries using header X-API-Key.               |  |
+|  |     - Visualizes real-time tickers, ensembles, and consensus metrics.      |  |
+|  |     - Interactive correlation graphs & simulated paper-trading client.    |  |
 |  +---------------------------------------------------------------------------+  |
 +---------------------------------------------------------------------------------+
 ```
@@ -88,82 +76,75 @@ Below is the high-level architecture diagram illustrating the integration betwee
 
 ## 2. Service Map
 
-The microservice topography describes the boundaries and interactions between distinct runtime units:
+The topography of services shows where components run and how they interact:
 
 ```text
-                     +---------------------------------------+
-                     |         Frontend (Next.js 14)         |
-                     |  Host: Vercel                         |
-                     +-------+-----------------------+-------+
-                             |                       |
-            (Fetch REST API) |                       | (Direct Read / Auth)
-                             v                       v
-        +--------------------+----+      +-----------+-----------+
-        |     Backend (FastAPI)    |      |  Supabase Auth / DB   |
-        |  Host: Render Web Service|      |  (PostgreSQL + RLS)   |
-        +------------+-------------+      +-----------+-----------+
-                     |                                ^
-         (Query DB)  |                                | (Write snapshot/predict)
-                     v                                |
-     +---------------+---------------+                |
-     |         Supabase DB           |                |
-     |   Service Role Connection     |                |
-     +-------------------------------+                |
-                                                      |
-                                                      |
-                                           +----------+----------+
-                                           |     ML Worker       |
-                                           | Host: Render Worker |
-                                           | Run: ETL / Training |
-                                           +----------+----------+
-                                                      |
-                                                      v (API Calls)
-                                           +----------+----------+
-                                           |    External APIs    |
-                                           |  (Binance / FRED /  |
-                                           |     CoinGecko)      |
-                                           +---------------------+
+                      +---------------------------------------+
+                      |         Frontend (Next.js 14)         |
+                      |  Host: Vercel / Local Host            |
+                      +-------------------+-------------------+
+                                          |
+                                          | (Fetch REST & WS Streams)
+                                          | (X-API-Key Header Auth)
+                                          v
+                      +---------------------------------------+
+                      |            Backend (FastAPI)          |
+                      |  Host: Render / Local Uvicorn         |
+                      +-------+-----------------------+-------+
+                              |                       |
+        (Query DB via SQL)    |                       | (LangChain Prompting)
+                              v                       v
+            +-----------------+-----------------+  +--+--------------------+
+            |           SQLAlchemy              |  |      Groq Cloud       |
+            |     (SQLite OR Postgres)          |  | (Llama 3.3 70B Model) |
+            +--------+--------------------+-----+  +-----------------------+
+                     |                    |
+        (Dev Mode)   |                    | (Prod Mode)
+                     v                    v
+            +--------+-------+   +--------+-------+
+            |  Local SQLite  |   |  Supabase DB   |
+            |  (File Storage)|   |  (PostgreSQL)  |
+            +----------------+   +----------------+
 ```
 
-- **Frontend (Next.js 14)**: Served via Vercel. Communicates with Backend REST API for analytical predictions and graph states, and initializes Supabase client via `supabase-js` using the anon key.
-- **Backend API (FastAPI)**: Runs as a Dockerized web service on Render. Interacts directly with the Supabase PostgreSQL database using the `SUPABASE_SERVICE_ROLE_KEY` to retrieve predictions, graph structures, and historical OHLCV data. Talks to the external **Groq LLM** to generate natural-language explanations.
-- **ML Worker**: Runs as a background processing instance on Render. Spun up daily via cron (or manually triggered) to run the pipeline tasks: data ingestion, feature computation, model prediction, and database writes.
-- **Supabase DB**: PostgreSQL database acting as the unified storage tier for RAW data, engineered features, model evaluations, model registry records, and predictions.
+* **Frontend (Next.js 14):** Served via Vercel or locally. Communicates exclusively with the FastAPI backend via Axios and WebSocket wrappers. Requires the `X-API-Key` configured in its environment.
+* **Backend API (FastAPI):** Served via Dockerized containers or local uvicorn process. Manages WebSocket connections for client streams, provides JSON REST endpoints, and hosts the background APScheduler loop for automated ingestion.
+* **Storage Layer (SQLAlchemy):** Abstraction layer enabling unified operations. Operates on a single-file SQLite database locally, or connects directly to remote PostgreSQL (e.g. Supabase DB) when a `DATABASE_URL` is set in the environment.
+* **Groq Cloud:** LLM integration provider. Resolves plain-English analytics summaries by sending current prediction vectors and feature importance scores to LLaMA 3.3.
 
 ---
 
 ## 3. Data Flow
 
-The flow of data through the system is structured as a linear sequence of transformations:
+```mermaid
+sequenceDiagram
+    autonumber
+    participant D as Data Providers (Binance/FRED)
+    participant B as FastAPI Ingestion Daemon
+    participant DB as SQLAlchemy (SQLite/Postgres)
+    participant ML as ML Ensemble Forecaster
+    participant LLM as Groq LLaMA Swarm
+    participant F as Next.js Dashboard Client
 
-1. **Ingestion Layer**:
-   - `binance_collector.py` collects OHLCV candles daily.
-   - `fred_collector.py` collects macroeconomic indicators.
-   - `sentiment_collector.py` collects social/community metrics from CoinGecko.
-   - `fear_greed_collector.py` collects market fear-and-greed indexes.
-   - *Result*: Upserted into Supabase tables `ohlcv`, `macro_indicators`, and `sentiment`.
+    Note over B,DB: Ingestion Phase
+    D->>B: Real-time price stream & daily macro indicators
+    B->>DB: Write OHLCV and feature records
+    
+    Note over DB,ML: ML Inference Phase
+    B->>DB: Query historical feature tables
+    DB-->>B: Dataframe sequences
+    B->>ML: Run forward pass (ST-GCN -> LSTM -> Prophet)
+    ML-->>B: Prediction vectors & validation metrics
+    B->>DB: Upsert predictions into forecasts cache
 
-2. **Feature Store**:
-   - `store.py` reads raw data from Supabase, synchronizes dates, handles missing indices, and applies standard feature transforms (MACD, RSI, etc.).
-   - `validator.py` ensures strict boundary checks (no NaN values, correct intervals).
-
-3. **Feature Engineering**:
-   - Technical indicators (MACD, RSI) are processed.
-   - Price correlations are mapped.
-
-4. **Model Forward Pass (Inference/Training)**:
-   - For a sequence of past timesteps, features are fed into an ensemble of LSTM and NeuralProphet models.
-   - Predictions are computed for the next 24 hours.
-
-5. **Predictions & Explanation**:
-   - Predictions are generated for Market Direction and Volatility Regime.
-   - `explainability.py` extracts insights.
-   - Predictions and weights are upserted into the `predictions` table in Supabase (or local SQLite).
-
-6. **API Retrieval & Visualization**:
-   - The FastAPI backend queries the latest predicted state.
-   - If explainability is queried, it feeds predictions and SHAP weights to the **Groq API** to construct plain-English analytical text.
-   - Next.js fetches structured data and plots visualizations (Recharts, react-force-graph-2d).
+    Note over DB,F: Client Request Phase
+    F->>B: GET /api/v1/forecast/{symbol} with X-API-Key
+    B->>DB: Query prediction registers
+    DB-->>B: Predictions data
+    B->>LLM: Pass prediction context & SHAP attributions
+    LLM-->>B: Plain-English explanation text
+    B-->>F: JSON response (Ensembles + Explanation)
+```
 
 ---
 
@@ -171,9 +152,8 @@ The flow of data through the system is structured as a linear sequence of transf
 
 | Technology | Selected Stack | Rationale |
 | :--- | :--- | :--- |
-| **LLM Inference** | **Groq Cloud (llama-3.3-70b-versatile)** | Ultra-low latency inference engine. Utilizing LangChain integrations (`langchain-groq`), this configuration provides structured token generation for explanations without the performance bottlenecks of slower API providers. |
-| **Sentiment Data** | **CoinGecko Free API + Fear & Greed API** | Public, zero-cost data sources providing robust community indicators, public interest, and fear/greed metrics. Avoids complex OAuth credentials and rate-limiting payloads associated with Twitter/Reddit scraping. |
-| **Database** | **Supabase (PostgreSQL)** | Combines SQL relational integrity with instant API layers. Built-in Row Level Security (RLS) protects data tables, while indexing capability handles high-volume Spatio-Temporal snapshots. |
-| **ML Framework** | **PyTorch + Prophet** | Standard library for deep learning combined with Prophet for robust time-series forecasting. |
-| **Backend API** | **FastAPI** | High-performance ASGI framework with auto-generated OpenAPI documentation, fast JSON parsing, and native async support. Easily handles background tasks (async inference triggers). |
-| **Frontend UI** | **Next.js 14 (TypeScript + Tailwind CSS + shadcn/ui)** | React framework offering Server-Side Rendering (SSR) and routing. Paired with Tailwind CSS for layout styling, `shadcn/ui` for premium modern component design, and `react-force-graph-2d` for interactive network visualizations. |
+| **Database ORM** | **SQLAlchemy** | Decouples SQL code from vendor-specific engines. Enables developers to run standard, zero-dependency SQLite locally while maintaining full feature-compatibility with enterprise PostgreSQL (Supabase) in production. |
+| **In-Memory Cache** | **Redis / TTLCache** | Implements a dual-mode cache strategy. Falls back to Python-native memory TTL caches locally to optimize boot-up speed, while supporting standard Redis pools for horizontal scale-out in production. |
+| **LLM Inference** | **Groq Cloud (llama-3.3-70b-versatile)** | High-speed LLM inference provider. Translates model weight attributions into understandable trade rationale without adding user latency. |
+| **WebSocket Core** | **FastAPI WebSockets** | Pipes real-time tick changes directly from Binance streams to the frontend dashboard. Prevents layout lag and database poll spam. |
+| **Frontend UI** | **Next.js 14 (TS + Tailwind)** | Offers clean visual layouts, component optimization, and type-safety across interactive charts. |

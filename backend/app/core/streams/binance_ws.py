@@ -98,9 +98,20 @@ def populate_static_features(db: Session, symbols: List[str]):
             "confidence": pred.confidence if pred else 0.0,
             "confidence_interval": [pred.confidence_interval_lower, pred.confidence_interval_upper] if pred and pred.confidence_interval_lower is not None else None,
         }
+    try:
+        from app.core.cache import redis_set
+        redis_set("cryptograph:live:market_state", dict(GLOBAL_MARKET_STATE))
+    except Exception:
+        pass
+
 
 def get_global_market_state() -> Dict[str, Dict]:
     """Returns the Single Source of Truth market state for all tracked assets."""
+    from app.core.cache import redis_get
+    redis_val = redis_get("cryptograph:live:market_state")
+    if redis_val:
+        for k, v in redis_val.items():
+            GLOBAL_MARKET_STATE[k] = v
     return GLOBAL_MARKET_STATE
 
 def refresh_predictions_in_ssot(db: Session):
@@ -111,6 +122,7 @@ def refresh_predictions_in_ssot(db: Session):
     immediately reflect the fresh confidence scores without a server restart.
     """
     from app.db.models import Asset, Prediction
+    from app.core.cache import redis_set
     assets = db.query(Asset).all()
     for asset in assets:
         if asset.symbol not in GLOBAL_MARKET_STATE:
@@ -125,6 +137,11 @@ def refresh_predictions_in_ssot(db: Session):
                 [pred.confidence_interval_lower, pred.confidence_interval_upper]
                 if pred.confidence_interval_lower is not None else None
             )
+    try:
+        redis_set("cryptograph:live:market_state", dict(GLOBAL_MARKET_STATE))
+    except Exception:
+        pass
+
 
 async def binance_ws_loop(symbols: List[str]):
     # Build list of streams mapped to Binance and exclude delisted ones
@@ -190,7 +207,13 @@ async def binance_ws_loop(symbols: List[str]):
                 circ_supply = GLOBAL_MARKET_STATE["XMR"].get("circulating_supply", 0)
                 if circ_supply > 0:
                     GLOBAL_MARKET_STATE["XMR"]["market_cap_usd"] = circ_supply * xmr_price
+                try:
+                    from app.core.cache import redis_set
+                    redis_set("cryptograph:live:market_state", dict(GLOBAL_MARKET_STATE))
+                except Exception:
+                    pass
             else:
+
                 # Both real sources failed. Freeze the price.
                 logger.info("[XMR Price] All sources failed this cycle — holding last known price.")
                 if "XMR" in GLOBAL_MARKET_STATE:
@@ -318,6 +341,12 @@ async def binance_ws_loop(symbols: List[str]):
                                     cache_list.pop(0)
                             
                             LIVE_OHLCV_CACHE[asset_symbol] = cache_list
+                            try:
+                                from app.core.cache import redis_set
+                                cache_list_serializable = [{**item, "timestamp": item["timestamp"].isoformat() if hasattr(item["timestamp"], "isoformat") else str(item["timestamp"])} for item in cache_list]
+                                redis_set(f"cryptograph:live:ohlcv:{asset_symbol}", cache_list_serializable)
+                            except Exception:
+                                pass
                             
                         elif data["e"] == "24hrTicker":
                             if asset_symbol in GLOBAL_MARKET_STATE:
@@ -337,6 +366,12 @@ async def binance_ws_loop(symbols: List[str]):
                                 GLOBAL_MARKET_STATE[asset_symbol]["price_change_24h_pct"] = float(data["P"])
                                 GLOBAL_MARKET_STATE[asset_symbol]["market_cap_usd"] = current_mcap
                                 GLOBAL_MARKET_STATE[asset_symbol]["updated_at"] = datetime.now(timezone.utc).isoformat()
+                                try:
+                                    from app.core.cache import redis_set
+                                    redis_set("cryptograph:live:market_state", dict(GLOBAL_MARKET_STATE))
+                                except Exception:
+                                    pass
+
         except Exception as e:
             logger.error(f"[BinanceWS] Connection error: {e}. Engaging fallback layer...")
             # Trigger Fallback layer to keep UI responsive
@@ -350,6 +385,11 @@ async def binance_ws_loop(symbols: List[str]):
                     if fallback_price > 0:
                         GLOBAL_MARKET_STATE["BTC"]["current_price"] = fallback_price
                         logger.info(f"Fallback successful: BTC price updated to {fallback_price}")
+                        try:
+                            from app.core.cache import redis_set
+                            redis_set("cryptograph:live:market_state", dict(GLOBAL_MARKET_STATE))
+                        except Exception:
+                            pass
             finally:
                 db.close()
             
@@ -360,13 +400,34 @@ async def binance_ws_loop(symbols: List[str]):
 
 def get_latest_features() -> Dict[str, pd.DataFrame]:
     """Returns the latest 60-min window as pandas DataFrames per symbol, merged with static features."""
+    from app.core.cache import redis_get
     features = {}
-    for sym, cache_list in LIVE_OHLCV_CACHE.items():
+    
+    symbols_to_check = list(LIVE_OHLCV_CACHE.keys())
+    if not symbols_to_check:
+        try:
+            from app.api.routes.stream import SYMBOLS
+            symbols_to_check = SYMBOLS
+        except Exception:
+            symbols_to_check = ["BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", "AVAX", "LINK", "XMR"]
+            
+    for sym in symbols_to_check:
+        cache_list = None
+        try:
+            cache_list = redis_get(f"cryptograph:live:ohlcv:{sym}")
+        except Exception:
+            pass
+            
+        if not cache_list:
+            cache_list = LIVE_OHLCV_CACHE.get(sym, [])
+            
         if not cache_list:
             continue
             
         df = pd.DataFrame(cache_list)
+        df["timestamp"] = pd.to_datetime(df["timestamp"])
         df.set_index("timestamp", inplace=True)
+        df.sort_index(inplace=True)
         
         static_data = STATIC_FEATURES_CACHE.get(sym, {})
         for col, val in static_data.items():
@@ -374,3 +435,4 @@ def get_latest_features() -> Dict[str, pd.DataFrame]:
             
         features[sym] = df
     return features
+

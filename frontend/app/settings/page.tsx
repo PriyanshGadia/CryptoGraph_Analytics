@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { apiService } from "@/lib/api";
 import axios from "axios";
-import { Settings, Key, Save, CheckCircle, AlertCircle, RefreshCcw, Zap, Database, Radio, Globe, Activity } from "lucide-react";
+import { Settings, Key, Save, CheckCircle, AlertCircle, RefreshCcw, Zap, Database, Radio, Globe, Activity, HelpCircle } from "lucide-react";
 import { useCurrency, CURRENCY_SYMBOLS, Currency } from "@/components/CurrencyContext";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { usePerformanceMode } from "@/lib/usePerformanceMode";
@@ -224,6 +224,29 @@ export default function SettingsPage() {
               Lite
             </button>
           </div>
+        </div>
+      </GlassCard>
+
+      {/* Onboarding Tour Reset Section */}
+      <GlassCard tier={2} shape="none" className="rounded-xl p-8 relative z-10 overflow-hidden">
+        <div className="absolute top-0 right-0 w-1 bg-gradient-to-b from-accent to-transparent h-full" />
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+          <div>
+            <h2 className="text-xl font-black text-text flex items-center gap-3 mb-2 tracking-tight">
+              <HelpCircle className="text-accent" size={24} /> Guided Platform Tour
+            </h2>
+            <p className="text-text-muted text-sm font-light">Need a refresher on how the topological model, neural technical screeners, or simulated swarm portfolios work? Re-launch the interactive tour.</p>
+          </div>
+          
+          <button
+            onClick={() => {
+              localStorage.removeItem("cryptograph-onboarding-completed");
+              window.dispatchEvent(new CustomEvent("trigger-onboarding-tour"));
+            }}
+            className="flex items-center gap-3 bg-accent/15 hover:bg-accent/25 text-accent font-black py-3 px-8 rounded-sm border border-accent/30 transition-all uppercase tracking-widest text-xs shadow-[0_0_15px_rgba(var(--accent),0.1)] hover:shadow-[0_0_25px_rgba(var(--accent),0.2)] whitespace-nowrap"
+          >
+            Launch Tour
+          </button>
         </div>
       </GlassCard>
 

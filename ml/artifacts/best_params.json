@@ -1,0 +1,9 @@
+{
+    "hidden_dim": 16,
+    "gat_heads_1": 1,
+    "transformer_layers": 2,
+    "dropout": 0.17971690951176728,
+    "learning_rate": 0.0009689751755650795,
+    "lookback_window": 21,
+    "focal_gamma": 1.9452716971279271
+}

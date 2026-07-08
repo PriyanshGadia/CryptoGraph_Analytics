@@ -16,11 +16,11 @@ from app.api.routes import (
     assets, graph, explain,
     forecast, status, coins, performance,
     correlations, sentiment_data, screener, settings as app_settings_route,
-    portfolio, stream, predictions, risk, scheduler
+    portfolio, stream, predictions, risk, scheduler, auth
 )
 from app.db.database import SessionLocal
 from app.db.models import AppSetting
-from app.api.routes.forecast import limiter
+from app.core.limiter import limiter
 
 import logging
 import asyncio
@@ -264,7 +264,10 @@ frontend_origin = get_setting("FRONTEND_URL")
 if insecure_cors and settings.environment == "development":
     dynamic_origins = ["*"]
 else:
-    dynamic_origins = [frontend_origin] if frontend_origin else ["http://localhost:3000"]
+    if frontend_origin:
+        dynamic_origins = [origin.strip() for origin in frontend_origin.split(",") if origin.strip()]
+    else:
+        dynamic_origins = ["http://localhost:3000"]
 
 # Initialize CORS Middleware at module creation
 app.add_middleware(
@@ -287,6 +290,7 @@ from fastapi import Depends
 from app.api.deps import verify_api_key
 
 # Register routers with global authentication
+app.include_router(auth.router,        prefix="/api/v1")
 app.include_router(assets.router,      prefix="/api/v1", dependencies=[Depends(verify_api_key)])
 app.include_router(graph.router,       prefix="/api/v1", dependencies=[Depends(verify_api_key)])
 app.include_router(explain.router,     prefix="/api/v1", dependencies=[Depends(verify_api_key)])
@@ -323,3 +327,56 @@ async def health():
         db_status = "unhealthy"
         
     return {"status": "ok", "db": db_status, "timestamp": datetime.now(timezone.utc).isoformat()}
+
+
+from fastapi import HTTPException
+
+@app.get("/readiness")
+async def readiness():
+    """Readiness check endpoint verifying database and Redis connectivity."""
+    from datetime import datetime, timezone
+    from sqlalchemy import text
+    from app.core.cache import redis_client
+    
+    db_status = "healthy"
+    redis_status = "healthy"
+    
+    try:
+        db = SessionLocal()
+        db.execute(text("SELECT 1"))
+        db.close()
+    except Exception as e:
+        logger.error(f"Readiness DB health check failed: {e}")
+        db_status = "unhealthy"
+        
+    redis_url = os.getenv("REDIS_URL")
+    if redis_url:
+        try:
+            if redis_client:
+                redis_client.ping()
+            else:
+                redis_status = "unhealthy"
+        except Exception as e:
+            logger.error(f"Readiness Redis health check failed: {e}")
+            redis_status = "unhealthy"
+    else:
+        redis_status = "disabled"
+        
+    if db_status == "unhealthy" or redis_status == "unhealthy":
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "status": "not_ready",
+                "db": db_status,
+                "redis": redis_status,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
+        
+    return {
+        "status": "ready",
+        "db": db_status,
+        "redis": redis_status,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
