@@ -101,8 +101,24 @@ class FeatureStore:
         """Fetch OHLCV data from yfinance and compute all 24 features synthetically."""
         try:
             import yfinance as yf
+            import numpy as np
         except ImportError:
             raise ImportError("yfinance is required for fallback data loading. Install with: pip install yfinance")
+
+        # Self-healing upgrade for yfinance if we detect it's outdated or returns NaNs (common on Kaggle)
+        test_ticker = f"{assets[0]}-USD" if assets else "BTC-USD"
+        try:
+            test_df = yf.download(test_ticker, period="5d", progress=False, auto_adjust=True)
+            if not test_df.empty and np.all(pd.isna(test_df.values)):
+                print("[FeatureStore] WARNING: yfinance returned all NaN values. Attempting automatic self-healing upgrade...")
+                import subprocess
+                import sys
+                subprocess.run([sys.executable, "-m", "pip", "install", "-U", "yfinance"], capture_output=True)
+                import importlib
+                importlib.reload(yf)
+                print("[FeatureStore] yfinance upgraded successfully. Retrying download...")
+        except Exception as e:
+            print(f"[FeatureStore] yfinance diagnostic check failed: {e}. Proceeding anyway...")
 
         print(f"[FeatureStore] Fetching {len(assets)} assets from yfinance ({start_date} to {end_date})...")
         out: Dict[str, pd.DataFrame] = {}
@@ -120,6 +136,10 @@ class FeatureStore:
                 # Handle multi-level columns from yfinance
                 if isinstance(df_raw.columns, pd.MultiIndex):
                     df_raw.columns = df_raw.columns.get_level_values(0)
+
+                if "Close" not in df_raw.columns or df_raw["Close"].isnull().all():
+                    print(f"  [yfinance] {symbol}: FAILED (Download returned NaN or missing Close price)")
+                    continue
 
                 df = pd.DataFrame(index=df_raw.index)
                 df.index = pd.to_datetime(df.index, utc=True)
