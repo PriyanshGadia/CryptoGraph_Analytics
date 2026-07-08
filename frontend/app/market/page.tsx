@@ -48,7 +48,7 @@ export default function MarketPage() {
   useEffect(() => {
       if (!initialAssets || initialAssets.length === 0) return;
 
-      const ws = new WebSocket(`${WS_BASE}/api/stream/market?api_key=${process.env.NEXT_PUBLIC_API_KEY}`);
+      const ws = new WebSocket(`${WS_BASE}/api/v1/stream/market?api_key=${process.env.NEXT_PUBLIC_API_KEY}`);
       ws.onmessage = (event) => {
           try {
               const msg = JSON.parse(event.data);
