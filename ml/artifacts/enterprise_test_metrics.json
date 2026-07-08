@@ -1,0 +1,14 @@
+{
+  "test_rmse": 17.18797673344519,
+  "test_mae": 8.36343765258789,
+  "test_r2": -0.28742825984954834,
+  "test_coverage_95": 0.5625,
+  "test_mean_var": 3.0705108642578125,
+  "test_n_valid_targets": 16,
+  "ensemble_test_rmse": 17.192512585822698,
+  "ensemble_test_mae": 8.387856483459473,
+  "ensemble_test_r2": -0.2881077527999878,
+  "ensemble_test_coverage_95": 0.5,
+  "ensemble_test_mean_var": 3.150780200958252,
+  "ensemble_test_n_valid_targets": 16
+}
