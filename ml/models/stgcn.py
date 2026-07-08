@@ -110,7 +110,7 @@ class STGCNModel(nn.Module):
     @classmethod
     def load(cls, path: str, map_location: str = "cpu") -> "STGCNModel":
         """Load model from saved checkpoint."""
-        checkpoint = torch.load(path, map_location=map_location, weights_only=True)
+        checkpoint = torch.load(path, map_location=map_location, weights_only=False)
         model = cls(**checkpoint["config"])
         model.load_state_dict(checkpoint["model_state_dict"])
         return model

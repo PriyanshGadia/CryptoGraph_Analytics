@@ -88,7 +88,7 @@ def _get_model_version(model_path: Path) -> str:
     """Extract a version string from the checkpoint, falling back to the
     file modification timestamp."""
     try:
-        ckpt = torch.load(model_path, map_location="cpu", weights_only=True)
+        ckpt = torch.load(model_path, map_location="cpu", weights_only=False)
         cfg = ckpt.get("config", {})
         return cfg.get("version", model_path.stem)
     except Exception:
