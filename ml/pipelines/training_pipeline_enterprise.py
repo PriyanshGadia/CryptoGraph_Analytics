@@ -446,7 +446,7 @@ class EnterpriseTrainer:
         if is_distributed:
             raw = nn.SyncBatchNorm.convert_sync_batchnorm(raw)
         self.model = DDP(raw, device_ids=[device.index] if device.type == "cuda" else None,
-                          find_unused_parameters=False) if is_distributed else raw
+                          find_unused_parameters=True) if is_distributed else raw
 
         self.train_loader = train_loader
         self.val_loader = val_loader
