@@ -145,6 +145,11 @@ class FeatureStore:
                 if isinstance(df_raw.columns, pd.MultiIndex):
                     df_raw.columns = df_raw.columns.get_level_values(0)
 
+                print(f"  [yfinance debug] {symbol}: df_raw shape={df_raw.shape}, columns={list(df_raw.columns)}")
+                if "Close" in df_raw.columns:
+                    cvals = df_raw["Close"].values.astype(float)
+                    print(f"  [yfinance debug] {symbol}: Close head={df_raw['Close'].head().values.tolist()}, isnan_all={np.all(np.isnan(cvals))}, std={np.nanstd(cvals)}")
+
                 close_vals = df_raw["Close"].values.astype(float)
                 if "Close" not in df_raw.columns or len(close_vals) < 5 or np.all(np.isnan(close_vals)) or np.nanstd(close_vals) < 1e-6:
                     print(f"  [yfinance] {symbol}: FAILED (Download returned constant, NaN, or insufficient Close prices)")
