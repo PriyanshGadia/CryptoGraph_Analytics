@@ -158,12 +158,12 @@ class FeatureStore:
                 df = pd.DataFrame(index=df_raw.index)
                 df.index = pd.to_datetime(df.index, utc=True)
 
-                # Core OHLCV
-                df["open"] = df_raw["Open"].astype(float)
-                df["high"] = df_raw["High"].astype(float)
-                df["low"] = df_raw["Low"].astype(float)
-                df["close"] = df_raw["Close"].astype(float)
-                df["volume"] = df_raw["Volume"].astype(float)
+                # Core OHLCV - use .values to bypass index alignment issues!
+                df["open"] = df_raw["Open"].values.astype(float)
+                df["high"] = df_raw["High"].values.astype(float)
+                df["low"] = df_raw["Low"].values.astype(float)
+                df["close"] = df_raw["Close"].values.astype(float)
+                df["volume"] = df_raw["Volume"].values.astype(float)
 
                 # Technical indicators computed from OHLCV
                 close = df["close"]
