@@ -199,12 +199,20 @@ class TrainingConfig:
 
     batch_size: int = 16                 # per-GPU; global = batch_size * world_size under DDP
     max_epochs: int = 200
-    learning_rate: float = 1e-3
+    learning_rate: float = 5e-4
     weight_decay: float = 1e-4
     warmup_epochs: int = 10
     grad_clip: float = 1.0
     early_stopping_patience: int = 25
-    log_var_clip: float = 7.0
+    # Tight clip prevents the degenerate NLL collapse where log_var → -clip gives
+    # loss = -clip/2, making zero-prediction with max-confidence a free optimum.
+    log_var_clip: float = 2.0
+    # Entropy regularization: penalizes log_var → -clip (over-confident degenerate).
+    # loss += entropy_beta * (-log_var).clamp(min=0).mean()
+    entropy_beta: float = 0.05
+    # Normalize targets to unit std per asset so zero-prediction is NOT a free win.
+    normalize_targets: bool = True
+    target_norm_window: int = 60     # rolling window (days) for std normalization
 
     ensemble_size: int = 5
     mc_dropout_samples: int = 30
@@ -602,7 +610,13 @@ class EnterpriseTrainer:
         precision = torch.exp(-log_var)
         per_node = 0.5 * precision * (pred - target) ** 2 + 0.5 * log_var
         denom = mask.sum().clamp_min(1.0)
-        return (per_node * mask).sum() / denom
+        nll_loss = (per_node * mask).sum() / denom
+        # Entropy regularization: penalizes over-confident degenerate solution
+        # (log_var → -clip means precision → exp(clip) → model outputs near-zero
+        # predictions with arbitrarily high certainty, which minimises NLL trivially).
+        # The penalty = beta * mean(relu(-log_var)) discourages log_var << 0.
+        entropy_reg = self.config.entropy_beta * F.relu(-log_var[mask.bool()]).mean() if mask.any() else 0.0
+        return nll_loss + entropy_reg
 
     def _forward_backward(self, sequences, targets, masks) -> Tuple[float, float]:
         sequences_dev = [[g.to(self.device, non_blocking=True) for g in seq] for seq in sequences]
@@ -963,6 +977,8 @@ def _cache_key(symbols: List[str], config: TrainingConfig) -> str:
         "symbols": sorted(symbols), "history_days": config.history_days,
         "feature_dim": config.feature_dim, "target_col": config.target_col,
         "max_missing_frac": config.max_missing_frac,
+        "normalize_targets": config.normalize_targets,
+        "target_norm_window": config.target_norm_window,
     }, sort_keys=True)
     return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
@@ -993,6 +1009,66 @@ def _log_windowing_safety(config: TrainingConfig) -> None:
     log(f"Leakage check: target_col='{config.target_col}' is a graph_builder node "
         f"feature, but forecast_horizon={config.forecast_horizon} >= 1 guarantees "
         f"the input window excludes the target day. No leakage.")
+
+
+def _normalize_targets(
+    raw_targets: List[torch.Tensor],
+    masks: List[torch.Tensor],
+    graph_dates: List[datetime],
+    proc_features: Dict[str, pd.DataFrame],
+    available_symbols: List[str],
+    config: "TrainingConfig",
+) -> Tuple[List[torch.Tensor], Dict[str, float]]:
+    """
+    Normalize each asset's target series by its rolling std so that zero-prediction
+    is no longer a free win for the Gaussian NLL loss.
+
+    Without this, daily returns are ~0.01-0.03 in magnitude, so a model that always
+    predicts 0 achieves RMSE≈0.001 while R²=0 — an apparent training success that
+    is actually a degenerate constant predictor.
+
+    Returns normalized targets and a dict of per-symbol scale factors (for
+    de-normalization at inference/evaluation time).
+    """
+    W = config.target_norm_window
+    # Compute per-symbol rolling std using available returns BEFORE the graph dates
+    scale_map: Dict[str, float] = {}
+    per_sym_stds: Dict[str, List[float]] = {s: [] for s in available_symbols}
+
+    for sym in available_symbols:
+        df = proc_features[sym]
+        if config.target_col not in df.columns:
+            per_sym_stds[sym] = [1.0] * len(graph_dates)
+            scale_map[sym] = 1.0
+            continue
+        rolling_std = df[config.target_col].rolling(window=W, min_periods=max(5, W // 4)).std()
+        # Build a date → rolling_std lookup
+        std_by_date = rolling_std.to_dict()
+        sym_stds = []
+        for d in graph_dates:
+            s = std_by_date.get(d, np.nan)
+            sym_stds.append(float(s) if not pd.isna(s) and s > 1e-8 else np.nan)
+        # Forward-fill from the first valid value
+        last_valid = 1.0
+        filled = []
+        for s in sym_stds:
+            if not np.isnan(s):
+                last_valid = s
+            filled.append(last_valid)
+        per_sym_stds[sym] = filled
+        scale_map[sym] = float(np.nanmedian(sym_stds)) if not all(np.isnan(sym_stds)) else 1.0
+
+    # Normalize tensors
+    normalized = []
+    for i, (ret_t, mask_t) in enumerate(zip(raw_targets, masks)):
+        normed = ret_t.clone()
+        for j, sym in enumerate(available_symbols):
+            std_val = per_sym_stds[sym][i]
+            if std_val > 1e-8 and mask_t[j] > 0:
+                normed[j] = ret_t[j] / std_val
+        normalized.append(normed)
+
+    return normalized, scale_map
 
 
 def _build_dataset_from_scratch(config: TrainingConfig, symbols: List[str]):
@@ -1065,7 +1141,17 @@ def _build_dataset_from_scratch(config: TrainingConfig, symbols: List[str]):
         target_returns.append(torch.tensor(returns, dtype=torch.float32))
         target_masks.append(torch.tensor(mask, dtype=torch.float32))
 
-    return all_graphs, target_returns, target_masks, graph_dates, available_symbols
+    # Normalize targets: without this, daily returns (~0.01) make zero-prediction
+    # nearly optimal for RMSE, letting the model avoid learning anything real.
+    scale_map = {}
+    if config.normalize_targets:
+        target_returns, scale_map = _normalize_targets(
+            target_returns, target_masks, graph_dates, proc_features, available_symbols, config
+        )
+        scale_stats = {s: f"{v:.4f}" for s, v in scale_map.items()}
+        log(f"Target normalization scales (median daily return std): {scale_stats}")
+
+    return all_graphs, target_returns, target_masks, graph_dates, available_symbols, scale_map
 
 
 def load_data(config: TrainingConfig, symbols: List[str], rank: int, is_distributed: bool):
@@ -1108,7 +1194,6 @@ def load_data(config: TrainingConfig, symbols: List[str], rank: int, is_distribu
         except Exception as e:
             log(f"Could not write cache: {e}")
     return result
-
 # ============================================================================
 # 10. RESUME DISCOVERY
 # ============================================================================
@@ -1177,8 +1262,12 @@ def main():
             symbols = ["BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE"]
         log(f"Assets: {symbols}")
 
-        all_graphs, target_returns, target_masks, graph_dates, available_symbols = \
+        all_graphs, target_returns, target_masks, graph_dates, available_symbols, scale_map = \
             load_data(config, symbols, rank, is_distributed)
+        if rank == 0 and scale_map:
+            with open(run_dir / "target_scale_map.json", "w") as f:
+                json.dump(scale_map, f, indent=2)
+            log(f"Target scale map saved (use this to de-normalize predictions at inference time).")
 
         min_required = config.lookback_days + config.forecast_horizon + 10
         if len(all_graphs) < min_required:
