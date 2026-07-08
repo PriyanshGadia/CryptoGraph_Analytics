@@ -109,14 +109,22 @@ class FeatureStore:
         test_ticker = f"{assets[0]}-USD" if assets else "BTC-USD"
         try:
             test_df = yf.download(test_ticker, period="5d", progress=False, auto_adjust=True)
-            if not test_df.empty and np.all(pd.isna(test_df.values)):
-                print("[FeatureStore] WARNING: yfinance returned all NaN values. Attempting automatic self-healing upgrade...")
-                import subprocess
-                import sys
-                subprocess.run([sys.executable, "-m", "pip", "install", "-U", "yfinance"], capture_output=True)
-                import importlib
-                importlib.reload(yf)
-                print("[FeatureStore] yfinance upgraded successfully. Retrying download...")
+            if not test_df.empty:
+                if isinstance(test_df.columns, pd.MultiIndex):
+                    test_df.columns = test_df.columns.get_level_values(0)
+                is_invalid = (
+                    "Close" not in test_df.columns or 
+                    np.any(pd.isna(test_df["Close"].values)) or 
+                    np.nanstd(test_df["Close"].values.astype(float)) < 1e-6
+                )
+                if is_invalid:
+                    print("[FeatureStore] WARNING: yfinance returned invalid, constant, or NaN Close prices. Attempting automatic self-healing upgrade...")
+                    import subprocess
+                    import sys
+                    subprocess.run([sys.executable, "-m", "pip", "install", "-U", "yfinance"], capture_output=True)
+                    import importlib
+                    importlib.reload(yf)
+                    print("[FeatureStore] yfinance upgraded successfully. Retrying download...")
         except Exception as e:
             print(f"[FeatureStore] yfinance diagnostic check failed: {e}. Proceeding anyway...")
 
