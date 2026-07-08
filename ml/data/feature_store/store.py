@@ -77,8 +77,173 @@ class FeatureStore:
         Returns dict mapping asset symbol → DataFrame with exactly `expected_features`
         feature columns matching STGCNModel(in_features=expected_features).
 
-        Uses batched SQL queries — one per table — to avoid N+1.
+        Tries SQLite database first. If the database or required tables don't exist,
+        falls back to fetching data from yfinance (public API).
         """
+        # Try database first
+        try:
+            result = self._load_from_db(start_date, end_date, assets, expected_features)
+            if result:
+                return result
+        except (sqlite3.OperationalError, FileNotFoundError, Exception) as e:
+            print(f"[FeatureStore] Database load failed ({e}); falling back to yfinance...")
+
+        # Fallback: fetch from yfinance
+        return self._load_from_yfinance(start_date, end_date, assets, expected_features)
+
+    def _load_from_yfinance(
+        self,
+        start_date: str,
+        end_date: str,
+        assets: List[str],
+        expected_features: int = 24
+    ) -> Dict[str, pd.DataFrame]:
+        """Fetch OHLCV data from yfinance and compute all 24 features synthetically."""
+        try:
+            import yfinance as yf
+        except ImportError:
+            raise ImportError("yfinance is required for fallback data loading. Install with: pip install yfinance")
+
+        print(f"[FeatureStore] Fetching {len(assets)} assets from yfinance ({start_date} to {end_date})...")
+        out: Dict[str, pd.DataFrame] = {}
+
+        # Map crypto symbols to yfinance tickers
+        yf_map = {s: f"{s}-USD" for s in assets}
+
+        for symbol in assets:
+            ticker = yf_map[symbol]
+            try:
+                df_raw = yf.download(ticker, start=start_date, end=end_date, progress=False, auto_adjust=True)
+                if df_raw.empty:
+                    continue
+
+                # Handle multi-level columns from yfinance
+                if isinstance(df_raw.columns, pd.MultiIndex):
+                    df_raw.columns = df_raw.columns.get_level_values(0)
+
+                df = pd.DataFrame(index=df_raw.index)
+                df.index = pd.to_datetime(df.index, utc=True)
+
+                # Core OHLCV
+                df["open"] = df_raw["Open"].astype(float)
+                df["high"] = df_raw["High"].astype(float)
+                df["low"] = df_raw["Low"].astype(float)
+                df["close"] = df_raw["Close"].astype(float)
+                df["volume"] = df_raw["Volume"].astype(float)
+
+                # Technical indicators computed from OHLCV
+                close = df["close"]
+                high = df["high"]
+                low = df["low"]
+
+                # RSI-14
+                delta = close.diff()
+                gain = delta.where(delta > 0, 0.0).rolling(14).mean()
+                loss = (-delta.where(delta < 0, 0.0)).rolling(14).mean()
+                rs = gain / (loss + 1e-10)
+                df["rsi_14"] = (100.0 - 100.0 / (1.0 + rs)).clip(0, 100)
+
+                # MACD
+                ema12 = close.ewm(span=12, adjust=False).mean()
+                ema26 = close.ewm(span=26, adjust=False).mean()
+                df["macd"] = ema12 - ema26
+                df["macd_signal"] = df["macd"].ewm(span=9, adjust=False).mean()
+
+                # ATR-14
+                tr = pd.concat([
+                    high - low,
+                    (high - close.shift(1)).abs(),
+                    (low - close.shift(1)).abs()
+                ], axis=1).max(axis=1)
+                df["atr_14"] = tr.rolling(14).mean()
+
+                # Bollinger Band Width
+                sma20 = close.rolling(20).mean()
+                std20 = close.rolling(20).std()
+                upper_bb = sma20 + 2 * std20
+                lower_bb = sma20 - 2 * std20
+                df["bb_width"] = (upper_bb - lower_bb) / (sma20 + 1e-10)
+
+                # Returns
+                df["returns_1d"] = close.pct_change(1)
+                df["returns_7d"] = close.pct_change(7)
+                df["volatility_7d"] = df["returns_1d"].rolling(7).std()
+
+                # Sentiment placeholders (no API available on Kaggle)
+                df["sentiment_score"] = 0.0
+                df["fear_greed_norm"] = 0.5
+                df["community_score"] = 0.0
+                df["public_interest"] = 0.0
+                df["sentiment_rolling_3d"] = 0.0
+                df["sentiment_momentum"] = 0.0
+
+                # Market cap estimate (price * circulating supply proxy)
+                df["market_cap_usd"] = close * df["volume"].rolling(30).mean()
+
+                # Macro placeholders
+                df["fed_rate"] = 5.25
+                df["cpi"] = 3.0
+                df["inflation"] = 2.5
+                df["vix"] = 15.0
+
+                if expected_features == 27:
+                    df["tvl"] = 0.0
+                    df["revenue"] = 0.0
+                    df["active_users"] = 0.0
+
+                # Fill NaNs with neutral defaults
+                fill_values = {
+                    "rsi_14": 50.0, "fear_greed_norm": 0.5, "sentiment_score": 0.0,
+                    "sentiment_rolling_3d": 0.0, "sentiment_momentum": 0.0,
+                    "fed_rate": 5.25, "cpi": 3.0, "inflation": 2.5, "vix": 15.0,
+                    "returns_1d": 0.0, "returns_7d": 0.0, "volatility_7d": 0.0
+                }
+                df = df.interpolate(method='linear', limit_direction='both').fillna(0.0)
+                for col, val in fill_values.items():
+                    if col in df.columns:
+                        df[col] = df[col].fillna(val)
+
+                expected_cols = [
+                    "open", "high", "low", "close", "volume",
+                    "rsi_14", "macd", "macd_signal", "atr_14", "bb_width",
+                    "returns_1d", "returns_7d", "volatility_7d",
+                    "sentiment_score", "fear_greed_norm", "community_score",
+                    "public_interest", "sentiment_rolling_3d", "sentiment_momentum",
+                    "market_cap_usd",
+                    "fed_rate", "cpi", "inflation", "vix"
+                ]
+                if expected_features == 27:
+                    expected_cols.extend(["tvl", "revenue", "active_users"])
+
+                for col in expected_cols:
+                    if col not in df.columns:
+                        df[col] = 0.0
+
+                df = df[expected_cols].astype(float)
+                df = df.reset_index().rename(columns={"Date": "timestamp", "index": "timestamp"})
+                # Ensure timestamp column exists
+                if "timestamp" not in df.columns:
+                    df = df.reset_index()
+                    df.columns = ["timestamp"] + list(df.columns[1:])
+
+                out[symbol] = df
+                print(f"  [yfinance] {symbol}: {len(df)} rows loaded")
+
+            except Exception as e:
+                print(f"  [yfinance] {symbol}: FAILED ({e})")
+                continue
+
+        print(f"[FeatureStore] yfinance fallback loaded {len(out)} assets.")
+        return out
+
+    def _load_from_db(
+        self,
+        start_date: str,
+        end_date: str,
+        assets: List[str],
+        expected_features: int = 24
+    ) -> Dict[str, pd.DataFrame]:
+        """Load features from SQLite database. Raises on missing tables."""
         conn = self._conn()
         out: Dict[str, pd.DataFrame] = {}
 
@@ -133,7 +298,7 @@ class FeatureStore:
             except sqlite3.OperationalError:
                 tech_df = pd.DataFrame()
 
-            # ----- 5. Sentiment (batched, now includes the two missing cols) -----
+            # ----- 5. Sentiment (batched) -----
             try:
                 sent_rows = conn.execute(
                     f"SELECT asset_id, timestamp, sentiment_score, fear_greed_norm, "
