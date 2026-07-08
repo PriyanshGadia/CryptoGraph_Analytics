@@ -1,6 +1,12 @@
 """Crypto Ensemble Forecaster API — main application entry point. Trigger reload."""
 
 import os
+import sys
+# Add backend dir
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add project root for the ml/ package
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
@@ -293,7 +299,7 @@ app.include_router(sentiment_data.router,prefix="/api/v1", dependencies=[Depends
 app.include_router(screener.router,    prefix="/api/v1", dependencies=[Depends(verify_api_key)])
 app.include_router(app_settings_route.router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
 app.include_router(portfolio.router,   prefix="/api/v1", dependencies=[Depends(verify_api_key)])
-app.include_router(stream.router,      prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+app.include_router(stream.router,      prefix="/api/v1")
 app.include_router(predictions.router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
 app.include_router(risk.router,        prefix="/api/v1", dependencies=[Depends(verify_api_key)])
 app.include_router(scheduler.router,   prefix="/api/v1", dependencies=[Depends(verify_api_key)])

@@ -8,7 +8,7 @@ import { AreaChart, Area, ComposedChart, Line, Bar, XAxis, YAxis, Tooltip as Rec
 import { ChevronRight, RefreshCw, Maximize, Minimize, Brain, Layers, Activity, ActivitySquare, ShieldAlert, CircleDot, Info, TrendingUp, TrendingDown } from "lucide-react";
 import Link from "next/link";
 import useSWR from "swr";
-import { fetcher } from "@/lib/api";
+import { fetcher, api } from "@/lib/api";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { DirectionBadge } from "@/components/ui/DirectionBadge";
 
@@ -102,18 +102,18 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
   const volumeSeriesRef = useRef<any>(null);
   
   // Data fetching
-  const { data: ohlcv, mutate: mutateOhlcv } = useSWR(`${BASE}/api/coins/${symbol}/ohlcv?interval=${interval}`, fetcher);
-  const { data: history } = useSWR(`${BASE}/api/coins/${symbol}/prediction-history`, fetcher);
-  const { data: correlations } = useSWR(`${BASE}/api/coins/${symbol}/correlations`, fetcher);
-  const { data: sentiment } = useSWR(`${BASE}/api/coins/${symbol}/sentiment-history`, fetcher);
+  const { data: ohlcv, mutate: mutateOhlcv } = useSWR(`${BASE}/api/v1/coins/${symbol}/ohlcv?interval=${interval}`, fetcher);
+  const { data: history } = useSWR(`${BASE}/api/v1/coins/${symbol}/prediction-history`, fetcher);
+  const { data: correlations } = useSWR(`${BASE}/api/v1/coins/${symbol}/correlations`, fetcher);
+  const { data: sentiment } = useSWR(`${BASE}/api/v1/coins/${symbol}/sentiment-history`, fetcher);
   
-  const { data: assetsData } = useSWR(`${BASE}/api/assets`, fetcher);
+  const { data: assetsData } = useSWR(`${BASE}/api/v1/assets`, fetcher);
   const asset = assetsData?.find((a: any) => a.symbol.toUpperCase() === symbol);
 
   const handleForceSync = async () => {
     setSyncing(true);
     try {
-      await fetch(`${BASE}/api/screener/refresh`, { method: "POST" });
+      await api.post(`/api/v1/screener/refresh`);
       await mutateOhlcv();
     } finally {
       setSyncing(false);

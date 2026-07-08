@@ -48,7 +48,7 @@ export default function PerformancePage() {
   const [days, setDays] = useState(30);
   const [search, setSearch] = useState("");
   const [showAll, setShowAll] = useState(false);
-  const { data, isLoading } = useSWR(`${BASE}/api/performance?days=${days}`, fetcher);
+  const { data, isLoading } = useSWR(`${BASE}/api/v1/performance?days=${days}`, fetcher);
 
   useEffect(() => setMounted(true), []);
 

@@ -101,9 +101,9 @@ export default function CorrelationsPage() {
   // Hover state
   const [hoveredCell, setHoveredCell] = useState<{i: number, j: number, val: number, symA: string, symB: string} | null>(null);
 
-  const { data: matrixData, isLoading: matrixLoading } = useSWR(`${BASE}/api/correlations/matrix?days=${days}&basis=${basis}`, fetcher, { refreshInterval: 300000 });
-  const { data: sectorData, isLoading: sectorLoading } = useSWR(`${BASE}/api/correlations/sector-average?days=${days}&basis=${basis}`, fetcher, { refreshInterval: 300000 });
-  const { data: assetsData } = useSWR(`${BASE}/api/assets`, fetcher, { refreshInterval: 300000 });
+  const { data: matrixData, isLoading: matrixLoading } = useSWR(`${BASE}/api/v1/correlations/matrix?days=${days}&basis=${basis}`, fetcher, { refreshInterval: 300000 });
+  const { data: sectorData, isLoading: sectorLoading } = useSWR(`${BASE}/api/v1/correlations/sector-average?days=${days}&basis=${basis}`, fetcher, { refreshInterval: 300000 });
+  const { data: assetsData } = useSWR(`${BASE}/api/v1/assets`, fetcher, { refreshInterval: 300000 });
   
   const assetMap = useMemo(() => {
     if (!assetsData) return {};

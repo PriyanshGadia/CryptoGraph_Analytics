@@ -23,7 +23,7 @@ export default function SettingsPage() {
   const { mode: perfMode, toggleMode: setPerfMode } = usePerformanceMode();
 
   useEffect(() => {
-    axios.get(`${BASE}/api/settings`)
+    axios.get(`${BASE}/api/v1/settings`)
       .then(res => {
         const data = res.data;
         setFormValues(data.values || {});
@@ -54,11 +54,11 @@ export default function SettingsPage() {
         return;
       }
 
-      await axios.post(`${BASE}/api/settings`, { settings: changedSettings });
+      await axios.post(`${BASE}/api/v1/settings`, { settings: changedSettings });
       setStatus({ type: "success", message: "Neural pathways synchronized." });
       setDirtyFields(new Set());
 
-      const res = await axios.get(`${BASE}/api/settings`);
+      const res = await axios.get(`${BASE}/api/v1/settings`);
       setConfigured(res.data.configured || {});
       setFormValues(res.data.values || {});
 
@@ -75,7 +75,7 @@ export default function SettingsPage() {
     setRefreshing(true);
     setRefreshResult(null);
     try {
-      const res = await axios.post(`${BASE}/api/status/refresh-all`);
+      const res = await axios.post(`${BASE}/api/v1/status/refresh-all`);
       const details = res.data.details || {};
       setRefreshResult(
         `✅ Signals: ${details.technicals || 'done'} | Cache: ${details.cache || 'cleared'} | Tensors: ${details.predictions || 'triggered'}`

@@ -17,10 +17,7 @@ import { DirectionBadge } from "@/components/ui/DirectionBadge"
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 const WS_BASE = BASE.replace(/^http/, "ws")
 
-const fetcher = (url: string) => fetch(url).then(r => {
-  if (!r.ok) throw new Error(r.statusText)
-  return r.json()
-})
+import { fetcher, api } from "@/lib/api"
 
 // ── Shared UI Components ──────────────────────────────────────────
 function VolatilityChip({ regime }: { regime: string }) {
@@ -129,7 +126,7 @@ function PredictionStudio() {
   const [modalContent, setModalContent] = useState({ title: '', steps: '' })
 
   const { data: predictions } = useSWR(
-    `${BASE}/api/predictions?limit=100`,
+    `${BASE}/api/v1/predictions?limit=100`,
     fetcher,
     { revalidateOnFocus: false, refreshInterval: 60000 }
   )
@@ -156,9 +153,8 @@ function PredictionStudio() {
     setForecastError(null)
     setLivePrice(null)
     try {
-      const res = await fetch(`${BASE}/api/forecast/${symbol}`)
-      if (!res.ok) throw new Error(await res.text())
-      const data = await res.json()
+      const res = await api.get(`/api/v1/forecast/${symbol}`)
+      const data = res.data
       setForecastData(data)
       setLivePrice(data.last_price)
     } catch (e: any) {

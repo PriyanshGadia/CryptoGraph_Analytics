@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import useSWR from "swr";
-import { fetcher } from "@/lib/api";
+import { fetcher, api } from "@/lib/api";
 import Link from "next/link";
 import { 
   Target, TrendingUp, Zap, Leaf, Building2, RefreshCw, 
@@ -111,14 +111,14 @@ export default function ScreenerPage() {
     sort_dir: sortDir
   }).toString();
 
-  const { data: results, isLoading, mutate } = useSWR(`${BASE}/api/screener/?${query}`, fetcher);
+  const { data: results, isLoading, mutate } = useSWR(`${BASE}/api/v1/screener/?${query}`, fetcher);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const refreshLiveTechnicals = async () => {
     setIsRefreshing(true);
     try {
-      const res = await fetch(`${BASE}/api/screener/refresh`, { method: "POST" });
-      if (res.ok) mutate();
+      const res = await api.post(`/api/v1/screener/refresh`);
+      if (res.status === 200) mutate();
     } catch (err) {
       console.error(err);
     }

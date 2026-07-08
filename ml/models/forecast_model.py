@@ -176,7 +176,6 @@ def run_prophet_forecast(
             batch_size=16,
             learning_rate=0.01,
             quantiles=[0.05, 0.95], # 90% confidence interval
-            verbose=False,
         )
 
         # NeuralProphet requires a validation split for early stopping
