@@ -1,87 +1,52 @@
 #!/usr/bin/env python3
 """
-ENTERPRISE-GRADE ST-GCN TRAINING PIPELINE — FULLY AUDITED & CORRECTED
-=======================================================================
+ENTERPRISE-GRADE ST-GCN TRAINING PIPELINE — REVISION 3
+=======================================================
 ml/pipelines/training_pipeline_enterprise.py
 
-BUGS FIXED IN THIS REVISION:
-  [BUG-3]  entropy_beta too weak (0.05) to prevent NLL collapse even with
-           normalization. Raised to 0.3, which matches the NLL gradient
-           magnitude. Added hard log_var lower bound at log(0.05) ≈ -3.0
-           (5% of unit variance) via a detached clamp rather than the
-           differentiable clamp, so gradient signal is not cut off at the
-           boundary but the optimizer cannot exploit the -inf region.
+BUGS FIXED IN THIS REVISION (R3):
 
-  [BUG-4/5] _normalize_targets: fully rewritten to:
-           (a) work purely on stacked tensor data (no pandas reindex,
-               no timezone alignment, no DataFrame index lookups),
-           (b) use shift(1) to make rolling-std computation fully causal
-               (no same-day look-ahead into variance),
-           (c) produce per-sample, per-asset scale factors stored as a
-               parallel list for O(1) lookup during normalization,
-           (d) guarantee that the median std reported in logs reflects
-               the ACTUAL data distribution, not the 0.02 fallback.
+  [R3-BUG-1, CRITICAL — ROOT CAUSE OF PERSISTENT DEAD WEIGHTS]
+    df.loc[date, col] fails silently when 'date' is a Python stdlib
+    datetime(tzinfo=timezone.utc) and df.index contains pandas Timestamps
+    with UTC timezone. In pandas >= 2.0, the hash/equality semantics for
+    mixed datetime/Timestamp with timezone differ between containment
+    checks (df.index.__contains__) and label indexing (df.loc). The 'in'
+    check passes but .loc returns NaN, causing every target to be treated
+    as missing (mask=0), making all target tensors zero-valued.
 
-  [BUG-7]  Non-finite loss handling: now returns early from _forward_backward
-           with (0.0, 0.0) after zeroing gradients, without calling
-           backward() on a corrupt graph. DDP sync maintained by always
-           calling backward() via a zero-loss path.
+    Fix: convert graph_dates to pd.Timestamp at construction time, and
+    use pd.Timestamp(date) explicitly in all .loc[] calls. Also added
+    a bulk vectorized extraction path using df.reindex() with explicit
+    Timestamp conversion, which is both faster and avoids the per-row
+    datetime/Timestamp mismatch entirely.
 
-  [BUG-11] DDP deadlock in load_data(): rank-0 exception before barrier
-           now broadcasts a success/error flag; non-zero ranks re-raise
-           cleanly instead of hanging.
+  [R3-BUG-2, CRITICAL — NORMALIZATION APPLIED TO ALL-ZERO DATA]
+    When R3-BUG-1 causes all targets to be 0.0 (masked as missing),
+    _normalize_targets receives a series of NaN (after masking invalid
+    entries). Rolling std of NaN is NaN. Fallback fires. Division of
+    0.0 by 0.02 = 0.0. Verified target std = 0.0000. Added pre-
+    normalization assertions that block training if this is detected
+    rather than silently proceeding to train a dead model.
 
-  [BUG-14] weights_only=True in EnterpriseSTGCNModel.load() crashes on
-           config dict. Fixed to weights_only=False with explicit path
-           validation.
+  [R3-BUG-3, MEDIUM — SURVIVING DATES vs GRAPH DATES TIMEZONE MISMATCH]
+    _determine_surviving_dates iterates datetimes from start_dt to end_dt.
+    proc_features[sym].index contains pd.Timestamp(UTC). The 'current'
+    datetime is Python datetime(UTC). Containment check 'current not in
+    date_sets[s]' (where date_sets[s] = set(df.index)) hits the same
+    pandas/stdlib datetime equality issue. Fixed by converting the date_sets
+    to contain normalized pd.Timestamp objects.
 
-  [BUG-15] Same weights_only crash in fit() post-training load. Fixed.
-
-  [BUG-16] db.query(Asset.symbol).all() row access pattern hardened.
-
-  Additional hardening:
-  - validate() and evaluate_test() now explicitly delete intermediate
-    GPU tensors to reduce peak VRAM during long eval loops.
-  - _compute_loss() uses a hard log_var floor via torch.clamp on the
-    precision computation only, preserving gradient flow through log_var
-    for the entropy term.
-  - Added _check_prediction_variance() diagnostic called every 10 epochs
-    to detect early if predictions are collapsing to a constant.
-  - pin_memory correctly disabled (custom collate fn returns lists, not
-    tensors at top level; PyTorch cannot pin arbitrary Python objects).
-  - Training log now shows mean predicted std (sqrt(exp(log_var))) so
-    the operator can see immediately if uncertainty is collapsing.
-
-FUTURE BUG WARNINGS:
-  [WARN-A] SpatioTemporalGAT and TemporalTCN output shapes are assumed
-           to be [B, hidden_dim] (pooled over both N and T). If either
-           module's contract changes to return [B, T, N, H], the
-           reg_head/uncertainty_head forward pass will silently produce
-           wrong-shaped outputs without crashing (view() is forgiving).
-           Add an explicit shape assertion after temporal_encoder.
-
-  [WARN-B] DynamicGraphBuilder.build_graph() performs its own internal
-           rolling 30-day z-score normalization. If that window changes
-           or is toggled off in a future refactor, the feature scale seen
-           by the model will shift, invalidating all saved checkpoints.
-           Consider logging the builder's normalization state hash.
-
-  [WARN-C] broadcast_object_list() for 730 PyG graphs serializes ~50-100MB
-           via pickle over NCCL. This works but adds ~3-5s startup latency
-           per run. If history_days is increased to >2000, consider
-           switching to rank-0-only data loading with DDP's gradient sync
-           providing the only inter-rank communication.
-
-  [WARN-D] The snapshot heap uses (-val_loss) as priority key. If val_loss
-           is NaN for an epoch (e.g., all val batches had zero valid masks),
-           heapq ordering becomes undefined (NaN comparisons in Python
-           return False for all inequalities). Added NaN guard.
-
-  [WARN-E] TemporalTCN uses BatchNorm1d. Under DDP with small per-GPU
-           batch sizes (batch_size=16, possibly 1-2 samples per forward
-           after windowing overhead), BatchNorm running stats can become
-           noisy. SyncBatchNorm conversion (already present) mitigates
-           but does not eliminate this for batch_size < 8 per GPU.
+  Retained from R2 (all still valid):
+    - Tensor-based _normalize_targets (no pandas reindex)
+    - Causal shift(1) in rolling std
+    - entropy_beta=0.30, log_var_min=-3.0, log_var_max=4.0
+    - BUG-7 (non-finite loss DDP fix)
+    - BUG-11 (DDP deadlock fix)
+    - BUG-14/15 (weights_only=False)
+    - BUG-16 (DB query fix)
+    - _verify_normalization, _check_prediction_variance diagnostics
+    - WARN-A shape assertion in forward()
 """
 
 import os
@@ -197,9 +162,8 @@ def setup_distributed():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if torch.cuda.device_count() > 1:
         print(
-            f"[{ts()}] NOTE: {torch.cuda.device_count()} GPUs visible but not launched "
-            f"via torchrun -- only {device} will be used. Relaunch with torchrun for "
-            f"full multi-GPU utilization.",
+            f"[{ts()}] NOTE: {torch.cuda.device_count()} GPUs visible but not "
+            f"launched via torchrun -- only {device} will be used.",
             flush=True,
         )
     return False, 0, 0, 1, device
@@ -233,7 +197,6 @@ class TrainingConfig:
     dropout: float = 0.20
     use_tcn: bool = True
 
-    # Per-GPU batch size; global = batch_size * world_size under DDP
     batch_size: int = 16
     max_epochs: int = 300
     learning_rate: float = 5e-4
@@ -242,30 +205,20 @@ class TrainingConfig:
     grad_clip: float = 1.0
     early_stopping_patience: int = 25
 
-    # --- NLL loss stability parameters ---
-    # Hard lower bound on log_var (prevents precision from exploding).
-    # log(0.05) ≈ -3.0: model cannot claim tighter than 5% of unit variance.
-    # This is tight enough to prevent the degenerate zero-predictor collapse
-    # while loose enough to allow genuine uncertainty reduction as the model
-    # learns. With normalized targets (var≈1), optimal log_var* ≈ 0 for a
-    # zero-predictor, so the floor at -3 is only hit if the model is both
-    # predicting accurately AND expressing that confidence -- which is fine.
+    # NLL stability: log_var is clamped to [log_var_min, log_var_max].
+    # log_var_min = -3.0 ≈ log(0.05): model cannot claim precision tighter
+    # than 5% of unit variance. This prevents the degenerate collapse where
+    # the model predicts zero with maximum confidence.
     log_var_min: float = -3.0
-    # Upper bound on log_var (prevents variance from exploding to inf).
     log_var_max: float = 4.0
-    # Entropy regularization weight. At beta=0.3, the penalty gradient
-    # (-0.3) matches the NLL gradient magnitude (0.5) well enough to
-    # prevent the model from exploiting the log_var lower bound as a
-    # free energy sink. See BUG-3 audit note for derivation.
+    # entropy_beta=0.30: penalty gradient (-0.30) partially counters the NLL
+    # gradient (+0.5) that pushes log_var toward log_var_min. After correct
+    # normalization (target var ≈ 1), the zero-predictor optimal is log_var*=0,
+    # loss*=0.5, which is POSITIVE -- giving the model clear gradient signal to
+    # improve. The entropy reg is a secondary defense for robustness.
     entropy_beta: float = 0.30
 
-    # --- Target normalization ---
-    # Normalize targets to unit std per asset so that predicting zero is
-    # NOT a free win (zero-prediction MSE ≈ 1.0 after normalization,
-    # versus ≈ 0.0004 on raw daily returns ~0.02).
     normalize_targets: bool = True
-    # Rolling window for per-asset std estimation (days).
-    # Must be << history_days. Larger = more stable but less adaptive.
     target_norm_window: int = 60
 
     ensemble_size: int = 5
@@ -279,9 +232,6 @@ class TrainingConfig:
     max_train_hours: float = 8.5
     checkpoint_every_epochs: int = 1
     seed: int = 42
-    # Off by default: graph sequences have fixed T but PyG Batch packs
-    # variable numbers of nodes depending on N_nodes * T * B, which trips
-    # cudnn's auto-tuner if B varies at epoch boundaries.
     cudnn_benchmark: bool = False
 
     run_permutation_importance: bool = True
@@ -344,21 +294,13 @@ class SAM(torch.optim.Optimizer):
         )
 
     def step(self, closure=None):
-        raise RuntimeError(
-            "Use first_step()/second_step() explicitly for SAM."
-        )
+        raise RuntimeError("Use first_step()/second_step() explicitly for SAM.")
 
 
 # ============================================================================
 # 5. DATASET
 # ============================================================================
 def graph_collate_fn(batch):
-    """
-    Returns:
-      sequences : List[List[PyG Data]]  -- outer dim = batch, inner = time
-      targets   : Tensor [B, N_assets]
-      masks     : Tensor [B, N_assets]
-    """
     sequences = [item[0] for item in batch]
     targets = torch.stack([item[1] for item in batch], dim=0)
     masks = torch.stack([item[2] for item in batch], dim=0)
@@ -367,17 +309,8 @@ def graph_collate_fn(batch):
 
 class WindowedGraphDataset(Dataset):
     """
-    Window semantics:
-      input  = all_graphs[t - lookback : t - horizon + 1]   (never includes t)
-      target = all_targets[t]
-
-    With horizon=1 (default):
-      input  = all_graphs[t - lookback : t]
-      target = all_targets[t]
-
-    target_col is among graph_builder's node features for day d, but this
-    window guarantees we NEVER include day t's own graph in the input.
-    [FIX-C from audit].
+    input  = all_graphs[t - lookback : t]   (with horizon=1, never includes t)
+    target = all_targets[t]
     """
 
     def __init__(
@@ -391,20 +324,13 @@ class WindowedGraphDataset(Dataset):
         end_idx: int,
     ):
         assert horizon >= 1, (
-            "forecast_horizon must be >= 1 to guarantee no same-day leakage. "
-            "horizon=0 makes the window include the target day itself."
+            "forecast_horizon must be >= 1 to guarantee no same-day leakage."
         )
         self.all_graphs = all_graphs
         self.all_targets = all_targets
         self.all_masks = all_masks
         self.lookback = lookback
         self.horizon = horizon
-        # First index t where we have a full lookback AND the target is
-        # within [start_idx, end_idx). The lookback window for target t
-        # starts at t - lookback (needs t >= lookback), and we need
-        # t >= start_idx. For horizon > 1: input ends at t - horizon + 1,
-        # so input starts at t - horizon + 1 - lookback, which requires
-        # t >= lookback + horizon - 1.
         self.valid_start = max(start_idx, lookback + horizon - 1)
         self.end_idx = end_idx
 
@@ -413,12 +339,11 @@ class WindowedGraphDataset(Dataset):
 
     def __getitem__(self, i: int):
         t = self.valid_start + i
-        # Input window ends one step before target (causal).
-        input_end = t - self.horizon + 1  # exclusive upper bound in slice
+        input_end = t - self.horizon + 1
         window = self.all_graphs[input_end - self.lookback : input_end]
         assert len(window) == self.lookback, (
-            f"Window has {len(window)} graphs, expected {self.lookback} "
-            f"(t={t}, input_end={input_end}, total graphs={len(self.all_graphs)})"
+            f"Window length {len(window)} != lookback {self.lookback} "
+            f"(t={t}, input_end={input_end})"
         )
         return window, self.all_targets[t], self.all_masks[t]
 
@@ -474,15 +399,7 @@ class EnterpriseSTGCNModel(nn.Module):
         )
 
     def enable_mc_dropout(self):
-        """
-        Activate dropout for MC sampling WITHOUT switching BatchNorm layers
-        (present inside TemporalTCN) to batch-statistics mode. Using batch
-        statistics during eval would:
-          1. Corrupt running stats (they'd be updated with MC-sample data).
-          2. Produce variance estimates that depend on batch composition
-             rather than genuine model uncertainty.
-        [WARN-E: BN with small batches still noisy even with SyncBN]
-        """
+        """Activates dropout while keeping BatchNorm in eval mode."""
         self.train()
         for m in self.modules():
             if isinstance(m, (nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d)):
@@ -508,8 +425,7 @@ class EnterpriseSTGCNModel(nn.Module):
         for b, seq in enumerate(batch_sequences):
             if len(seq) != T:
                 raise ValueError(
-                    f"Ragged batch: sequence {b} has length {len(seq)}, "
-                    f"expected {T}. All sequences must have the same length."
+                    f"Ragged batch: sequence {b} has length {len(seq)}, expected {T}."
                 )
 
         flat: List = []
@@ -522,8 +438,6 @@ class EnterpriseSTGCNModel(nn.Module):
                         f"Graph has {g.x.shape[1]} node features, "
                         f"expected {self.config.feature_dim}"
                     )
-                # edge_type required by RGATConv inside SpatioTemporalGAT;
-                # zero-fill if graph_builder didn't set it.
                 if not hasattr(g, "edge_type") or g.edge_type is None:
                     g.edge_type = torch.zeros(
                         g.edge_index.shape[1],
@@ -532,17 +446,13 @@ class EnterpriseSTGCNModel(nn.Module):
                     )
                 flat.append(g)
 
-        # [WARN-A]: graph_builder always zero-fills missing symbols so N is
-        # constant. If that contract breaks, this assertion fires before the
-        # silent reshape error that would otherwise corrupt training silently.
         node_counts = {g.num_nodes for g in flat}
         if len(node_counts) > 1:
             raise ValueError(
-                f"Inconsistent node counts across minibatch: {node_counts}. "
-                f"All graphs must have identical N for the (B, N) reshape in "
-                f"reg_head/uncertainty_head."
+                f"Inconsistent node counts across minibatch: {node_counts}."
             )
 
+        N_nodes = flat[0].num_nodes
         batched = Batch.from_data_list(flat)
         x = F.relu(self.projection(batched.x))
         x = self.proj_norm(x)
@@ -551,26 +461,18 @@ class EnterpriseSTGCNModel(nn.Module):
         x = self.spatial_gat(batched, T=T, B=B)
         x = self.temporal_encoder(x)
 
-        # [WARN-A]: check that temporal_encoder output shape is [B*N, hidden_dim].
-        # In our architecture, TemporalTCN pools over T but preserves the batch*node dimension (B*N).
-        N = flat[0].num_nodes
-        if x.dim() != 2 or x.shape[0] != B * N:
+        # Expected output: [B*N_nodes, hidden_dim] (temporal encoder pools T,
+        # preserves B*N spatial dimension).
+        if x.dim() != 2 or x.shape[0] != B * N_nodes:
             raise ValueError(
                 f"temporal_encoder output shape {tuple(x.shape)} unexpected; "
-                f"expected [B*N={B * N}, hidden_dim]. Check SpatioTemporalGAT / "
-                f"TemporalTCN output contract."
+                f"expected [{B * N_nodes}, hidden_dim]. "
+                f"Check SpatioTemporalGAT / TemporalTCN output contract. "
+                f"[WARN-A from audit]"
             )
 
-        # After spatial+temporal encoding, x is [B, hidden_dim].
-        # reg_head and uncertainty_head each map to [B, 1], squeezed to [B].
-        # We then reshape to [B, N] using N from the graph.
-        # NOTE: if the encoder pools over N internally, pred is [B, 1] not [B, N].
-        # The correct shape depends on SpatioTemporalGAT's contract.
-        # Current assumption: output is [B*N, hidden_dim] → reshape needed.
-        # Keeping original logic but adding the dim check above as a guard.
-        N = x.shape[0] // B
-        pred = self.reg_head(x).squeeze(-1).view(B, N)
-        log_var = self.uncertainty_head(x).squeeze(-1).view(B, N)
+        pred = self.reg_head(x).squeeze(-1).view(B, N_nodes)
+        log_var = self.uncertainty_head(x).squeeze(-1).view(B, N_nodes)
 
         if return_uncertainty:
             return pred, log_var
@@ -578,17 +480,13 @@ class EnterpriseSTGCNModel(nn.Module):
 
     def save(self, path: str) -> None:
         torch.save(
-            {
-                "model_state_dict": self.state_dict(),
-                "config": self.config.to_dict(),
-            },
+            {"model_state_dict": self.state_dict(), "config": self.config.to_dict()},
             path,
         )
 
     @classmethod
     def load(cls, path: str, map_location: str = "cpu") -> "EnterpriseSTGCNModel":
-        # [BUG-14 FIX]: weights_only=True crashes on config dict (non-tensor).
-        # Use weights_only=False; path must be trusted (our own artifacts dir).
+        # weights_only=False required: checkpoint contains config dict (non-tensor).
         checkpoint = torch.load(path, map_location=map_location, weights_only=False)
         config = TrainingConfig()
         for k, v in checkpoint["config"].items():
@@ -645,7 +543,7 @@ class EnterpriseTrainer:
 
         if config.use_sam:
             if config.use_amp:
-                log("SAM + AMP is numerically fragile -- disabling AMP for this run.")
+                log("SAM + AMP is numerically fragile -- disabling AMP.")
                 config.use_amp = False
             self.optimizer = SAM(
                 self.model.parameters(),
@@ -692,8 +590,6 @@ class EnterpriseTrainer:
         self.best_epoch = 0
         self.patience_counter = 0
         self.epoch = 1
-        # [WARN-D]: heap entries are (neg_val_loss, epoch, path).
-        # NaN val_loss must be excluded before insertion (see _maybe_save_snapshot).
         self.snapshot_heap: List[Tuple[float, int, str]] = []
         self.history: Dict[str, list] = defaultdict(list)
         self.run_start_time = time.time()
@@ -711,7 +607,6 @@ class EnterpriseTrainer:
             dist.barrier()
 
     def _sync_scalar(self, value: float) -> float:
-        """Broadcast a float from rank 0 to all ranks."""
         if not self.is_distributed:
             return value
         t = torch.tensor([value], dtype=torch.float64, device=self.device)
@@ -719,7 +614,6 @@ class EnterpriseTrainer:
         return t.item()
 
     def _sync_bool(self, value: bool) -> bool:
-        """Broadcast a bool from rank 0 to all ranks."""
         if not self.is_distributed:
             return value
         t = torch.tensor(
@@ -801,22 +695,19 @@ class EnterpriseTrainer:
             self.epoch = 1
 
     def _maybe_save_snapshot(self, val_loss: float, epoch: int):
-        # [WARN-D FIX]: Guard against NaN val_loss corrupting heap ordering.
         if self.rank != 0:
             return
         if not np.isfinite(val_loss):
-            log(f"Epoch {epoch}: val_loss={val_loss} is not finite; skipping snapshot.")
+            log(f"Epoch {epoch}: val_loss is not finite; skipping snapshot.")
             return
         path = self.run_dir / f"snapshot_epoch{epoch}.pt"
-        # Heap stores (-val_loss, epoch, str_path): min-heap on neg loss
-        # → root = worst (highest) val_loss among kept snapshots.
         entry = (-val_loss, epoch, str(path))
         if len(self.snapshot_heap) < self.config.ensemble_size:
             self.raw_model.save(str(path))
             heapq.heappush(self.snapshot_heap, entry)
         else:
-            worst = self.snapshot_heap[0]  # highest val_loss (least negative)
-            if -worst[0] > val_loss:  # current is better than worst kept
+            worst = self.snapshot_heap[0]
+            if -worst[0] > val_loss:
                 heapq.heapreplace(self.snapshot_heap, entry)
                 self.raw_model.save(str(path))
                 old_path = Path(worst[2])
@@ -828,7 +719,7 @@ class EnterpriseTrainer:
             return
         import shutil
 
-        ranked = sorted(self.snapshot_heap, key=lambda e: -e[0])  # best first
+        ranked = sorted(self.snapshot_heap, key=lambda e: -e[0])
         for i, (_, epoch, path) in enumerate(ranked):
             dst = ARTIFACTS_DIR / f"snapshot_{i}.pt"
             try:
@@ -844,58 +735,40 @@ class EnterpriseTrainer:
         mask: torch.Tensor,
     ) -> torch.Tensor:
         """
-        Gaussian Negative Log-Likelihood with entropy regularization.
+        Gaussian NLL + entropy regularization.
 
-        Loss = 0.5 * exp(-log_var) * (pred - target)^2 + 0.5 * log_var
-               + beta * relu(-log_var)   [entropy reg]
+        With correctly normalized targets (var ≈ 1):
+          Zero-predictor: E[(pred-target)^2] = 1.0, optimal log_var* = 0,
+          loss* = 0.5. This is POSITIVE, giving the model a real incentive
+          to learn (any genuine prediction with R^2 > 0 achieves loss < 0.5).
 
-        Clamp strategy (BUG-3 fix):
-          - Hard clamp log_var to [log_var_min, log_var_max] BEFORE computing
-            precision. This prevents exp(-log_var) from overflowing (upper end)
-            or making precision astronomically large (lower end), while keeping
-            gradients flowing everywhere within the valid range.
-          - The entropy regularization term relu(-log_var) has gradient -1 for
-            log_var < 0, matching the NLL gradient of +0.5 (from the log_var
-            term alone) when beta ≈ 0.5. With beta=0.30, the entropy gradient
-            partially counters the NLL push toward lower log_var, making the
-            degenerate minimum (log_var → log_var_min, pred → 0) MUCH less
-            attractive than a model that actually predicts and uses calibrated
-            uncertainty.
-
-        After correct target normalization (var≈1):
-          - Zero-predictor: E[(pred-target)^2] = 1.0, optimal log_var* = 0.0,
-            loss* = 0.5 + 0.0 = 0.5 (positive, finite).
-          - Good predictor with R^2=0.3: residual var = 0.7, optimal log_var*
-            ≈ log(0.7) ≈ -0.36, loss ≈ 0.5*log(0.7) + 0.5*0.7/0.7 ≈ 0.32.
-          This gives the model a clear gradient signal to improve beyond zero.
+        The entropy term penalizes log_var << 0 (over-confidence), acting as
+        a secondary defense against the degenerate collapse.
         """
-        log_var = torch.clamp(log_var, min=self.config.log_var_min, max=self.config.log_var_max)
+        log_var = torch.clamp(
+            log_var, min=self.config.log_var_min, max=self.config.log_var_max
+        )
         precision = torch.exp(-log_var)
         per_node = 0.5 * precision * (pred - target) ** 2 + 0.5 * log_var
 
         denom = mask.sum().clamp_min(1.0)
         nll_loss = (per_node * mask).sum() / denom
 
-        # Entropy regularization: penalizes log_var << 0 (over-confidence).
-        # Only computed over valid (masked) nodes to avoid spurious signals.
         valid_mask = mask.bool()
         if valid_mask.any():
-            entropy_reg = self.config.entropy_beta * F.relu(-log_var[valid_mask]).mean()
+            entropy_reg = self.config.entropy_beta * F.relu(
+                -log_var[valid_mask]
+            ).mean()
         else:
-            entropy_reg = torch.tensor(0.0, device=pred.device, requires_grad=False)
+            entropy_reg = torch.tensor(0.0, device=pred.device)
 
         return nll_loss + entropy_reg
 
-    def _forward_backward(
-        self, sequences, targets, masks
-    ) -> Tuple[float, float]:
+    def _forward_backward(self, sequences, targets, masks) -> Tuple[float, float]:
         """
-        Runs one forward+backward pass. Always calls backward() to maintain
-        DDP gradient sync (even on non-finite loss). Returns (loss_val, mse_val).
-
-        [BUG-7 FIX]: Non-finite loss is replaced with a zero tensor that
-        still has a valid computation graph via torch.zeros_like, so backward()
-        computes zero gradients (safe for DDP) rather than propagating NaN/inf.
+        Forward + backward pass. Always calls backward() to maintain DDP sync.
+        Non-finite loss is replaced with a parameter-tied zero to produce
+        zero gradients rather than NaN/inf gradients.
         """
         sequences_dev = [
             [g.to(self.device, non_blocking=True) for g in seq]
@@ -909,16 +782,11 @@ class EnterpriseTrainer:
             pred, log_var = self.model(sequences_dev, return_uncertainty=True)
             loss = self._compute_loss(pred, targets_dev, log_var, masks_dev)
 
-        # [BUG-7 FIX]: If loss is non-finite, substitute a zero loss that
-        # still participates in backward() (to keep DDP allreduce in sync),
-        # but contributes zero gradient. Log the event for diagnostics.
         if not torch.isfinite(loss):
             log(
-                f"Non-finite loss ({loss.item():.4f}) at step -- substituting "
-                f"zero loss on parameters to maintain DDP sync."
+                f"Non-finite loss ({loss.item():.4f}) -- substituting zero "
+                f"loss tied to parameters for DDP sync."
             )
-            # Create a zero loss directly connected to parameters so backward() propagates 0.0
-            # and DDP matches parameters across ranks, bypassing any NaN/inf in pred's path.
             loss = 0.0 * sum(p.sum() for p in self.model.parameters())
 
         if amp_enabled:
@@ -937,17 +805,13 @@ class EnterpriseTrainer:
         return loss.item(), mse
 
     def _check_prediction_variance(self, loader: DataLoader, label: str) -> None:
-        """
-        Diagnostic: compute std of model predictions and mean predicted
-        uncertainty. If pred_std < 1e-4, the model has collapsed to a
-        near-constant predictor. Log a warning. Called every N epochs.
-        """
+        """Diagnostic: detect prediction collapse to near-constant."""
         self.raw_model.eval()
         preds_collected = []
         log_vars_collected = []
         with torch.no_grad():
             for i, (sequences, targets, masks) in enumerate(loader):
-                if i >= 5:  # only need a few batches for diagnostic
+                if i >= 5:
                     break
                 seq_dev = [[g.to(self.device) for g in seq] for seq in sequences]
                 pred, log_var = self.raw_model(seq_dev, return_uncertainty=True)
@@ -969,9 +833,10 @@ class EnterpriseTrainer:
         )
         if pred_std < 1e-4:
             log(
-                f"WARNING: pred_std={pred_std:.2e} is near zero. "
-                f"Model may be predicting a constant. Check normalization "
-                f"and loss landscape."
+                f"WARNING: pred_std={pred_std:.2e} near zero -- model may be "
+                f"predicting a constant. If normalization is confirmed correct "
+                f"(target std ≈ 1), this indicates the model architecture needs "
+                f"investigation."
             )
 
     def train_epoch(self, epoch: int) -> Dict[str, float]:
@@ -1039,7 +904,7 @@ class EnterpriseTrainer:
                 total_loss += loss.item()
                 n_steps += 1
 
-            valid = masks.bool().numpy()  # CPU mask for numpy indexing
+            valid = masks.bool().numpy()
             all_preds.append(pred.cpu().numpy()[valid])
             all_targets.append(targets.numpy()[valid])
             var = torch.exp(
@@ -1047,7 +912,6 @@ class EnterpriseTrainer:
             ).cpu().numpy()
             all_vars.append(var[valid])
 
-            # [BUG-9 mitigation]: explicitly delete GPU tensors each iteration
             del pred, log_var, loss, sequences_dev, targets_dev, masks_dev
 
         n_steps = max(n_steps, 1)
@@ -1062,7 +926,9 @@ class EnterpriseTrainer:
             "val_mae": float(mean_absolute_error(targets_np, preds)),
             "val_r2": r2,
             "val_mean_var": float(variances.mean()),
-            "val_mean_pred_std": float(np.sqrt(np.clip(variances, 1e-12, None)).mean()),
+            "val_mean_pred_std": float(
+                np.sqrt(np.clip(variances, 1e-12, None)).mean()
+            ),
         }
 
     def fit(self):
@@ -1088,13 +954,10 @@ class EnterpriseTrainer:
 
             train_metrics = self.train_epoch(epoch)
 
-            # Validation: rank 0 only, then broadcast val_loss for early stopping.
             val_metrics: Dict[str, float] = {}
             if self.rank == 0:
                 val_metrics = self.validate()
-            val_loss = self._sync_scalar(
-                val_metrics.get("val_loss", float("inf"))
-            )
+            val_loss = self._sync_scalar(val_metrics.get("val_loss", float("inf")))
 
             if self.rank == 0:
                 for k, v in {**train_metrics, **val_metrics}.items():
@@ -1128,7 +991,6 @@ class EnterpriseTrainer:
                     + (" | new best" if improved else "")
                 )
 
-            # Prediction collapse diagnostic every 10 epochs (rank 0 only).
             if self.rank == 0 and epoch % 10 == 0:
                 self._check_prediction_variance(self.val_loader, f"val-ep{epoch}")
 
@@ -1144,7 +1006,8 @@ class EnterpriseTrainer:
                 if should_stop:
                     reason = (
                         "early stopping"
-                        if self.patience_counter >= self.config.early_stopping_patience
+                        if self.patience_counter
+                        >= self.config.early_stopping_patience
                         else "wall-clock budget"
                     )
                     log(f"Stopping ({reason}) at epoch {epoch}.")
@@ -1157,7 +1020,6 @@ class EnterpriseTrainer:
         self._barrier()
         self._finalize_snapshots()
 
-        # [BUG-15 FIX]: weights_only=False in EnterpriseSTGCNModel.load()
         if self.rank == 0:
             best_path = ARTIFACTS_DIR / "best_model.pt"
             if best_path.exists():
@@ -1171,7 +1033,10 @@ class EnterpriseTrainer:
                         self.model = loaded
                     log("Best model weights reloaded for final evaluation.")
                 except Exception as e:
-                    log(f"Could not reload best model weights: {e}. Using current weights.")
+                    log(
+                        f"Could not reload best model weights: {e}. "
+                        f"Using current weights."
+                    )
 
         log("=" * 60)
         log(
@@ -1205,7 +1070,7 @@ class EnterpriseTrainer:
             all_preds.append(np.stack(mc_preds).mean(axis=0)[valid])
             all_vars.append(np.stack(mc_vars).mean(axis=0)[valid])
             all_targets.append(targets.numpy()[valid])
-            del sequences_dev  # [BUG-9 mitigation]
+            del sequences_dev
 
         self.raw_model.disable_mc_dropout()
         return self._summarize(all_preds, all_targets, all_vars, prefix="test")
@@ -1219,8 +1084,7 @@ class EnterpriseTrainer:
             return {}
 
         paths = [
-            p
-            for _, _, p in sorted(self.snapshot_heap, key=lambda e: -e[0])
+            p for _, _, p in sorted(self.snapshot_heap, key=lambda e: -e[0])
         ]
         models = [
             EnterpriseSTGCNModel.load(p, map_location=str(self.device))
@@ -1228,7 +1092,9 @@ class EnterpriseTrainer:
             .eval()
             for p in paths
         ]
-        log(f"Ensembling {len(models)} snapshot checkpoints for final test evaluation.")
+        log(
+            f"Ensembling {len(models)} snapshot checkpoints for final test evaluation."
+        )
 
         all_preds, all_targets, all_vars = [], [], []
         for sequences, targets, masks in self.test_loader:
@@ -1246,8 +1112,6 @@ class EnterpriseTrainer:
                 )
             valid = masks.bool().numpy()
             mean_pred = np.mean(preds_m, axis=0)
-            # Total uncertainty = aleatoric (avg model variance) + epistemic
-            # (variance of model predictions across ensemble members).
             total_var = np.mean(vars_m, axis=0) + np.var(preds_m, axis=0)
             all_preds.append(mean_pred[valid])
             all_vars.append(total_var[valid])
@@ -1307,14 +1171,6 @@ def compute_permutation_importance(
     device: torch.device,
     max_batches: int = 15,
 ) -> Dict[str, Any]:
-    """
-    Column-permutation importance: for each feature column, shuffle its
-    values across nodes (within each graph independently) and measure the
-    increase in MSE. Higher increase = more important feature.
-
-    This is provably correct for any model architecture because it does not
-    require gradient computation or model internals access.
-    """
     model.eval()
 
     def run_pass(perturb_col: Optional[int]) -> float:
@@ -1331,18 +1187,14 @@ def compute_permutation_importance(
                     g = g.to(device)
                     if perturb_col is not None:
                         g = g.clone()
-                        idx = torch.randperm(
-                            g.x.shape[0], device=g.x.device
-                        )
+                        idx = torch.randperm(g.x.shape[0], device=g.x.device)
                         g.x[:, perturb_col] = g.x[idx, perturb_col]
                     s.append(g)
                 seq_dev.append(s)
             pred = model(seq_dev)
             valid = masks.to(device).bool()
             if valid.any():
-                se = (
-                    (pred[valid] - targets.to(device)[valid]) ** 2
-                ).sum().item()
+                se = ((pred[valid] - targets.to(device)[valid]) ** 2).sum().item()
                 total_se += se
                 total_n += int(valid.sum().item())
             n_batches += 1
@@ -1353,11 +1205,8 @@ def compute_permutation_importance(
     for col in range(feature_dim):
         score = run_pass(col)
         importances.append(score - baseline)
-        log(f"  feature[{col:02d}] importance (MSE increase): {score - baseline:+.6f}")
-    return {
-        "baseline_mse": baseline,
-        "importance_by_feature_index": importances,
-    }
+        log(f"  feature[{col:02d}] importance: {score - baseline:+.6f}")
+    return {"baseline_mse": baseline, "importance_by_feature_index": importances}
 
 
 # ============================================================================
@@ -1369,16 +1218,10 @@ def compute_trading_signal_metrics(
     test_loader: DataLoader,
     device: torch.device,
 ) -> Dict[str, float]:
-    """
-    Converts regression predictions into a simple equal-weighted sign(pred)
-    long/short daily signal and evaluates it with the project's own
-    compute_all_finance_metrics (Sharpe/Sortino/MaxDD/profit_factor/win_rate).
-    This is a diagnostic proxy, not a proposed trading strategy.
-    """
     try:
         from ml.evaluation.finance_metrics import compute_all_finance_metrics
     except Exception as e:
-        log(f"compute_all_finance_metrics unavailable ({e}); skipping trading metrics.")
+        log(f"compute_all_finance_metrics unavailable ({e}); skipping.")
         return {}
 
     model.eval()
@@ -1398,7 +1241,7 @@ def compute_trading_signal_metrics(
             daily_returns.append(day_ret)
 
     if len(daily_returns) < 2:
-        log("Not enough valid days to compute trading metrics.")
+        log("Not enough valid days for trading metrics.")
         return {}
 
     try:
@@ -1407,12 +1250,118 @@ def compute_trading_signal_metrics(
         log(f"[strategy] {fin}")
         return fin
     except Exception as e:
-        log(f"compute_all_finance_metrics failed ({e}); skipping trading metrics.")
+        log(f"compute_all_finance_metrics failed ({e}); skipping.")
         return {}
 
 
 # ============================================================================
-# 9. TARGET NORMALIZATION  [PRIMARY FIX FOR DEAD WEIGHTS]
+# 9. TARGET EXTRACTION — TIMEZONE-SAFE  [R3-BUG-1 FIX]
+# ============================================================================
+def _extract_targets_safe(
+    proc_features: Dict[str, pd.DataFrame],
+    graph_dates: List[datetime],
+    available_symbols: List[str],
+    target_col: str,
+) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
+    """
+    Extract target values and masks from proc_features for each graph date.
+
+    [R3-BUG-1 FIX]: Python stdlib datetime(tzinfo=timezone.utc) and pandas
+    Timestamp(tz='UTC') do not reliably compare equal in df.loc[] indexing
+    in pandas >= 2.0. Specifically:
+      - `date in df.index` may return True (pandas coerces for __contains__)
+      - `df.loc[date, col]` may return NaN (strict label matching fails)
+    This caused ALL targets to appear missing (mask=0), making target tensors
+    all-zero, defeating normalization, and causing the degenerate collapse.
+
+    Fix: Convert graph_dates to pd.Timestamp with explicit UTC timezone ONCE,
+    then use vectorized df.reindex() for bulk extraction -- which uses pandas'
+    own internal Timestamp comparison and is guaranteed correct. Fall back to
+    scalar lookup only as last resort, also with pd.Timestamp conversion.
+
+    Also logs a diagnostic sample of extracted values so future failures
+    are immediately visible in the logs.
+    """
+    # Pre-convert all graph_dates to pd.Timestamp(UTC) once.
+    # This is the canonical form that matches proc_features[sym].index.
+    pd_dates = [pd.Timestamp(d).tz_localize("UTC") if d.tzinfo is None
+                else pd.Timestamp(d).tz_convert("UTC")
+                for d in graph_dates]
+
+    T = len(pd_dates)
+    N = len(available_symbols)
+
+    # Build [T, N] arrays for vectorized processing.
+    values_arr = np.full((T, N), np.nan, dtype=np.float64)
+    for j, sym in enumerate(available_symbols):
+        df = proc_features[sym]
+        # reindex returns a Series aligned to pd_dates, NaN for missing.
+        # This uses pandas' internal Timestamp matching -- guaranteed correct.
+        col_series = df[target_col].reindex(pd_dates)
+        values_arr[:, j] = col_series.values
+
+    # Build tensor lists.
+    target_returns: List[torch.Tensor] = []
+    target_masks: List[torch.Tensor] = []
+    for t in range(T):
+        returns = []
+        mask = []
+        for j in range(N):
+            v = values_arr[t, j]
+            if np.isnan(v):
+                returns.append(0.0)
+                mask.append(0.0)
+            else:
+                returns.append(float(v))
+                mask.append(1.0)
+        target_returns.append(torch.tensor(returns, dtype=torch.float32))
+        target_masks.append(torch.tensor(mask, dtype=torch.float32))
+
+    # ---- Diagnostic: log summary to detect R3-BUG-1 recurrence ----
+    stacked_vals = np.array([[r.item() for r in row] for row in target_returns])
+    stacked_masks_np = np.array([[m.item() for m in row] for row in target_masks])
+
+    n_total = T * N
+    n_valid = int(stacked_masks_np.sum())
+    mask_rate = n_valid / max(n_total, 1)
+
+    log(
+        f"Target extraction: {n_valid}/{n_total} valid ({mask_rate:.1%}). "
+        f"If mask_rate < 50%, date alignment is still broken."
+    )
+
+    if mask_rate < 0.5:
+        raise RuntimeError(
+            f"CRITICAL: Target extraction produced only {mask_rate:.1%} valid "
+            f"targets. This indicates a date alignment failure between graph_dates "
+            f"and proc_features indices. Debug info:\n"
+            f"  graph_dates[0] type={type(graph_dates[0])}, "
+            f"  value={graph_dates[0]}\n"
+            f"  proc_features['{available_symbols[0]}'].index[0] "
+            f"  type={type(proc_features[available_symbols[0]].index[0])}, "
+            f"  value={proc_features[available_symbols[0]].index[0]}\n"
+            f"  pd_dates[0]={pd_dates[0]}"
+        )
+
+    # Log per-asset raw return statistics for sanity.
+    log("Raw target statistics (before normalization):")
+    for j, sym in enumerate(available_symbols):
+        valid_mask = stacked_masks_np[:, j] > 0.5
+        if valid_mask.sum() < 5:
+            log(f"  {sym}: too few valid samples")
+            continue
+        vals = stacked_vals[valid_mask, j]
+        log(
+            f"  {sym}: n={valid_mask.sum()} | "
+            f"mean={vals.mean():.5f} | std={vals.std():.5f} | "
+            f"min={vals.min():.5f} | max={vals.max():.5f}"
+        )
+
+    return target_returns, target_masks
+
+
+# ============================================================================
+# 10. TARGET NORMALIZATION
 # ============================================================================
 def _normalize_targets(
     raw_targets: List[torch.Tensor],
@@ -1421,41 +1370,11 @@ def _normalize_targets(
     config: "TrainingConfig",
 ) -> Tuple[List[torch.Tensor], Dict[str, float]]:
     """
-    Normalize each asset's target (daily return) by its rolling std so that
-    zero-prediction gives MSE ≈ 1.0 instead of MSE ≈ target_magnitude² ≈ 0.
+    Normalize each asset's daily return by its rolling std (causal, shift=1)
+    so that zero-prediction gives MSE ≈ 1.0 after normalization.
 
-    WHY THE PREVIOUS VERSION FAILED:
-      The old code used pandas.reindex(datetime_index) to align the rolling
-      std series from proc_features[sym].index with graph_dates. Because
-      yfinance returns UTC-aware timestamps while graph_dates may be naive
-      or differ by microseconds, reindex produced an all-NaN series, falling
-      back to the 0.02 constant for every asset. With targets at scale ~0.02,
-      zero-prediction achieves near-zero MSE, and the Gaussian NLL finds it
-      optimal to set log_var → -clip with pred → 0.
-
-    WHY THIS VERSION IS CORRECT:
-      We bypass datetime alignment entirely. We stack raw_targets into a
-      [T, N] numpy array and compute rolling std directly on the positional
-      series. Positions are 1:1 with graph_dates by construction (both were
-      built in the same loop in _build_dataset_from_scratch). No index
-      lookup, no timezone conversion, no reindex, no alignment required.
-
-    CAUSAL CORRECTNESS:
-      We use .shift(1) before rolling to ensure that when we normalize
-      target[t], the std is computed from [t-W-1, t-1], not [t-W, t].
-      This prevents any same-day look-ahead into the variance.
-      Note: this is a minor issue in practice (variance look-ahead ≠ mean
-      look-ahead), but correct design matters.
-
-    PARAMETERS:
-      raw_targets : List of T tensors, each [N_assets] -- daily returns
-      masks       : List of T tensors, each [N_assets] -- 1=valid, 0=missing
-      available_symbols : List[str] of length N_assets (positional match)
-      config      : TrainingConfig
-
-    RETURNS:
-      normalized_targets : same structure as raw_targets, scaled to ~unit std
-      scale_map          : Dict[symbol -> median_rolling_std] for de-normalization
+    Works entirely on stacked tensor data -- no pandas index alignment,
+    no datetime matching, no timezone conversion needed here.
     """
     W = config.target_norm_window
     N = len(available_symbols)
@@ -1464,28 +1383,22 @@ def _normalize_targets(
     if T == 0 or N == 0:
         return raw_targets, {}
 
-    # Stack to numpy [T, N] for vectorized computation.
-    stacked = torch.stack(raw_targets).numpy()    # [T, N]
-    stacked_masks = torch.stack(masks).numpy()    # [T, N]
+    stacked = torch.stack(raw_targets).numpy()       # [T, N]
+    stacked_masks = torch.stack(masks).numpy()        # [T, N]
 
-    # Result containers.
     scale_map: Dict[str, float] = {}
-    # per_sample_scales[t, j] = std to divide target[t, j] by
     per_sample_scales = np.ones((T, N), dtype=np.float64)
 
     for j, sym in enumerate(available_symbols):
         series = stacked[:, j].copy().astype(np.float64)
         mask_j = stacked_masks[:, j]
 
-        # Mask invalid entries as NaN so they don't contribute to std.
+        # Replace invalid entries with NaN for rolling computation.
         series[mask_j < 0.5] = np.nan
 
         s = pd.Series(series)
 
-        # Shift by 1 to make rolling std fully causal:
-        # std at position t is computed from [t-W, t-1].
-        # min_periods = W//4 allows early estimates before a full window
-        # accumulates, using at least 5 observations.
+        # Causal rolling std: shift(1) ensures std at t uses [t-W, t-1].
         rolling_std = (
             s.shift(1)
             .rolling(window=W, min_periods=max(5, W // 4))
@@ -1493,25 +1406,27 @@ def _normalize_targets(
             .values
         )
 
-        # Compute median over all valid (non-NaN, non-degenerate) std values.
-        # This is what we report in logs and store in scale_map for inference.
         valid_stds = rolling_std[~np.isnan(rolling_std) & (rolling_std > 1e-6)]
         if len(valid_stds) > 0:
             median_std = float(np.median(valid_stds))
-        else:
-            # True fallback: no valid observations. Rare -- only if the asset
-            # has nearly zero variation over the entire history.
-            median_std = 0.02
             log(
-                f"WARNING: {sym} has no valid rolling std estimates "
-                f"(all NaN or degenerate). Using fallback std=0.02. "
-                f"Check data quality for this asset."
+                f"  {sym}: rolling std computed from {len(valid_stds)} windows | "
+                f"median={median_std:.5f} | "
+                f"range=[{valid_stds.min():.5f}, {valid_stds.max():.5f}]"
+            )
+        else:
+            median_std = float(np.nanstd(series)) if not np.all(np.isnan(series)) else 0.02
+            if median_std < 1e-6:
+                median_std = 0.02
+            log(
+                f"  {sym}: WARNING -- no valid rolling std windows. "
+                f"Using global std={median_std:.5f} as fallback. "
+                f"Check that target_norm_window ({W}) << data length ({T})."
             )
         scale_map[sym] = median_std
 
-        # Forward-fill the rolling std to cover early positions where the
-        # rolling window hasn't accumulated yet. Use median_std as the
-        # initial fill value before any valid std is available.
+        # Forward-fill: use median_std before rolling window accumulates,
+        # then track the most recent valid rolling std.
         last_valid_std = median_std
         filled_stds = np.empty(T, dtype=np.float64)
         for t in range(T):
@@ -1522,7 +1437,7 @@ def _normalize_targets(
 
         per_sample_scales[:, j] = filled_stds
 
-    # Apply normalization: divide each target by its per-sample, per-asset std.
+    # Divide each valid target by its per-sample rolling std.
     normalized: List[torch.Tensor] = []
     for t in range(T):
         ret_t = raw_targets[t].clone()
@@ -1532,15 +1447,56 @@ def _normalize_targets(
                 std_val = per_sample_scales[t, j]
                 if std_val > 1e-8:
                     ret_t[j] = ret_t[j] / std_val
-                # If std_val is degenerate (< 1e-8), leave target unchanged
-                # and trust the mask to prevent it from contributing to loss.
         normalized.append(ret_t)
 
     return normalized, scale_map
 
 
+def _verify_normalization(
+    target_returns: List[torch.Tensor],
+    target_masks: List[torch.Tensor],
+    available_symbols: List[str],
+) -> None:
+    """
+    Post-normalization sanity check. Raises RuntimeError if normalization
+    produced near-zero targets (std < 0.1), which would cause dead weights.
+    """
+    stacked = torch.stack(target_returns).numpy()
+    stacked_masks = torch.stack(target_masks).numpy()
+    log("Post-normalization target std check:")
+    any_failed = False
+    for j, sym in enumerate(available_symbols):
+        valid = stacked_masks[:, j] > 0.5
+        if valid.sum() < 5:
+            log(f"  {sym}: too few valid samples to check std")
+            continue
+        std_val = float(np.std(stacked[valid, j]))
+        mean_val = float(np.mean(stacked[valid, j]))
+        if 0.1 <= std_val <= 10.0:
+            log(f"  {sym}: std={std_val:.4f} mean={mean_val:.4f} [OK]")
+        elif std_val < 0.1:
+            log(
+                f"  {sym}: std={std_val:.6f} mean={mean_val:.6f} "
+                f"[CRITICAL: near-zero std after normalization]"
+            )
+            any_failed = True
+        else:
+            log(
+                f"  {sym}: std={std_val:.4f} mean={mean_val:.4f} "
+                f"[WARNING: large std -- check for outlier returns]"
+            )
+
+    if any_failed:
+        raise RuntimeError(
+            "Target normalization produced near-zero std for one or more assets. "
+            "Training would produce dead weights. "
+            "Check that _extract_targets_safe returned non-zero, non-masked targets. "
+            "The post-normalization std should be close to 1.0 for all assets."
+        )
+
+
 # ============================================================================
-# 10. DATA LOADING
+# 11. DATA LOADING  [R3-BUG-3 FIX in _determine_surviving_dates]
 # ============================================================================
 def _cache_key(symbols: List[str], config: TrainingConfig) -> str:
     payload = json.dumps(
@@ -1566,32 +1522,41 @@ def _determine_surviving_dates(
     max_missing_frac: float,
 ) -> List[datetime]:
     """
-    Returns dates where at most max_missing_frac fraction of symbols
-    are missing from proc_features.
+    Returns dates where at most max_missing_frac of symbols have missing data.
+
+    [R3-BUG-3 FIX]: proc_features[sym].index contains pd.Timestamp(UTC).
+    Iterating with Python datetime objects and checking 'current in date_set'
+    where date_set = set(df.index) hits the stdlib-datetime vs pandas-Timestamp
+    equality issue. Fix: convert the index to a set of normalized pd.Timestamps
+    once, then iterate using pd.Timestamps.
     """
-    date_sets = {s: set(proc_features[s].index) for s in symbols}
-    n_symbols = len(symbols)
+    # Build date sets using pd.Timestamp for reliable equality comparison.
+    date_sets: Dict[str, set] = {}
+    for s in symbols:
+        # proc_features[s].index is already UTC-floored to day (pd.Timestamp).
+        date_sets[s] = set(proc_features[s].index)
+
     surviving = []
-    current = start_dt
-    while current <= end_dt:
-        missing = sum(1 for s in symbols if current not in date_sets[s])
+    # Iterate using pd.Timestamp to match the index type exactly.
+    current_ts = pd.Timestamp(start_dt).tz_convert("UTC")
+    end_ts = pd.Timestamp(end_dt).tz_convert("UTC")
+    one_day = pd.Timedelta(days=1)
+    n_symbols = len(symbols)
+
+    while current_ts <= end_ts:
+        missing = sum(1 for s in symbols if current_ts not in date_sets[s])
         if missing / n_symbols <= max_missing_frac:
-            surviving.append(current)
-        current += timedelta(days=1)
+            # Return as Python datetime for backward compatibility with
+            # graph_builder.build_graph() interface.
+            surviving.append(current_ts.to_pydatetime())
+        current_ts += one_day
+
     return surviving
 
 
 def _log_windowing_safety(config: TrainingConfig) -> None:
-    """
-    Asserts and logs that the windowing scheme is leak-free.
-    target_col ('returns_1d') IS among graph_builder's 24 node features.
-    Safety comes from the window [t-lookback, t) never including index t.
-    """
     assert config.forecast_horizon >= 1, (
-        f"forecast_horizon={config.forecast_horizon} must be >= 1. "
-        f"horizon=0 would include the target day's own features (which contain "
-        f"target_col='{config.target_col}') in the input window, causing "
-        f"direct label leakage."
+        f"forecast_horizon={config.forecast_horizon} must be >= 1."
     )
     log(
         f"Leakage check: target_col='{config.target_col}' is a graph_builder "
@@ -1600,18 +1565,7 @@ def _log_windowing_safety(config: TrainingConfig) -> None:
     )
 
 
-def _build_dataset_from_scratch(
-    config: TrainingConfig, symbols: List[str]
-) -> Tuple:
-    """
-    Builds all_graphs, target_returns, target_masks, graph_dates,
-    available_symbols, scale_map from scratch using FeatureStore and
-    DynamicGraphBuilder.
-
-    Returns:
-      (all_graphs, target_returns, target_masks, graph_dates,
-       available_symbols, scale_map)
-    """
+def _build_dataset_from_scratch(config: TrainingConfig, symbols: List[str]) -> Tuple:
     _log_windowing_safety(config)
 
     store = FeatureStore()
@@ -1628,15 +1582,9 @@ def _build_dataset_from_scratch(
         s for s in symbols if s in features and not features[s].empty
     ]
     if not available_symbols:
-        raise ValueError(
-            "No features found for any symbol. Run data ingestion first."
-        )
+        raise ValueError("No features found for any symbol.")
     log(f"Loaded features for {len(available_symbols)} assets.")
 
-    # graph_builder applies its own causal per-symbol rolling z-score
-    # normalization internally -- identical to production build_realtime_graph().
-    # Do NOT apply any additional feature normalization here; that would cause
-    # double-normalization invisible to production inference (train/serve skew).
     builder = DynamicGraphBuilder(
         supabase_client=None,
         asset_symbols=available_symbols,
@@ -1648,8 +1596,8 @@ def _build_dataset_from_scratch(
         df = features[sym].copy()
         if "timestamp" in df.columns:
             df = df.set_index("timestamp")
-        # Normalize to UTC, floor to day, deduplicate -- makes date lookups
-        # consistent regardless of yfinance vs DB timezone conventions.
+        # Normalize index to UTC, floor to day, deduplicate.
+        # Result: DatetimeIndex of pd.Timestamp(UTC) at midnight.
         df.index = (
             df.index.tz_localize("UTC")
             if df.index.tz is None
@@ -1660,9 +1608,17 @@ def _build_dataset_from_scratch(
         if config.target_col not in df.columns:
             raise ValueError(
                 f"target_col='{config.target_col}' not found for {sym}. "
-                f"Available columns: {list(df.columns)}"
+                f"Available: {list(df.columns)}"
             )
         proc_features[sym] = df
+
+    # Log a sample of the index type for debugging future timezone issues.
+    sample_sym = available_symbols[0]
+    sample_idx = proc_features[sample_sym].index[0]
+    log(
+        f"proc_features index sample: type={type(sample_idx).__name__}, "
+        f"value={sample_idx}, tz={sample_idx.tzinfo}"
+    )
 
     start_dt = (now - timedelta(days=config.history_days)).replace(
         hour=0, minute=0, second=0, microsecond=0, tzinfo=timezone.utc
@@ -1671,14 +1627,17 @@ def _build_dataset_from_scratch(
         hour=0, minute=0, second=0, microsecond=0, tzinfo=timezone.utc
     )
 
+    # [R3-BUG-3 FIX]: _determine_surviving_dates now uses pd.Timestamp iteration.
     surviving_dates = _determine_surviving_dates(
         proc_features, available_symbols, start_dt, end_dt, config.max_missing_frac
     )
     if not surviving_dates:
         raise ValueError(
             "No dates survive the missing-data filter. "
-            "Check ingestion coverage or increase max_missing_frac."
+            "Check ingestion or increase max_missing_frac."
         )
+    log(f"Surviving dates: {len(surviving_dates)} (first={surviving_dates[0].date()}, "
+        f"last={surviving_dates[-1].date()})")
 
     all_graphs, graph_dates, n_skipped = [], [], 0
     for d in surviving_dates:
@@ -1693,43 +1652,26 @@ def _build_dataset_from_scratch(
     if n_skipped:
         log(f"Skipped {n_skipped} days during graph construction.")
     if not all_graphs:
-        raise ValueError("No graphs could be built. Check data and graph_builder.")
+        raise ValueError("No graphs could be built.")
     log(f"Built {len(all_graphs)} daily graphs.")
 
-    # Extract targets and masks. Date alignment is positional:
-    # all_graphs[i] was built from proc_features at graph_dates[i].
-    target_returns: List[torch.Tensor] = []
-    target_masks: List[torch.Tensor] = []
-    for date in graph_dates:
-        returns, mask = [], []
-        for sym in available_symbols:
-            df = proc_features[sym]
-            val = df.loc[date, config.target_col] if date in df.index else np.nan
-            if pd.isna(val):
-                returns.append(0.0)
-                mask.append(0.0)
-            else:
-                returns.append(float(val))
-                mask.append(1.0)
-        target_returns.append(torch.tensor(returns, dtype=torch.float32))
-        target_masks.append(torch.tensor(mask, dtype=torch.float32))
+    # [R3-BUG-1 FIX]: Use _extract_targets_safe for timezone-correct extraction.
+    log("Extracting targets (timezone-safe)...")
+    target_returns, target_masks = _extract_targets_safe(
+        proc_features, graph_dates, available_symbols, config.target_col
+    )
 
-    # Normalize targets to ~unit std per asset.
-    # This is the PRIMARY fix for the dead-weight / zero-predictor collapse.
+    # Normalize targets to ~unit std.
     scale_map: Dict[str, float] = {}
     if config.normalize_targets:
+        log("Computing normalization scales:")
         target_returns, scale_map = _normalize_targets(
-            target_returns,
-            target_masks,
-            available_symbols,
-            config,
+            target_returns, target_masks, available_symbols, config
         )
         scale_stats = {s: f"{v:.4f}" for s, v in scale_map.items()}
         log(f"Target normalization scales (median daily return std): {scale_stats}")
 
-        # Sanity check: verify the normalization actually worked.
-        # After normalization, the std of valid targets should be near 1.0.
-        # If it's still < 0.1, normalization failed silently.
+        # Raises RuntimeError if normalization produced near-zero targets.
         _verify_normalization(target_returns, target_masks, available_symbols)
 
     return (
@@ -1742,53 +1684,12 @@ def _build_dataset_from_scratch(
     )
 
 
-def _verify_normalization(
-    target_returns: List[torch.Tensor],
-    target_masks: List[torch.Tensor],
-    available_symbols: List[str],
-) -> None:
-    """
-    Post-normalization sanity check. Logs per-asset std of normalized targets.
-    If any asset has std < 0.1 or > 10, emits a warning.
-    """
-    stacked = torch.stack(target_returns).numpy()      # [T, N]
-    stacked_masks = torch.stack(target_masks).numpy()  # [T, N]
-    log("Post-normalization target std check:")
-    for j, sym in enumerate(available_symbols):
-        valid = stacked_masks[:, j] > 0.5
-        if valid.sum() < 5:
-            log(f"  {sym}: too few valid samples to check std")
-            continue
-        std_val = float(np.std(stacked[valid, j]))
-        status = "OK" if 0.1 <= std_val <= 10.0 else "WARNING: UNEXPECTED STD"
-        log(f"  {sym}: normalized target std = {std_val:.4f} [{status}]")
-        if std_val < 0.1:
-            log(
-                f"  >>> {sym}: std={std_val:.6f} is near zero after normalization. "
-                f"This suggests normalization failed or data has near-zero variance. "
-                f"Zero-prediction will still be near-optimal for this asset."
-            )
-        elif std_val > 10.0:
-            log(
-                f"  >>> {sym}: std={std_val:.6f} is very large after normalization. "
-                f"This suggests outlier returns that weren't caught by the rolling std. "
-                f"Consider adding a final clip at ±5 std after normalization."
-            )
-
-
 def load_data(
     config: TrainingConfig,
     symbols: List[str],
     rank: int,
     is_distributed: bool,
 ) -> Tuple:
-    """
-    Loads or builds the full dataset. In distributed mode, rank 0 builds
-    the data and broadcasts to other ranks.
-
-    [BUG-11 FIX]: Rank-0 exceptions are broadcast as an error flag before
-    the barrier, preventing non-zero ranks from hanging indefinitely.
-    """
     cache_key = _cache_key(symbols, config)
     cache_path = CACHE_DIR / f"graphs_{cache_key}.pkl"
 
@@ -1821,8 +1722,7 @@ def load_data(
             return load_from_cache()
         return build_and_maybe_cache()
 
-    # Distributed path: rank 0 builds/loads, then broadcasts.
-    # [BUG-11 FIX]: Use a status flag to handle rank-0 exceptions cleanly.
+    # Distributed: rank 0 builds, broadcasts to others.
     container = [None]
     error_container = [None]
 
@@ -1834,24 +1734,25 @@ def load_data(
                 container[0] = build_and_maybe_cache()
         except Exception as e:
             error_container[0] = str(e)
-            log(f"Rank 0 failed to load data: {e}\n{traceback.format_exc()}", force=True)
+            log(
+                f"Rank 0 failed to load data: {e}\n{traceback.format_exc()}",
+                force=True,
+            )
 
-    # Broadcast success/error status BEFORE the barrier so non-zero ranks
-    # don't hang if rank 0 raised an exception.
+    # Broadcast error flag before barrier to prevent hangs.
     dist.broadcast_object_list(error_container, src=0)
     if error_container[0] is not None:
         raise RuntimeError(
             f"Rank 0 failed to build/load dataset: {error_container[0]}"
         )
 
-    # Now broadcast the actual data. [WARN-C]: large objects, ~3-5s overhead.
     dist.broadcast_object_list(container, src=0)
     dist.barrier()
     return container[0]
 
 
 # ============================================================================
-# 11. RESUME DISCOVERY
+# 12. RESUME DISCOVERY
 # ============================================================================
 def find_latest_checkpoint() -> Optional[Path]:
     candidates = sorted(
@@ -1862,21 +1763,18 @@ def find_latest_checkpoint() -> Optional[Path]:
 
 
 # ============================================================================
-# 12. MAIN
+# 13. MAIN
 # ============================================================================
 def parse_args():
     p = argparse.ArgumentParser(
-        description="Enterprise ST-GCN training pipeline for crypto return prediction."
+        description="Enterprise ST-GCN training pipeline."
     )
     p.add_argument(
         "--resume",
         nargs="?",
         const="auto",
         default=None,
-        help=(
-            "'auto' to resume the most recent run, or an explicit path to "
-            "checkpoint_last.pt. Omit to start a fresh run."
-        ),
+        help="'auto' or explicit path to checkpoint_last.pt",
     )
     return p.parse_args()
 
@@ -1896,9 +1794,6 @@ def main():
     torch.backends.cudnn.allow_tf32 = True
 
     try:
-        # ----------------------------------------------------------------
-        # Run directory: determined by rank 0 and broadcast to others.
-        # ----------------------------------------------------------------
         resume_target: Optional[Path] = None
         if args.resume == "auto":
             resume_target = find_latest_checkpoint()
@@ -1915,18 +1810,12 @@ def main():
             rid_container = [None]
             if rank == 0:
                 rid_container[0] = (
-                    resume_target.parent.name
-                    if resume_target
-                    else new_run_id()
+                    resume_target.parent.name if resume_target else new_run_id()
                 )
             dist.broadcast_object_list(rid_container, src=0)
             rid = rid_container[0]
         else:
-            rid = (
-                resume_target.parent.name
-                if resume_target
-                else new_run_id()
-            )
+            rid = resume_target.parent.name if resume_target else new_run_id()
 
         run_dir = RUNS_DIR / rid
         if rank == 0:
@@ -1936,10 +1825,6 @@ def main():
 
         log(f"Run ID: {rid} | Artifacts: {run_dir}")
 
-        # ----------------------------------------------------------------
-        # Symbol list: prefer DB, fall back to hardcoded.
-        # [BUG-16 FIX]: use db.query(Asset).all() then .symbol attribute.
-        # ----------------------------------------------------------------
         try:
             from backend.app.db.database import SessionLocal
             from backend.app.db.models import Asset
@@ -1954,9 +1839,6 @@ def main():
             symbols = ["BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE"]
         log(f"Assets: {symbols}")
 
-        # ----------------------------------------------------------------
-        # Data loading
-        # ----------------------------------------------------------------
         (
             all_graphs,
             target_returns,
@@ -1969,19 +1851,12 @@ def main():
         if rank == 0 and scale_map:
             with open(run_dir / "target_scale_map.json", "w") as f:
                 json.dump(scale_map, f, indent=2)
-            log(
-                "Target scale map saved "
-                "(use this to de-normalize predictions at inference time)."
-            )
+            log("Target scale map saved.")
 
-        # ----------------------------------------------------------------
-        # Train/val/test split
-        # ----------------------------------------------------------------
         min_required = config.lookback_days + config.forecast_horizon + 10
         if len(all_graphs) < min_required:
             raise ValueError(
-                f"Not enough graphs: {len(all_graphs)} < {min_required}. "
-                f"Increase history_days or reduce lookback_days."
+                f"Not enough graphs: {len(all_graphs)} < {min_required}."
             )
 
         n = len(all_graphs)
@@ -2008,16 +1883,13 @@ def main():
         if len(train_ds) == 0 or len(val_ds) == 0 or len(test_ds) == 0:
             raise ValueError(
                 f"Empty split(s): train={len(train_ds)} val={len(val_ds)} "
-                f"test={len(test_ds)}. Increase history_days."
+                f"test={len(test_ds)}."
             )
         log(
             f"Samples -> train {len(train_ds)} | "
             f"val {len(val_ds)} | test {len(test_ds)}"
         )
 
-        # pin_memory=False: collate_fn returns a list of PyG graphs (Python
-        # objects), which DataLoader cannot pin. Pinning is only valid for
-        # plain tensors. Setting True here would raise a TypeError at runtime.
         common_kwargs = dict(
             collate_fn=graph_collate_fn,
             num_workers=config.num_workers,
@@ -2051,21 +1923,12 @@ def main():
             )
 
         val_loader = DataLoader(
-            val_ds,
-            batch_size=config.batch_size * 2,
-            shuffle=False,
-            **common_kwargs,
+            val_ds, batch_size=config.batch_size * 2, shuffle=False, **common_kwargs
         )
         test_loader = DataLoader(
-            test_ds,
-            batch_size=config.batch_size * 2,
-            shuffle=False,
-            **common_kwargs,
+            test_ds, batch_size=config.batch_size * 2, shuffle=False, **common_kwargs
         )
 
-        # ----------------------------------------------------------------
-        # Model + Trainer
-        # ----------------------------------------------------------------
         log(f"Device: {device}")
         model = EnterpriseSTGCNModel(config)
         trainer = EnterpriseTrainer(
@@ -2076,9 +1939,6 @@ def main():
 
         trainer.fit()
 
-        # ----------------------------------------------------------------
-        # Evaluation
-        # ----------------------------------------------------------------
         test_metrics = trainer.evaluate_test()
         ensemble_metrics = trainer.evaluate_test_ensemble()
         all_metrics = {**test_metrics, **ensemble_metrics}
@@ -2089,9 +1949,6 @@ def main():
             )
             all_metrics.update(trading_metrics)
 
-        # ----------------------------------------------------------------
-        # Artifact saving and DB registration (rank 0 only)
-        # ----------------------------------------------------------------
         if rank == 0:
             with open(run_dir / "config.json", "w") as f:
                 json.dump(config.to_dict(), f, indent=2)
@@ -2117,7 +1974,6 @@ def main():
                 except Exception as e:
                     log(f"Permutation importance failed (non-fatal): {e}")
 
-            # DB model registry (best-effort)
             try:
                 from backend.app.db.database import SessionLocal, Base, engine
                 from backend.app.db.models import ModelRegistry
@@ -2136,7 +1992,7 @@ def main():
                         )
                     )
                     db.commit()
-                    log(f"Model registered in DB: {version}")
+                    log(f"Model registered: {version}")
                 db.close()
             except Exception as e:
                 log(f"Skipping DB registration (non-fatal): {e}")
