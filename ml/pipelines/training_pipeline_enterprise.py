@@ -221,7 +221,7 @@ class TrainingConfig:
     sam_rho: float = 0.05
 
     use_amp: bool = True
-    num_workers: int = 2
+    num_workers: int = 0
     max_train_hours: float = 8.5
     checkpoint_every_epochs: int = 1
     seed: int = 42
@@ -1031,9 +1031,11 @@ def _normalize_targets(
     de-normalization at inference/evaluation time).
     """
     W = config.target_norm_window
-    # Compute per-symbol rolling std using available returns BEFORE the graph dates
     scale_map: Dict[str, float] = {}
     per_sym_stds: Dict[str, List[float]] = {s: [] for s in available_symbols}
+
+    # Convert graph_dates to pandas DatetimeIndex (safely handling timezones)
+    datetime_index = pd.to_datetime(graph_dates)
 
     for sym in available_symbols:
         df = proc_features[sym]
@@ -1041,22 +1043,27 @@ def _normalize_targets(
             per_sym_stds[sym] = [1.0] * len(graph_dates)
             scale_map[sym] = 1.0
             continue
+        
+        # Calculate rolling standard deviation on target column
         rolling_std = df[config.target_col].rolling(window=W, min_periods=max(5, W // 4)).std()
-        # Build a date → rolling_std lookup
-        std_by_date = rolling_std.to_dict()
-        sym_stds = []
-        for d in graph_dates:
-            s = std_by_date.get(d, np.nan)
-            sym_stds.append(float(s) if not pd.isna(s) and s > 1e-8 else np.nan)
-        # Forward-fill from the first valid value
-        last_valid = 1.0
+        
+        # Use pandas index alignment (handles Timestamp vs datetime matching perfectly)
+        std_series = rolling_std.reindex(datetime_index)
+        sym_stds = std_series.values
+        
+        # Determine fallback standard deviation (median std of the series, or 0.02)
+        valid_stds = sym_stds[~np.isnan(sym_stds) & (sym_stds > 1e-5)]
+        median_std = float(np.median(valid_stds)) if len(valid_stds) > 0 else 0.02
+        scale_map[sym] = median_std
+
+        # Forward fill and backward fill NaNs with last valid value or median
+        last_valid = median_std
         filled = []
         for s in sym_stds:
-            if not np.isnan(s):
-                last_valid = s
+            if not np.isnan(s) and s > 1e-5:
+                last_valid = float(s)
             filled.append(last_valid)
         per_sym_stds[sym] = filled
-        scale_map[sym] = float(np.nanmedian(sym_stds)) if not all(np.isnan(sym_stds)) else 1.0
 
     # Normalize tensors
     normalized = []
@@ -1167,23 +1174,27 @@ def load_data(config: TrainingConfig, symbols: List[str], rank: int, is_distribu
         with open(cache_path, "rb") as f:
             return pickle.load(f)
 
+    if is_distributed:
+        container = [None]
+        if rank == 0:
+            if cache_valid():
+                container[0] = load_from_cache()
+            else:
+                container[0] = _build_dataset_from_scratch(config, symbols)
+                if config.use_cache:
+                    try:
+                        with open(cache_path, "wb") as f:
+                            pickle.dump(container[0], f)
+                        log(f"Cached graph sequences to {cache_path.name}")
+                    except Exception as e:
+                        log(f"Could not write cache: {e}")
+        # Synchronize rank 0 and others before broadcasting
+        dist.barrier()
+        dist.broadcast_object_list(container, src=0)
+        return container[0]
+
     if cache_valid():
         return load_from_cache()
-
-    if is_distributed:
-        if rank == 0:
-            result = _build_dataset_from_scratch(config, symbols)
-            if config.use_cache:
-                try:
-                    with open(cache_path, "wb") as f:
-                        pickle.dump(result, f)
-                    log(f"Cached graph sequences to {cache_path.name}")
-                except Exception as e:
-                    log(f"Could not write cache: {e}")
-        dist.barrier()
-        if rank != 0:
-            result = load_from_cache()
-        return result
 
     result = _build_dataset_from_scratch(config, symbols)
     if config.use_cache:
