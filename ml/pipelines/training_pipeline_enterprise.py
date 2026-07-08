@@ -1022,44 +1022,29 @@ def _normalize_targets(
     """
     Normalize each asset's target series by its rolling std so that zero-prediction
     is no longer a free win for the Gaussian NLL loss.
-
-    Without this, daily returns are ~0.01-0.03 in magnitude, so a model that always
-    predicts 0 achieves RMSE≈0.001 while R²=0 — an apparent training success that
-    is actually a degenerate constant predictor.
-
-    Returns normalized targets and a dict of per-symbol scale factors (for
-    de-normalization at inference/evaluation time).
     """
     W = config.target_norm_window
     scale_map: Dict[str, float] = {}
     per_sym_stds: Dict[str, List[float]] = {s: [] for s in available_symbols}
 
-    # Convert graph_dates to pandas DatetimeIndex (safely handling timezones)
-    datetime_index = pd.to_datetime(graph_dates)
+    stacked_targets = torch.stack(raw_targets).numpy()
+    stacked_masks = torch.stack(masks).numpy()
 
-    for sym in available_symbols:
-        df = proc_features[sym]
-        if config.target_col not in df.columns:
-            per_sym_stds[sym] = [1.0] * len(graph_dates)
-            scale_map[sym] = 1.0
-            continue
+    for j, sym in enumerate(available_symbols):
+        series = stacked_targets[:, j].copy()
+        mask_s = stacked_masks[:, j]
         
-        # Calculate rolling standard deviation on target column
-        rolling_std = df[config.target_col].rolling(window=W, min_periods=max(5, W // 4)).std()
+        series[mask_s < 0.5] = np.nan
+        df_s = pd.Series(series)
+        rolling_std = df_s.rolling(window=W, min_periods=max(5, W // 4)).std().values
         
-        # Use pandas index alignment (handles Timestamp vs datetime matching perfectly)
-        std_series = rolling_std.reindex(datetime_index)
-        sym_stds = std_series.values
-        
-        # Determine fallback standard deviation (median std of the series, or 0.02)
-        valid_stds = sym_stds[~np.isnan(sym_stds) & (sym_stds > 1e-5)]
+        valid_stds = rolling_std[~np.isnan(rolling_std) & (rolling_std > 1e-5)]
         median_std = float(np.median(valid_stds)) if len(valid_stds) > 0 else 0.02
         scale_map[sym] = median_std
 
-        # Forward fill and backward fill NaNs with last valid value or median
         last_valid = median_std
         filled = []
-        for s in sym_stds:
+        for s in rolling_std:
             if not np.isnan(s) and s > 1e-5:
                 last_valid = float(s)
             filled.append(last_valid)
