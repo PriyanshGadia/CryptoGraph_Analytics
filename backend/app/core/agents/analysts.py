@@ -4,7 +4,7 @@ logger = logging.getLogger(__name__)
 from app.core.agents.base import BaseAgent
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, text
-from app.db.models_sqla import Asset, AssetNews, OnchainMetric
+from app.db.models import Asset, AssetNews, OnchainMetric
 from typing import Optional
 
 class MacroEconomistAgent(BaseAgent):

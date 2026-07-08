@@ -7,7 +7,7 @@ from typing import Dict, List
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
-from app.db.models_sqla import Asset, OnchainMetric, AssetNews, TechnicalFeature, Prediction
+from app.db.models import Asset, OnchainMetric, AssetNews, TechnicalFeature, Prediction
 
 from cachetools import TTLCache
 
@@ -32,7 +32,7 @@ BINANCE_EXCLUDE_SYMBOLS = {"XMR"}
 def populate_static_features(db: Session, symbols: List[str]):
     """Populates the static features cache and initializes GLOBAL_MARKET_STATE with DB data."""
     assets = db.query(Asset).filter(Asset.symbol.in_(symbols)).all()
-    from app.db.models_sqla import OHLCV
+    from app.db.models import OHLCV
     
     for asset in assets:
         sym = asset.symbol
@@ -110,7 +110,7 @@ def refresh_predictions_in_ssot(db: Session):
     /api/assets, /api/screener, and any other SSOT-consuming endpoint
     immediately reflect the fresh confidence scores without a server restart.
     """
-    from app.db.models_sqla import Asset, Prediction
+    from app.db.models import Asset, Prediction
     assets = db.query(Asset).all()
     for asset in assets:
         if asset.symbol not in GLOBAL_MARKET_STATE:
@@ -252,7 +252,7 @@ async def binance_ws_loop(symbols: List[str]):
             except (Exception, CircuitBreakerError) as e:
                 logger.warning(f"CoinGecko fallback failed for {symbol}: {e}. Falling back to SQLite cache.")
                 # Tertiary Fallback: SQLite Cache
-                from app.db.models_sqla import OHLCV, Asset
+                from app.db.models import OHLCV, Asset
                 from datetime import datetime, timedelta, timezone
                 asset = self.db.query(Asset).filter(Asset.symbol == symbol).first()
                 if asset:

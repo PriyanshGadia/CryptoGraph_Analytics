@@ -1,6 +1,6 @@
 """Asset routes for ST-GCN Forecasting API."""
 from fastapi import APIRouter
-from app.db.models import Asset
+from app.db.schemas import Asset
 from app.core.streams.binance_ws import get_global_market_state
 from app.core.cache import cached
 

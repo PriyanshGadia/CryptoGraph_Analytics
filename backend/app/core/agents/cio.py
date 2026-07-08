@@ -4,7 +4,7 @@ logger = logging.getLogger(__name__)
 from app.core.agents.base import BaseAgent
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
-from app.db.models_sqla import TradeHistory
+from app.db.models import TradeHistory
 from typing import Dict, Any
 
 class ChiefInvestmentOfficerAgent(BaseAgent):

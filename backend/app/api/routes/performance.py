@@ -5,7 +5,7 @@ from sqlalchemy import desc, text
 from datetime import datetime, timezone, timedelta
 import numpy as np
 from app.api.deps import get_db
-from app.db.models_sqla import Prediction, Asset, OHLCV
+from app.db.models import Prediction, Asset, OHLCV
 from app.core.cache import cached
 
 router = APIRouter(prefix="/performance", tags=["performance"])

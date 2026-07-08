@@ -9,7 +9,7 @@ Uses quantitative circuit breakers and Fractional Kelly Criterion position sizin
 from typing import Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
-from app.db.models_sqla import PortfolioState, TradeHistory, OHLCV, Asset
+from app.db.models import PortfolioState, TradeHistory, OHLCV, Asset
 from datetime import datetime, timedelta, timezone
 
 

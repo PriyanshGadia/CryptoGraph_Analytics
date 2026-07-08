@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.api.deps import verify_api_key
-from app.db.models_sqla import AppSetting
+from app.db.models import AppSetting
 from app.core.security import encrypt_secret, decrypt_secret
 from pydantic import BaseModel
 from typing import Dict, Any, Optional

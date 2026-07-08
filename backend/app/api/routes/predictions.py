@@ -3,9 +3,9 @@ from fastapi import APIRouter, Depends, BackgroundTasks, Request
 from app.api.deps import get_db
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
-from app.db.models import Prediction, PredictionHistory
+from app.db.schemas import Prediction, PredictionHistory
 
-from app.core.auth import get_api_key
+from app.api.deps import verify_api_key as get_api_key
 from app.api.routes.forecast import limiter
 
 router = APIRouter(prefix="/predictions", tags=["predictions"])
@@ -22,7 +22,7 @@ async def get_batch_predictions(
     db: Session = Depends(get_db)
 ):
     """Perform bulk inference lookup/computation for a batch of assets."""
-    from app.db.models_sqla import Prediction as SQLAPrediction, Asset
+    from app.db.models import Prediction as SQLAPrediction, Asset
     from sqlalchemy import desc
     import json
     
@@ -101,7 +101,7 @@ async def get_predictions(
 ):
     """Returns latest predictions for all assets with optional filters."""
     from datetime import datetime, timedelta, timezone
-    from app.db.models_sqla import Prediction as SQLAPrediction, Asset
+    from app.db.models import Prediction as SQLAPrediction, Asset
     
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     query = db.query(SQLAPrediction, Asset).join(Asset).filter(SQLAPrediction.predicted_at >= cutoff)
@@ -157,7 +157,7 @@ async def get_predictions(
 @router.get("/{symbol}", response_model=PredictionHistory)
 async def get_prediction_history(symbol: str, db: Session = Depends(get_db)):
     """Returns last 30 predictions for a single asset."""
-    from app.db.models_sqla import Prediction as SQLAPrediction, Asset
+    from app.db.models import Prediction as SQLAPrediction, Asset
     
     # Find asset
     asset = db.query(Asset).filter(Asset.symbol == symbol).first()
@@ -204,7 +204,7 @@ async def trigger_inference(request: Request, background_tasks: BackgroundTasks,
         import asyncio
         from datetime import datetime, timezone
         from app.db.database import SessionLocal
-        from app.db.models_sqla import AppSetting
+        from app.db.models import AppSetting
         from app.api.routes.screener import refresh_live_technicals
         
         db = SessionLocal()

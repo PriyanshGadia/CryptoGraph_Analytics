@@ -22,14 +22,14 @@ if (-not $venvValid) {
     exit 1
 }
 $env:PYTHONPATH = "$PSScriptRoot\backend;$PSScriptRoot"
-Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"cd /d `"$PSScriptRoot\backend`" && set API_KEY=dev_default_key_123 && .\venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --no-use-colors`"" -WindowStyle Normal
+Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"cd /d `"$PSScriptRoot\backend`" && set `"API_KEY=dev_default_secure_key_1234567890`" && .\venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --no-use-colors`"" -WindowStyle Normal
 
 # Wait briefly
 Start-Sleep -Seconds 2
 
 # Start Frontend
 Write-Host "[*] Initializing Frontend Server (Next.js)..." -ForegroundColor Yellow
-Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"cd /d `"$PSScriptRoot\frontend`" && set NEXT_PUBLIC_API_KEY=dev_default_key_123 && set API_KEY=dev_default_key_123 && npm run dev`"" -WindowStyle Normal
+Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"cd /d `"$PSScriptRoot\frontend`" && set `"NEXT_PUBLIC_API_KEY=dev_default_secure_key_1234567890`" && set `"API_KEY=dev_default_secure_key_1234567890`" && npm run dev`"" -WindowStyle Normal
 
 # Wait for frontend to compile
 Write-Host "[*] Waiting for servers to initialize (5s)..." -ForegroundColor Yellow

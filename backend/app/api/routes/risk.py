@@ -7,7 +7,7 @@ from app.api.deps import get_db
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, text, func
 from datetime import datetime, timezone, timedelta
-from app.db.models_sqla import Prediction, Asset, OHLCV
+from app.db.models import Prediction, Asset, OHLCV
 from app.core.cache import cached
 from app.core.streams.binance_ws import LIVE_OHLCV_CACHE
 

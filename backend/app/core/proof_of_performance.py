@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger("cryptograph.proof")
-from app.db.models_sqla import PortfolioState, TradeHistory, ProofOfPerformance
+from app.db.models import PortfolioState, TradeHistory, ProofOfPerformance
 
 def generate_daily_proof(db: Session, portfolio_id: int) -> str:
     """

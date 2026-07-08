@@ -3,10 +3,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from app.db.database import get_db
-from app.db.models_sqla import PortfolioState, TradeHistory, Asset, TradeDebate, OHLCV
+from app.db.models import PortfolioState, TradeHistory, Asset, TradeDebate, OHLCV
 from pydantic import BaseModel, Field
 from app.services.trading_agent import execute_daily_trades
-from app.core.auth import get_api_key
+from app.api.deps import verify_api_key as get_api_key
 from typing import Dict, Any, List
 
 router = APIRouter(prefix="/portfolio", tags=["portfolio"])

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc, text, func
 from datetime import datetime, timezone, timedelta
 from app.api.deps import get_db
-from app.db.models_sqla import Asset, OHLCV, AssetNews, Prediction
+from app.db.models import Asset, OHLCV, AssetNews, Prediction
 from app.core.cache import cached
 import math
 
@@ -184,7 +184,7 @@ def get_fear_greed_vs_btc(days: int = 365, db: Session = Depends(get_db)):
 @router.get("/latest-synthesis")
 def get_latest_synthesis(db: Session = Depends(get_db)):
     """Returns the most recent qualitative synthesis from the MoA Swarm."""
-    from app.db.models_sqla import TradeDebate
+    from app.db.models import TradeDebate
     latest_debate = db.query(TradeDebate).order_by(desc(TradeDebate.timestamp)).first()
     
     if not latest_debate:

@@ -19,7 +19,7 @@ def get_refresh_event() -> asyncio.Event:
 def get_db_symbols() -> List[str]:
     try:
         from app.db.database import SessionLocal
-        from app.db.models_sqla import Asset
+        from app.db.models import Asset
         db = SessionLocal()
         try:
             assets = db.query(Asset.symbol).all()
@@ -147,7 +147,7 @@ async def prediction_broadcast_loop():
             
         try:
             from app.db.database import SessionLocal
-            from app.db.models_sqla import Prediction as SQLAPrediction, Asset
+            from app.db.models import Prediction as SQLAPrediction, Asset
             from sqlalchemy import desc
             import json
             

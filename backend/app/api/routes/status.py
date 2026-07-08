@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from app.api.deps import get_db
-from app.core.auth import get_api_key
-from app.db.models_sqla import OHLCV, Prediction, AssetNews
+from app.api.deps import verify_api_key as get_api_key
+from app.db.models import OHLCV, Prediction, AssetNews
 from datetime import datetime, timezone
 
 router = APIRouter(prefix="/status", tags=["status"])

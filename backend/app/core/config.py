@@ -38,7 +38,7 @@ settings = Settings()
 
 
 from app.db.database import SessionLocal
-from app.db.models_sqla import AppSetting
+from app.db.models import AppSetting
 from app.core.security import decrypt_secret
 from cachetools import TTLCache
 

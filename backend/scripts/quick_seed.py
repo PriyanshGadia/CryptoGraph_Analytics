@@ -32,7 +32,7 @@ def main():
     
     # Ensure tables exist
     from app.db.database import engine, Base
-    import app.db.models_sqla as models
+    import app.db.models as models
     Base.metadata.create_all(bind=engine)
     
     conn = sqlite3.connect(db_path)

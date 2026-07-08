@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 import ccxt
 import concurrent.futures
-from app.db.models_sqla import Asset
+from app.db.models import Asset
 from app.core.cache import cached
 from app.core.streams.binance_ws import get_global_market_state
 

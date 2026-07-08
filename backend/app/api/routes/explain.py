@@ -3,8 +3,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from app.db.database import get_db
-from app.db.models_sqla import Asset, Prediction, AppSetting, AssetNews
-from app.db.models import ExplainResponse
+from app.db.models import Asset, Prediction, AppSetting, AssetNews
+from app.db.schemas import ExplainResponse
 from app.core.security import decrypt_secret
 from groq import Groq
 from app.api.routes.forecast import limiter
@@ -333,7 +333,7 @@ Explain in exactly 3-4 sentences why the model made this prediction in plain lan
             explanation = completion.choices[0].message.content
         except Exception as e:
             # Fallback to system XAI if API call fails
-            sys_resp = generate_system_explanation(symbol, direction, confidence, raw_shap, t_shap_data, db=db)
+            sys_resp = generate_system_explanation(symbol, direction, confidence, raw_shap, t_shap_data)
             explanation = sys_resp["explanation"] + f" (Note: LLM enhancement unavailable — {type(e).__name__})"
             bull_case = sys_resp["bull_case"]
             bear_case = sys_resp["bear_case"]
@@ -341,7 +341,7 @@ Explain in exactly 3-4 sentences why the model made this prediction in plain lan
 
         # TODO: Ideally fetch LLM debate council answers too, for now fallback to sys_resp if missing
         if 'bull_case' not in locals():
-             sys_resp = generate_system_explanation(symbol, direction, confidence, raw_shap, t_shap_data, db=db)
+             sys_resp = generate_system_explanation(symbol, direction, confidence, raw_shap, t_shap_data)
              bull_case = sys_resp["bull_case"]
              bear_case = sys_resp["bear_case"]
              risk_case = sys_resp["risk_case"]

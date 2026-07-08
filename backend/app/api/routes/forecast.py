@@ -11,7 +11,7 @@ import asyncio
 from app.api.deps import get_db
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
-from app.db.models_sqla import Asset, OHLCV, Prediction as SQLAPrediction, Forecast as SQLAForecast
+from app.db.models import Asset, OHLCV, Prediction as SQLAPrediction, Forecast as SQLAForecast
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from cachetools import TTLCache

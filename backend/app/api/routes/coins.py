@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.api.deps import get_db
 from datetime import datetime, timezone, timedelta
-from app.db.models_sqla import Asset
+from app.db.models import Asset
 import ccxt.async_support as ccxt
 
 router = APIRouter(prefix="/coins", tags=["coins"])
@@ -53,7 +53,7 @@ async def get_coin_ohlcv(
         import logging
         logging.getLogger(__name__).error(f"Error fetching OHLCV from Binance for {symbol}: {e}", exc_info=True)
         # Fallback to SQLite if Binance API fails
-        from app.db.models_sqla import OHLCV
+        from app.db.models import OHLCV
         from sqlalchemy import desc
         
         db_ohlcv = db.query(OHLCV).filter(
@@ -329,7 +329,7 @@ def get_coin_correlations(symbol: str, db: Session = Depends(get_db)):
 
 @router.get("/{symbol}/sentiment-history")
 def get_coin_sentiment_history(symbol: str, db: Session = Depends(get_db)):
-    from app.db.models_sqla import AssetNews
+    from app.db.models import AssetNews
     
     asset = db.query(Asset).filter(Asset.symbol.ilike(symbol)).first()
     if not asset:

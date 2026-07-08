@@ -3,8 +3,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, text, func
 from app.api.deps import get_db
-from app.db.models import GraphResponse, GraphNode, GraphEdge
-from app.db.models_sqla import Asset, Prediction, OHLCV, Forecast as SQLAForecast
+from app.db.schemas import GraphResponse, GraphNode, GraphEdge
+from app.db.models import Asset, Prediction, OHLCV, Forecast as SQLAForecast
 from datetime import datetime, timezone, timedelta
 import numpy as np
 import pandas as pd

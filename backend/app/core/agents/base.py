@@ -4,7 +4,7 @@ logger = logging.getLogger(__name__)
 import asyncio
 from typing import Optional, Dict, Any
 from sqlalchemy.orm import Session
-from app.db.models_sqla import AppSetting
+from app.db.models import AppSetting
 from app.core.security import decrypt_secret
 
 class BaseAgent:

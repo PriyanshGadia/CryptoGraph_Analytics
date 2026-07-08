@@ -77,7 +77,7 @@ The canonical, supported way to deploy CryptoGraph Analytics is via **Docker Com
 graph LR
     A[Binance WebSocket] -->|Live Ticks| B(FastAPI Cache)
     C[SQLite DB] -->|Static Features| B
-    B -->|Tensor Ticking| D{PyTorch ST-GCN}
+    B -->|Tensor Ticking| D{Ensemble Forecaster <br/> ST-GCN + LSTM + Prophet}
     D -->|Predictions| E[Next.js Swarm UI]
     F[Groq LLaMA 3.3] -->|Natural Language| E
 ```

@@ -35,8 +35,9 @@ def run_lstm_forecast(
         logger = logging.getLogger(__name__)
 
         class LSTMForecaster(nn.Module):
-            def __init__(self, hidden_size=64, num_layers=2, dropout=0.1):
+            def __init__(self, hidden_size=64, num_layers=2, dropout=0.1, output_steps=30):
                 super().__init__()
+                self.output_steps = output_steps
                 self.lstm = nn.LSTM(
                     input_size=1,
                     hidden_size=hidden_size,
@@ -47,15 +48,14 @@ def run_lstm_forecast(
                 self.fc = nn.Sequential(
                     nn.Linear(hidden_size, 32),
                     nn.ReLU(),
-                    nn.Linear(32, 1)
+                    nn.Linear(32, output_steps) # Direct multi-step output
                 )
             
             def forward(self, x):
                 out, _ = self.lstm(x)
-                return self.fc(out[:, -1, :]).squeeze(-1)
+                return self.fc(out[:, -1, :]).squeeze(0) # [output_steps]
                 
         if _GLOBAL_LSTM_MODEL is None:
-            # Search for pre-trained model checkpoint
             ckpt_path = None
             env_artifact_path = os.environ.get("ARTIFACT_PATH")
             possible_paths = []
@@ -79,7 +79,14 @@ def run_lstm_forecast(
                 
             checkpoint = torch.load(str(ckpt_path), map_location="cpu")
             model = LSTMForecaster()
-            model.load_state_dict(checkpoint["model_state_dict"])
+            
+            # Strict validation
+            try:
+                model.load_state_dict(checkpoint["model_state_dict"], strict=True)
+            except RuntimeError as e:
+                logger.error(f"LSTM Architecture mismatch. Please retrain for Seq2Seq: {e}")
+                return None
+                
             model.eval()
             
             _GLOBAL_LSTM_LOOKBACK = checkpoint.get("lookback", 14)
@@ -89,44 +96,42 @@ def run_lstm_forecast(
             model = _GLOBAL_LSTM_MODEL
         
         LOOKBACK = _GLOBAL_LSTM_LOOKBACK
+        model.eval() # Use standard evaluation mode, no MC Dropout
         
-        # Explicitly document that the localized min-max scaling serves as a bounding stationary transform for the LSTM
-        # Enable MC Dropout for uncertainty estimation
-        model.train() # This enables dropout
-        
-        trajectories = []
         with torch.no_grad():
-            for _ in range(30): # 30 MC paths
-                forecast_norm = []
-                window = list(normalized[-LOOKBACK:])
-                for _ in range(forecast_days):
-                    x_in = torch.tensor(window[-LOOKBACK:], dtype=torch.float32).unsqueeze(0).unsqueeze(-1)
-                    next_val = model(x_in).item()
-                    next_val = max(0.0, min(1.0, next_val))
-                    forecast_norm.append(next_val)
-                    window.append(next_val)
+            window = list(normalized[-LOOKBACK:])
+            x_in = torch.tensor(window, dtype=torch.float32).unsqueeze(0).unsqueeze(-1)
+            forecast_norm = model(x_in).cpu().numpy()
+            
+            # Truncate or pad to exactly forecast_days
+            if len(forecast_norm) > forecast_days:
+                forecast_norm = forecast_norm[:forecast_days]
+            elif len(forecast_norm) < forecast_days:
+                forecast_norm = np.pad(forecast_norm, (0, forecast_days - len(forecast_norm)), mode='edge')
                 
-                trajectories.append([p * price_range + price_min for p in forecast_norm])
+            forecast_norm = np.clip(forecast_norm, 0.0, 1.0)
+            forecast_prices = forecast_norm * price_range + price_min
         
-        trajectories = np.array(trajectories)
-        forecast_prices = trajectories.mean(axis=0)
-        uncertainty = trajectories.std(axis=0) * 1.96
+        # Calculate rigorous empirical uncertainty scaling
+        returns = np.diff(price_array) / price_array[:-1] if len(price_array) > 1 else np.array([0.02])
+        historical_volatility = np.std(returns)
         
-        # Then, apply √time scaling to the uncertainty to ensure it grows realistically.
-        std_returns = np.std(np.diff(price_array)) if len(price_array) > 1 else price_range * 0.02
-        time_scaling = np.array([(i + 1) ** 0.5 for i in range(forecast_days)])
-        # Combine model uncertainty with theoretical volatility
-        combined_uncertainty = uncertainty + (std_returns * time_scaling * 1.5)
-        
+        uncertainty = []
+        for i in range(forecast_days):
+            # Scale linearly with square root of time
+            time_scaled_vol = historical_volatility * np.sqrt(i + 1)
+            price_uncertainty = forecast_prices[i] * time_scaled_vol * 1.96 # 95% Confidence Interval
+            uncertainty.append(price_uncertainty)
+            
         return {
             "forecast_prices": [round(float(p), 8) for p in forecast_prices],
-            "lower_bound":     [round(float(p - u), 8) for p, u in zip(forecast_prices, combined_uncertainty)],
-            "upper_bound":     [round(float(p + u), 8) for p, u in zip(forecast_prices, combined_uncertainty)],
-            "model_used":      "Pre-trained Global LSTM Forecaster (MC Dropout)"
+            "lower_bound":     [round(float(p - u), 8) for p, u in zip(forecast_prices, uncertainty)],
+            "upper_bound":     [round(float(p + u), 8) for p, u in zip(forecast_prices, uncertainty)],
+            "model_used":      "Direct Seq2Seq LSTM Forecaster"
         }
         
     except Exception as e:
-        logger.exception(f"Failed to load LSTM checkpoint: {e}")
+        logger.exception(f"Failed to load or run LSTM checkpoint: {e}")
         return None
 
 
@@ -146,6 +151,8 @@ def run_prophet_forecast(
         logging.getLogger("NP.utils").setLevel(logging.ERROR)
 
         from neuralprophet import NeuralProphet
+        import warnings
+        warnings.filterwarnings("ignore", category=FutureWarning)
 
         df = pd.DataFrame({
             "ds": pd.to_datetime(dates).dt.tz_localize(None),
@@ -158,6 +165,7 @@ def run_prophet_forecast(
         # Dynamic epoch tuning based on data size (longer history = fewer epochs needed)
         dynamic_epochs = max(20, min(100, int(3000 / len(df)))) if len(df) > 0 else 50
         
+        # Use built-in quantiles for probabilistic uncertainty
         model = NeuralProphet(
             n_forecasts=forecast_days,
             n_lags=14,
@@ -167,56 +175,60 @@ def run_prophet_forecast(
             epochs=dynamic_epochs,
             batch_size=16,
             learning_rate=0.01,
+            quantiles=[0.05, 0.95], # 90% confidence interval
             verbose=False,
         )
 
-        # NeuralProphet requires a validation split
+        # NeuralProphet requires a validation split for early stopping
         train_df, val_df = model.split_df(df, freq="D", valid_p=0.2)
-        model.fit(train_df, freq="D", validation_df=val_df, progress=False)
+        
+        # Fit with early stopping to prevent overfitting
+        model.fit(train_df, freq="D", validation_df=val_df, early_stopping=True, progress=False)
 
         future = model.make_future_dataframe(
             df, periods=forecast_days, n_historic_predictions=False
         )
         forecast_df = model.predict(future)
 
-        # NeuralProphet output columns: yhat1..yhat7
+        # NeuralProphet output columns for quantiles might vary, usually "yhat{i} {quantile}%"
         forecast_prices = []
+        lower_bounds = []
+        upper_bounds = []
+        
         for i in range(1, forecast_days + 1):
-            col = f"yhat{i}"
-            if col in forecast_df.columns:
-                val = forecast_df[col].dropna().iloc[-1]
+            col_mean = f"yhat{i}"
+            col_low = f"yhat{i} 5.0%"
+            col_high = f"yhat{i} 95.0%"
+            
+            if col_mean in forecast_df.columns:
+                val = forecast_df[col_mean].dropna().iloc[-1]
                 forecast_prices.append(float(val))
+                
+                # Extract quantiles if available, else fallback to empirical std
+                if col_low in forecast_df.columns and col_high in forecast_df.columns:
+                    val_low = forecast_df[col_low].dropna().iloc[-1]
+                    val_high = forecast_df[col_high].dropna().iloc[-1]
+                    lower_bounds.append(float(val_low))
+                    upper_bounds.append(float(val_high))
+                else:
+                    # Fallback if quantiles failed to generate
+                    ewma_vol = prices.pct_change().dropna().std() * prices.iloc[-1] * 1.96 * ((i)**0.5)
+                    lower_bounds.append(float(val - ewma_vol))
+                    upper_bounds.append(float(val + ewma_vol))
 
         if len(forecast_prices) < forecast_days:
             return None
 
-        # Compute uncertainty from residuals on training data
-        train_preds = model.predict(train_df)
-        residuals = []
-        for i in range(1, forecast_days + 1):
-            col = f"yhat{i}"
-            if col in train_preds.columns and "y" in train_preds.columns:
-                diff = (train_preds["y"] - train_preds[col]).dropna()
-                residuals.extend(diff.abs().tolist())
-
-        # Use EWMA to calculate residual standard deviation dynamically to handle non-stationary volatility clusters
-        returns = prices.pct_change().dropna()
-        ewma_vol = returns.ewm(span=14).std().iloc[-1] * prices.iloc[-1] if len(returns) > 14 else float(np.std(residuals)) if residuals else float(prices.std() * 0.05)
-        
-        spread_95 = ewma_vol * 1.96
-        # Scale uncertainty with square root of time
-        uncertainty = [spread_95 * ((i + 1) ** 0.5) for i in range(forecast_days)]
-
         return {
             "forecast_prices": [round(p, 8) for p in forecast_prices],
-            "lower_bound":     [round(p - u, 8)
-                               for p, u in zip(forecast_prices, uncertainty)],
-            "upper_bound":     [round(p + u, 8)
-                               for p, u in zip(forecast_prices, uncertainty)],
-            "model_used":      "NeuralProphet"
+            "lower_bound":     [round(p, 8) for p in lower_bounds],
+            "upper_bound":     [round(p, 8) for p in upper_bounds],
+            "model_used":      "NeuralProphet (Quantile Regression)"
         }
 
     except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
         logger.exception(f"NeuralProphet forecast failed: {e}")
         return None
 
@@ -227,30 +239,45 @@ def run_mean_reversion_forecast(
 ) -> dict:
     """
     Fallback baseline model: Mean Reversion.
-    forecast = last_price + (last_price - mean_price) * decay
+    Proper formula: forecast = mean_price + (last_price - mean_price) * (decay ^ t)
     """
-    last_price = prices.iloc[-1]
-    mean_price = prices.mean()
-    std_price = prices.std()
-    
-    forecast_prices = []
-    current_price = last_price
-    decay = 0.85 # Decay factor towards mean
-    
-    for i in range(forecast_days):
-        # Pull towards mean
-        diff = mean_price - current_price
-        current_price = current_price + (diff * (1 - decay))
-        forecast_prices.append(current_price)
+    try:
+        last_price = prices.iloc[-1]
+        mean_price = prices.mean()
+        std_price = prices.std()
         
-    uncertainty = [std_price * 1.96 * (i ** 0.5) for i in range(1, forecast_days + 1)]
-    
-    return {
-        "forecast_prices": [round(float(p), 8) for p in forecast_prices],
-        "lower_bound":     [round(float(p - u), 8) for p, u in zip(forecast_prices, uncertainty)],
-        "upper_bound":     [round(float(p + u), 8) for p, u in zip(forecast_prices, uncertainty)],
-        "model_used":      "Mean Reversion Baseline"
-    }
+        forecast_prices = []
+        current_price = last_price
+        decay = 0.85 # Decay factor towards mean
+        
+        for i in range(forecast_days):
+            # Correctly pull towards mean
+            current_price = mean_price + (current_price - mean_price) * decay
+            forecast_prices.append(current_price)
+            
+        uncertainty = [std_price * 1.96 * ((i + 1) ** 0.5) for i in range(forecast_days)]
+        
+        return {
+            "forecast_prices": [round(float(p), 8) for p in forecast_prices],
+            "lower_bound":     [round(float(p - u), 8) for p, u in zip(forecast_prices, uncertainty)],
+            "upper_bound":     [round(float(p + u), 8) for p, u in zip(forecast_prices, uncertainty)],
+            "model_used":      "Mean Reversion Baseline"
+        }
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"CRITICAL: Mean Reversion fallback failed: {e}")
+        
+        # Absolute last resort fallback: flatline current price with widening uncertainty
+        fallback_prices = [float(prices.iloc[-1])] * forecast_days
+        fallback_uncert = [float(prices.iloc[-1]) * 0.05 * (i+1)**0.5 for i in range(forecast_days)]
+        
+        return {
+            "forecast_prices": [round(p, 8) for p in fallback_prices],
+            "lower_bound":     [round(p - u, 8) for p, u in zip(fallback_prices, fallback_uncert)],
+            "upper_bound":     [round(p + u, 8) for p, u in zip(fallback_prices, fallback_uncert)],
+            "model_used":      "Emergency Flatline Fallback"
+        }
 
 
 def run_ensemble_forecast(
@@ -260,8 +287,7 @@ def run_ensemble_forecast(
 ) -> dict:
     """
     Runs LSTM and Prophet, and weights their forecasts using Inverse-Variance Weighting (a form of meta-learning).
-    This suppresses the contribution of the model that exhibits higher uncertainty on recent data.
-    Graceful degradation: LSTM -> Prophet -> Mean Reversion.
+    This mathematically suppresses the contribution of the model that exhibits higher uncertainty.
     """
     lstm_result   = run_lstm_forecast(prices, forecast_days)
     prophet_result = run_prophet_forecast(prices, dates, forecast_days)
@@ -278,25 +304,42 @@ def run_ensemble_forecast(
         return lstm_result
     
     ensemble_prices = []
+    ensemble_lower = []
+    ensemble_upper = []
     
-    # Calculate equal-weighted average for each day (robust to correlated errors in financial time series)
+    # Calculate True Inverse-Variance Weighting
     for i in range(forecast_days):
         l_price = lstm_result["forecast_prices"][i]
         p_price = prophet_result["forecast_prices"][i]
         
-        weighted_price = (l_price + p_price) / 2.0
+        # Approximate variance from the 95% confidence intervals
+        # Interval is roughly +/- 1.96 * sigma, so variance = (width / (2 * 1.96))^2
+        l_var = ((lstm_result["upper_bound"][i] - lstm_result["lower_bound"][i]) / (2 * 1.96)) ** 2
+        p_var = ((prophet_result["upper_bound"][i] - prophet_result["lower_bound"][i]) / (2 * 1.96)) ** 2
+        
+        # Prevent division by zero
+        l_var = max(l_var, 1e-8)
+        p_var = max(p_var, 1e-8)
+        
+        w_l = 1.0 / l_var
+        w_p = 1.0 / p_var
+        
+        # Weighted mean
+        weighted_price = (w_l * l_price + w_p * p_price) / (w_l + w_p)
         ensemble_prices.append(weighted_price)
         
-    # Take the wider confidence interval for safety
-    lower = [min(l, p) for l, p in zip(lstm_result["lower_bound"],
-                                         prophet_result["lower_bound"])]
-    upper = [max(l, p) for l, p in zip(lstm_result["upper_bound"],
-                                         prophet_result["upper_bound"])]
+        # Ensemble variance
+        ens_var = 1.0 / (w_l + w_p)
+        ens_std = ens_var ** 0.5
+        
+        # 95% confidence interval for ensemble
+        ensemble_lower.append(weighted_price - 1.96 * ens_std)
+        ensemble_upper.append(weighted_price + 1.96 * ens_std)
     
     return {
         "forecast_prices": [round(float(p), 8) for p in ensemble_prices],
-        "lower_bound":     [round(float(p), 8) for p in lower],
-        "upper_bound":     [round(float(p), 8) for p in upper],
+        "lower_bound":     [round(float(p), 8) for p in ensemble_lower],
+        "upper_bound":     [round(float(p), 8) for p in ensemble_upper],
         "model_used":      "Inverse-Variance Weighted Ensemble (LSTM+Prophet)",
         "lstm_forecast":   lstm_result["forecast_prices"],
         "prophet_forecast": prophet_result["forecast_prices"],

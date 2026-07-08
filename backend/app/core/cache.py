@@ -4,6 +4,8 @@ import json
 from functools import wraps
 from typing import Any, Callable
 from cachetools import TTLCache
+import hashlib
+import copy
 
 # Try to initialize Redis
 redis_client = None
@@ -37,7 +39,9 @@ def cached(ttl_seconds: int = 60):
                 args_str = str(safe_args)
                 kwargs_str = str(cache_kwargs)
                 
-            key = f"cryptograph:{func.__name__}:{args_str}:{kwargs_str}"
+            hash_input = f"{func.__name__}:{args_str}:{kwargs_str}"
+            hash_key = hashlib.md5(hash_input.encode("utf-8")).hexdigest()
+            key = f"cryptograph:{func.__name__}:{hash_key}"
             
             if redis_client:
                 try:
@@ -51,7 +55,7 @@ def cached(ttl_seconds: int = 60):
                 if key in _cache:
                     value, expires = _cache[key]
                     if now < expires:
-                        return value
+                        return copy.deepcopy(value)
 
             result = func(*args, **kwargs)
             
@@ -61,7 +65,7 @@ def cached(ttl_seconds: int = 60):
                 except Exception:
                     pass
             else:
-                _cache[key] = (result, time.time() + ttl_seconds)
+                _cache[key] = (copy.deepcopy(result), time.time() + ttl_seconds)
                 
             return result
         return wrapper

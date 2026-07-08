@@ -13,7 +13,7 @@ from app.api.routes import (
     portfolio, stream, predictions, risk, scheduler
 )
 from app.db.database import SessionLocal
-from app.db.models_sqla import AppSetting
+from app.db.models import AppSetting
 from app.api.routes.forecast import limiter
 
 import logging
