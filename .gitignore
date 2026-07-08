@@ -17,6 +17,7 @@
 **/*.key
 **/*password*
 **/*token*
+!frontend/lib/design-tokens.ts
 backend/master.key
 
 # ML artifacts (large binary files ignored, lightweight metrics tracked)

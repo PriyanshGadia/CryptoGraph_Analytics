@@ -180,7 +180,7 @@ def cleanup_distributed(is_distributed: bool):
 # ============================================================================
 @dataclass
 class TrainingConfig:
-    lookback_days: int = 30
+    lookback_days: int = 60
     forecast_horizon: int = 1
     feature_dim: int = 24
     target_col: str = "returns_1d"
@@ -189,16 +189,16 @@ class TrainingConfig:
     use_cache: bool = True
     cache_max_age_hours: float = 24.0
 
-    hidden_dim: int = 256
-    gat_heads_1: int = 4
-    gat_heads_2: int = 2
-    transformer_layers: int = 4
-    transformer_heads: int = 8
-    dropout: float = 0.15
+    hidden_dim: int = 1024
+    gat_heads_1: int = 8
+    gat_heads_2: int = 8
+    transformer_layers: int = 8
+    transformer_heads: int = 16
+    dropout: float = 0.20
     use_tcn: bool = True
 
-    batch_size: int = 16                 # per-GPU; global = batch_size * world_size under DDP
-    max_epochs: int = 200
+    batch_size: int = 64                 # per-GPU; global = batch_size * world_size under DDP
+    max_epochs: int = 300
     learning_rate: float = 5e-4
     weight_decay: float = 1e-4
     warmup_epochs: int = 10
@@ -1300,10 +1300,10 @@ def main():
             raise ValueError(f"Empty split(s): train={len(train_ds)} val={len(val_ds)} test={len(test_ds)}")
         log(f"Samples -> train {len(train_ds)} | val {len(val_ds)} | test {len(test_ds)}")
 
-        pin_mem = device.type == "cuda"
+        pin_mem = False  # Fixed: Cannot pin CUDA tensors, especially with num_workers=0
         nw = config.num_workers
         common_kwargs = dict(collate_fn=graph_collate_fn, num_workers=nw, pin_memory=pin_mem,
-                              persistent_workers=(nw > 0))
+                             persistent_workers=(nw > 0))
 
         train_sampler = None
         if is_distributed:
