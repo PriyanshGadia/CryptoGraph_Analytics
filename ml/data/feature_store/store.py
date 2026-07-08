@@ -255,7 +255,8 @@ class FeatureStore:
                         df[col] = 0.0
 
                 df = df[expected_cols].astype(float)
-                df = df.reset_index().rename(columns={"Date": "timestamp", "index": "timestamp"})
+                df.index.name = "timestamp"
+                df = df.reset_index()
                 # Ensure timestamp column exists
                 if "timestamp" not in df.columns:
                     df = df.reset_index()
