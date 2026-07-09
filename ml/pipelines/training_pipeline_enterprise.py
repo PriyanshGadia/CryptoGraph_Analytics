@@ -191,18 +191,18 @@ class TrainingConfig:
     use_cache: bool = True
     cache_max_age_hours: float = 24.0
 
-    hidden_dim: int = 256
-    gat_heads_1: int = 4
-    gat_heads_2: int = 4
-    transformer_layers: int = 6
-    transformer_heads: int = 8
-    dropout: float = 0.20
+    hidden_dim: int = 64
+    gat_heads_1: int = 2
+    gat_heads_2: int = 2
+    transformer_layers: int = 2
+    transformer_heads: int = 4
+    dropout: float = 0.40
     use_tcn: bool = True
 
     batch_size: int = 4
     max_epochs: int = 300
-    learning_rate: float = 5e-4
-    weight_decay: float = 1e-4
+    learning_rate: float = 1e-4
+    weight_decay: float = 1e-2
     warmup_epochs: int = 10
     grad_clip: float = 1.0
     early_stopping_patience: int = 25
