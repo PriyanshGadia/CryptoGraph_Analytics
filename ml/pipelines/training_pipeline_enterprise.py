@@ -1,10 +1,45 @@
 #!/usr/bin/env python3
 """
-ENTERPRISE-GRADE ST-GCN TRAINING PIPELINE — REVISION 3
+ENTERPRISE-GRADE ST-GCN TRAINING PIPELINE — REVISION 4
 =======================================================
 ml/pipelines/training_pipeline_enterprise.py
 
-BUGS FIXED IN THIS REVISION (R3):
+BUGS FIXED IN THIS REVISION (R4):
+
+  [R4-BUG-1, CRITICAL — DEGENERATE NLL MINIMUM / MODEL COLLAPSE]
+    With Gaussian NLL loss, the global minimum for a useless model is:
+      pred ≈ 0 (mean of normalized targets), log_var ≈ log(σ²_target) ≈ 0
+      NLL_min = 0.5 + 0.5·log(σ²) ≈ 0.566 for σ² ≈ 1.14
+    The entropy_beta=0.30 term penalizes F.relu(-log_var) — it fires ONLY
+    when log_var < 0 (overconfident predictions). It provides ZERO gradient
+    against the "predict mean + unit variance" equilibrium.
+    Observed: pred_std ≈ 0.025-0.04 (vs target std ≈ 1.0), R² ≈ -0.01,
+    val_loss ≈ 0.597 (barely above the 0.566 theoretical floor for a
+    useless model).
+
+    Fix: Add an auxiliary MSE term weighted by `aux_mse_weight` (default
+    0.5). MSE gradient = (pred - target) regardless of log_var, so the
+    prediction head MUST explain variance. This breaks the degenerate
+    equilibrium while NLL retains full calibration of the uncertainty head.
+
+  [R4-BUG-2, MEDIUM — 11/24 FEATURES ARE DEAD CONSTANTS IN YFINANCE MODE]
+    yfinance fallback hardcodes: sentiment_score=0.0, community_score=0.0,
+    public_interest=0.0, sentiment_rolling_3d=0.0, sentiment_momentum=0.0,
+    fed_rate=5.25, cpi=3.0, inflation=2.5, vix=15.0. After graph_builder
+    z-score normalization: std=0 → replaced with 1.0 → (5.25-5.25)/1.0=0.
+    Result: 46% of input features are zero constants, confirmed by
+    permutation importance showing features 13-18, 20-23 at exactly 0.000.
+    Fix: Added a feature coverage diagnostic that logs the fraction of
+    non-constant rows per feature at training start, and emits a loud
+    WARNING with a count of dead features so the problem is unmissable.
+
+  [R4-BUG-3, LOW — PRED_STD WARNING THRESHOLD TOO LOOSE]
+    `_check_prediction_variance` warned at pred_std < 1e-4. With normalized
+    targets (std ≈ 1.0), pred_std=0.025 is catastrophically low but fires
+    no warning. Fix: threshold raised to `config.min_pred_std_warn` (0.1).
+    Any pred_std < 0.1 on unit-normalized targets is functionally constant.
+
+BUGS FIXED IN REVISION (R3):
 
   [R3-BUG-1, CRITICAL — ROOT CAUSE OF PERSISTENT DEAD WEIGHTS]
     df.loc[date, col] fails silently when 'date' is a Python stdlib
@@ -228,6 +263,20 @@ class TrainingConfig:
 
     use_sam: bool = False
     sam_rho: float = 0.05
+
+    # [R4-BUG-1 FIX] Auxiliary MSE weight.
+    # The Gaussian NLL loss has a degenerate local minimum at pred≈0,
+    # log_var≈0 where NLL ≈ 0.566 for unit-normalized targets. The model
+    # can achieve this without learning any signal. The MSE term with weight
+    # `aux_mse_weight` adds a direct gradient on (pred - target)^2 that
+    # is independent of log_var, forcing the prediction head to explain
+    # variance. Set to 0.0 to disable (reverts to pure NLL).
+    aux_mse_weight: float = 0.5
+
+    # [R4-BUG-3 FIX] Minimum pred_std for prediction-collapse warning.
+    # Targets are normalized to std ≈ 1.0. A useful model should have
+    # pred_std of the same order. Any pred_std < this value is flagged.
+    min_pred_std_warn: float = 0.1
 
     use_amp: bool = True
     num_workers: int = 0
@@ -737,15 +786,21 @@ class EnterpriseTrainer:
         mask: torch.Tensor,
     ) -> torch.Tensor:
         """
-        Gaussian NLL + entropy regularization.
+        Gaussian NLL + entropy regularization + auxiliary MSE.
 
-        With correctly normalized targets (var ≈ 1):
-          Zero-predictor: E[(pred-target)^2] = 1.0, optimal log_var* = 0,
-          loss* = 0.5. This is POSITIVE, giving the model a real incentive
-          to learn (any genuine prediction with R^2 > 0 achieves loss < 0.5).
+        [R4-BUG-1 FIX]
+        The pure NLL loss has a degenerate stable minimum:
+          pred ≈ 0 (mean of normalized targets)
+          log_var ≈ log(target_variance) ≈ 0
+          NLL_min ≈ 0.5 + 0.5·log(σ²) ≈ 0.566 (unit targets)
+        The entropy_beta term F.relu(-log_var) is zero at this minimum
+        (log_var ≈ 0 ≥ 0), so it provides no gradient to escape.
 
-        The entropy term penalizes log_var << 0 (over-confidence), acting as
-        a secondary defense against the degenerate collapse.
+        The auxiliary MSE term with weight `aux_mse_weight` adds a gradient
+        ∂MSE/∂pred = 2·(pred - target) that does not depend on log_var.
+        This forces the prediction head to reduce squared error even when
+        the uncertainty head could absorb residuals by increasing log_var.
+        The uncertainty head retains its full NLL gradient for calibration.
         """
         log_var = torch.clamp(
             log_var, min=self.config.log_var_min, max=self.config.log_var_max
@@ -761,10 +816,19 @@ class EnterpriseTrainer:
             entropy_reg = self.config.entropy_beta * F.relu(
                 -log_var[valid_mask]
             ).mean()
+            # [R4-BUG-1 FIX]: Auxiliary MSE — forces prediction head to explain
+            # variance independently of the uncertainty head's log_var.
+            if self.config.aux_mse_weight > 0.0:
+                mse_aux = self.config.aux_mse_weight * F.mse_loss(
+                    pred[valid_mask], target[valid_mask]
+                )
+            else:
+                mse_aux = torch.tensor(0.0, device=pred.device)
         else:
             entropy_reg = torch.tensor(0.0, device=pred.device)
+            mse_aux = torch.tensor(0.0, device=pred.device)
 
-        return nll_loss + entropy_reg
+        return nll_loss + entropy_reg + mse_aux
 
     def _forward_backward(self, sequences, targets, masks) -> Tuple[float, float]:
         """
@@ -833,12 +897,15 @@ class EnterpriseTrainer:
             f"[{label} diagnostic] pred_std={pred_std:.6f} | "
             f"mean_pred_uncertainty={mean_pred_std:.6f}"
         )
-        if pred_std < 1e-4:
+        # [R4-BUG-3 FIX]: Threshold raised from 1e-4 to config.min_pred_std_warn
+        # (default 0.10). For unit-normalized targets (std ≈ 1.0), pred_std ≈ 0.025
+        # is catastrophically low but was previously invisible to this check.
+        if pred_std < self.config.min_pred_std_warn:
             log(
-                f"WARNING: pred_std={pred_std:.2e} near zero -- model may be "
-                f"predicting a constant. If normalization is confirmed correct "
-                f"(target std ≈ 1), this indicates the model architecture needs "
-                f"investigation."
+                f"WARNING: pred_std={pred_std:.4f} is below {self.config.min_pred_std_warn:.2f} "
+                f"-- model is predicting near-constant values on unit-normalized targets. "
+                f"[R4] This may indicate the NLL degenerate minimum (pred≈0, log_var≈0). "
+                f"Check aux_mse_weight > 0 and that features are not all-zero constants."
             )
 
     def train_epoch(self, epoch: int) -> Dict[str, float]:
@@ -1573,6 +1640,74 @@ def _determine_surviving_dates(
     return surviving
 
 
+def _log_feature_coverage(
+    proc_features: Dict[str, pd.DataFrame],
+    available_symbols: List[str],
+) -> None:
+    """
+    [R4-BUG-2 FIX] Log per-feature coverage across all assets.
+
+    A feature is "dead" if it is constant across time for ALL assets,
+    meaning it carries zero information after z-score normalization.
+    This fires a loud WARNING when >= 20% of features are dead, as this
+    strongly predicts model collapse to the NLL degenerate minimum.
+    """
+    if not available_symbols or not proc_features:
+        return
+
+    # Collect numeric feature columns (exclude target/index cols).
+    first_df = proc_features[available_symbols[0]]
+    feature_cols = [c for c in first_df.columns if c not in {"timestamp", "returns_1d"}]
+    if not feature_cols:
+        return
+
+    dead_features = []
+    near_constant_features = []
+    log("Feature coverage diagnostic (constant detection):")
+    for col in feature_cols:
+        stds = []
+        for sym in available_symbols:
+            df = proc_features[sym]
+            if col in df.columns:
+                stds.append(float(df[col].std()))
+        if not stds:
+            continue
+        max_std = max(stds)
+        if max_std < 1e-8:
+            dead_features.append(col)
+        elif max_std < 1e-3:
+            near_constant_features.append(col)
+
+    n_total = len(feature_cols)
+    n_dead = len(dead_features)
+    n_near = len(near_constant_features)
+
+    if n_dead > 0:
+        log(
+            f"  DEAD features ({n_dead}/{n_total}, std<1e-8 across all assets): "
+            f"{dead_features}"
+        )
+    if n_near > 0:
+        log(
+            f"  NEAR-CONSTANT features ({n_near}/{n_total}, std<1e-3): "
+            f"{near_constant_features}"
+        )
+    if n_dead + n_near == 0:
+        log(f"  All {n_total} features have reasonable variance. [OK]")
+
+    dead_frac = n_dead / max(n_total, 1)
+    if dead_frac >= 0.20:
+        log(
+            f"  WARNING [{dead_frac:.0%} dead features]: Model is operating with "
+            f"{n_dead}/{n_total} dead (all-zero after normalization) input features. "
+            f"This is a PRIMARY cause of prediction collapse to the NLL degenerate "
+            f"minimum (pred≈0, R²≈0). Likely cause: yfinance fallback mode provides "
+            f"only OHLCV; sentiment/macro features are hardcoded constants. "
+            f"Consider populating the database with real sentiment/macro data, or "
+            f"reducing feature_dim to match actually-available features."
+        )
+
+
 def _log_windowing_safety(config: TrainingConfig) -> None:
     assert config.forecast_horizon >= 1, (
         f"forecast_horizon={config.forecast_horizon} must be >= 1."
@@ -1631,6 +1766,12 @@ def _build_dataset_from_scratch(config: TrainingConfig, symbols: List[str]) -> T
             )
         proc_features[sym] = df
         log(f"  [pipeline debug] {sym}: returns_1d head={df['returns_1d'].head().values.tolist()}, std={df['returns_1d'].std()}")
+
+    # [R4-BUG-2 FIX]: Detect and warn about constant/dead features.
+    # In yfinance mode, 11/24 features are hardcoded constants (sentiment,
+    # macro placeholders) which after z-score normalization become all-zeros.
+    # This degrades model capacity and is a leading cause of collapse.
+    _log_feature_coverage(proc_features, available_symbols)
 
     # Log a sample of the index type for debugging future timezone issues.
     sample_sym = available_symbols[0]
