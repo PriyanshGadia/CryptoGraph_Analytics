@@ -2084,14 +2084,14 @@ def main():
         # 3. corr_threshold = 0.85 (Sparsifies graphs by keeping only strong correlations)
         # 4. mc_threshold = 0.8 (Sparsifies graphs by keeping only similar market caps)
         config.hidden_dim = 64
-        config.batch_size = 4
+        config.batch_size = 8
         config.corr_threshold = 0.85
         config.mc_threshold = 0.8
         config.max_epochs = 300
         config.ensemble_size = 5
         config.mc_dropout_samples = 30
-        config.num_workers = 2
-        config.use_sam = True
+        config.num_workers = 0
+        config.use_sam = False
         config.early_stopping_patience = 45
         config.history_days = 3650
     else:
