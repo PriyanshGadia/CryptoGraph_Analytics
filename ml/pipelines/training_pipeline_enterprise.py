@@ -197,7 +197,7 @@ class TrainingConfig:
     dropout: float = 0.20
     use_tcn: bool = True
 
-    batch_size: int = 16
+    batch_size: int = 4
     max_epochs: int = 300
     learning_rate: float = 5e-4
     weight_decay: float = 1e-4
