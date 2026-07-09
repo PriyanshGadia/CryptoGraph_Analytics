@@ -7,82 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from ml.graph.edge_types import SECTORS
 
 
-def _compute_momentum_features(df: pd.DataFrame, target_date: pd.Timestamp) -> Dict[str, float]:
-    """
-    Compute 5 engineered momentum features from OHLCV data.
-    All features are computable from yfinance OHLCV data (no external APIs needed).
-
-    Replaces the 5 dead/near-zero yfinance features:
-      macd_signal (noisy derivative), sentiment_rolling_3d (zero), inflation (constant),
-      vix (constant), low (highly correlated with close).
-
-    Returns a dict with keys: momentum_5d, volume_surge, intraday_range,
-      price_acceleration, rsi_divergence.
-    """
-    result = {
-        "momentum_5d": 0.0,
-        "volume_surge": 0.0,
-        "intraday_range": 0.0,
-        "price_acceleration": 0.0,
-        "rsi_divergence": 0.0,
-    }
-    try:
-        # Select data up to and including target_date
-        hist = df[df.index <= target_date].tail(25)  # at most 25 rows
-        if len(hist) < 2:
-            return result
-
-        close = hist["close"].values.astype(np.float64)
-        volume = hist["volume"].values.astype(np.float64) if "volume" in hist.columns else None
-        high = hist["high"].values.astype(np.float64) if "high" in hist.columns else None
-        low_col = hist["low"].values.astype(np.float64) if "low" in hist.columns else None
-
-        # 1. momentum_5d: 5-day price return (short-term momentum)
-        if len(close) >= 5:
-            mom5 = (close[-1] - close[-5]) / (abs(close[-5]) + 1e-8)
-            result["momentum_5d"] = float(np.clip(mom5, -1.0, 1.0))
-
-        # 2. volume_surge: current volume / 21-day average volume (breakout indicator)
-        if volume is not None and len(volume) >= 5:
-            vol_ma = np.mean(volume[:-1])  # exclude today in MA
-            if vol_ma > 1e-8:
-                surge = volume[-1] / vol_ma
-                result["volume_surge"] = float(np.clip(surge - 1.0, -2.0, 4.0))  # centered at 0
-
-        # 3. intraday_range: (high - low) / close — normalized daily volatility proxy
-        if high is not None and low_col is not None and len(close) >= 1:
-            rng = (high[-1] - low_col[-1]) / (abs(close[-1]) + 1e-8)
-            result["intraday_range"] = float(np.clip(rng, 0.0, 0.5))
-
-        # 4. price_acceleration: short-term momentum minus medium-term momentum
-        #    Positive = accelerating up, Negative = decelerating / mean reverting
-        if len(close) >= 15:
-            mom5_val = (close[-1] - close[-5]) / (abs(close[-5]) + 1e-8)
-            mom15_val = (close[-1] - close[-15]) / (abs(close[-15]) + 1e-8)
-            accel = mom5_val - mom15_val
-            result["price_acceleration"] = float(np.clip(accel, -0.5, 0.5))
-
-        # 5. rsi_divergence: (RSI - 50) / 50, normalized to [-1, 1]
-        #    Uses existing rsi_14 if present, else computes manually
-        if "rsi_14" in hist.columns:
-            rsi_val = float(hist["rsi_14"].iloc[-1])
-            if not np.isnan(rsi_val):
-                result["rsi_divergence"] = float(np.clip((rsi_val - 50.0) / 50.0, -1.0, 1.0))
-        elif len(close) >= 15:
-            # Compute RSI manually from close prices
-            deltas = np.diff(close[-15:])
-            gains = np.where(deltas > 0, deltas, 0.0)
-            losses = np.where(deltas < 0, -deltas, 0.0)
-            avg_gain = np.mean(gains) + 1e-8
-            avg_loss = np.mean(losses) + 1e-8
-            rs = avg_gain / avg_loss
-            rsi_manual = 100.0 - 100.0 / (1.0 + rs)
-            result["rsi_divergence"] = float(np.clip((rsi_manual - 50.0) / 50.0, -1.0, 1.0))
-    except Exception:
-        pass
-    return result
-
-# supabase is optional — inference/training pipelines pass client=None
+# Supabase is optional — inference/training pipelines pass client=None
 try:
     from supabase import Client as _SupabaseClient
 except ImportError:
@@ -107,6 +32,55 @@ class DynamicGraphBuilder:
         self.rolling_min_cache = {}
         self.rolling_max_cache = {}
         self._cached_len = {}
+        self._last_features_id = None
+        self._preprocessed_features = {}
+
+    def _precompute_all_engineered_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Precompute all 5 engineered momentum features for the entire dataframe once
+        using fast pandas vector operations. This completely bypasses slicing overhead.
+        """
+        df = df.copy()
+        if df.empty:
+            return df
+
+        # 1. momentum_5d: 5-day return
+        df["momentum_5d"] = df["close"].pct_change(5).clip(-1.0, 1.0).fillna(0.0)
+
+        # 2. volume_surge: volume / 21-day average volume (excluding today)
+        if "volume" in df.columns:
+            vol_ma = df["volume"].shift(1).rolling(window=21, min_periods=1).mean()
+            surge = df["volume"] / vol_ma.replace(0.0, 1.0) - 1.0
+            df["volume_surge"] = surge.clip(-2.0, 4.0).fillna(0.0)
+        else:
+            df["volume_surge"] = 0.0
+
+        # 3. intraday_range: (high - low) / close
+        if "high" in df.columns and "low" in df.columns:
+            rng = (df["high"] - df["low"]) / df["close"].replace(0.0, 1.0)
+            df["intraday_range"] = rng.clip(0.0, 0.5).fillna(0.0)
+        else:
+            df["intraday_range"] = 0.0
+
+        # 4. price_acceleration: 5d momentum - 15d momentum
+        mom5 = df["close"].pct_change(5)
+        mom15 = df["close"].pct_change(15)
+        accel = mom5 - mom15
+        df["price_acceleration"] = accel.clip(-0.5, 0.5).fillna(0.0)
+
+        # 5. rsi_divergence: (RSI - 50) / 50
+        if "rsi_14" in df.columns:
+            df["rsi_divergence"] = ((df["rsi_14"] - 50.0) / 50.0).clip(-1.0, 1.0).fillna(0.0)
+        else:
+            # Fallback manual RSI calculation
+            delta = df["close"].diff()
+            gain = (delta.where(delta > 0, 0.0)).rolling(window=14, min_periods=1).mean()
+            loss = (-delta.where(delta < 0, 0.0)).rolling(window=14, min_periods=1).mean()
+            rs = gain / loss.replace(0.0, 1e-8)
+            rsi = 100.0 - (100.0 / (1.0 + rs))
+            df["rsi_divergence"] = ((rsi - 50.0) / 50.0).clip(-1.0, 1.0).fillna(0.0)
+
+        return df
 
     def build_graph(
         self,
@@ -114,16 +88,23 @@ class DynamicGraphBuilder:
         features: Dict[str, pd.DataFrame]
     ) -> torch_geometric.data.Data:
         
-        # Ensure features are indexed by timestamp and tz-aware
-        proc_features = {}
-        for sym, df in features.items():
-            if not df.empty:
-                pdf = df.copy()
-                if "timestamp" in pdf.columns:
-                    pdf = pdf.set_index("timestamp")
-                if pdf.index.tz is None:
-                    pdf.index = pdf.index.tz_localize("UTC")
-                proc_features[sym] = pdf
+        # Check cache validity to only preprocess the features dictionary once per run
+        features_id = id(features)
+        if self._last_features_id != features_id:
+            self._last_features_id = features_id
+            self._preprocessed_features = {}
+            for sym, df in features.items():
+                if not df.empty:
+                    pdf = df.copy()
+                    if "timestamp" in pdf.columns:
+                        pdf = pdf.set_index("timestamp")
+                    if pdf.index.tz is None:
+                        pdf.index = pdf.index.tz_localize("UTC")
+                    # Vectorized precomputation of all engineered features
+                    pdf = self._precompute_all_engineered_features(pdf)
+                    self._preprocessed_features[sym] = pdf
+                    
+        proc_features = self._preprocessed_features
                 
         # Ensure date is tz-aware
         target_date = pd.to_datetime(date)
@@ -182,10 +163,10 @@ class DynamicGraphBuilder:
                             val = (float(val) - col_mean) / col_std
                         val = max(-5.0, min(5.0, float(val)))
                         vals.append(val)
-                    # Engineered features: already bounded, append directly
-                    eng = _compute_momentum_features(df, target_date)
+                    # Engineered features: already computed and cached, append directly
                     for col in engineered_feature_cols:
-                        vals.append(eng[col])
+                        val = row[col] if col in row.index and not pd.isna(row[col]) else 0.0
+                        vals.append(float(val))
                     vals = np.array(vals, dtype=np.float32)
                 except Exception:
                     vals = np.zeros(len(feature_cols), dtype=np.float32)
@@ -341,11 +322,11 @@ class DynamicGraphBuilder:
                 df_mean = self.rolling_min_cache[sym]
                 df_std = self.rolling_max_cache[sym]
                 try:
-                    row = df.iloc[-1]
+                    # Pre-compute engineered features for df first
+                    df_eng = self._precompute_all_engineered_features(df)
+                    row = df_eng.iloc[-1]
                     row_mean = df_mean.iloc[-1]
                     row_std = df_std.iloc[-1]
-                    # Use current index timestamp for engineered features
-                    target_ts = pd.Timestamp(df.index[-1])
                     vals = []
                     for col in base_feature_cols:
                         val = row[col] if col in row.index and not pd.isna(row[col]) else 0.0
@@ -357,9 +338,9 @@ class DynamicGraphBuilder:
                             val = (float(val) - col_mean) / col_std
                         val = max(-5.0, min(5.0, float(val)))
                         vals.append(val)
-                    eng = _compute_momentum_features(df, target_ts)
                     for col in engineered_feature_cols:
-                        vals.append(eng[col])
+                        val = row[col] if col in row.index and not pd.isna(row[col]) else 0.0
+                        vals.append(float(val))
                     vals = np.array(vals, dtype=np.float32)
                 except Exception:
                     vals = np.zeros(len(feature_cols), dtype=np.float32)

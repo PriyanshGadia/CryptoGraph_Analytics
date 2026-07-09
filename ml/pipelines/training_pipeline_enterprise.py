@@ -357,17 +357,14 @@ class TrainingConfig:
     corr_threshold: float = 0.6
     mc_threshold: float = 0.3
 
-    # [R6-WIN-1] Cross-sectional ranking loss weight.
-    # ListMLE pairwise ranking is added to the NLL+MSE loss to directly
-    # optimize asset return rank accuracy — the key signal for Long/Short
-    # strategies. Set to 0.0 to disable.
-    rank_loss_weight: float = 0.3
+    # [R6-WIN-1] Cross-sectional ranking/alignment loss weight.
+    # Bounded Cosine Similarity Alignment Loss is added to the NLL+MSE loss to
+    # optimize relative return ordering without scale distortion. Set to 0.0 to disable.
+    rank_loss_weight: float = 0.1
 
     # [R6-WIN-2] Label smoothing alpha for target regularization.
-    # Reduces gradient magnitude for extreme return outliers, improving
-    # generalization. target_smooth = target * (1 - alpha) + sign(target) * alpha.
     # Set to 0.0 to disable.
-    label_smooth_alpha: float = 0.05
+    label_smooth_alpha: float = 0.0
 
     # [R6-WIN-3] Confidence gate threshold (in normalized-std units).
     # In compute_trading_signal_metrics, skip positions where pred_std
@@ -437,10 +434,15 @@ class SAM(torch.optim.Optimizer):
 # 5. DATASET
 # ============================================================================
 def graph_collate_fn(batch):
+    from torch_geometric.data import Batch
     sequences = [item[0] for item in batch]
+    flat_graphs = []
+    for seq in sequences:
+        flat_graphs.extend(seq)
+    batched_graphs = Batch.from_data_list(flat_graphs)
     targets = torch.stack([item[1] for item in batch], dim=0)
     masks = torch.stack([item[2] for item in batch], dim=0)
-    return sequences, targets, masks
+    return batched_graphs, targets, masks
 
 
 class WindowedGraphDataset(Dataset):
@@ -546,50 +548,57 @@ class EnterpriseSTGCNModel(nn.Module):
 
     def forward(
         self,
-        batch_sequences: List[List],
+        batch_sequences: Any,
         return_uncertainty: bool = False,
     ):
         from torch_geometric.data import Batch
 
-        B = len(batch_sequences)
-        if B == 0:
-            raise ValueError("Empty batch passed to forward()")
-        T = len(batch_sequences[0])
-        if T == 0:
-            raise ValueError("Empty graph sequence in batch (T=0)")
+        if isinstance(batch_sequences, Batch):
+            batched = batch_sequences
+            T = self.config.lookback_days
+            B = batched.num_graphs // T
+            N_nodes = batched.num_nodes // batched.num_graphs
+        else:
+            B = len(batch_sequences)
+            if B == 0:
+                raise ValueError("Empty batch passed to forward()")
+            T = len(batch_sequences[0])
+            if T == 0:
+                raise ValueError("Empty graph sequence in batch (T=0)")
 
-        for b, seq in enumerate(batch_sequences):
-            if len(seq) != T:
+            for b, seq in enumerate(batch_sequences):
+                if len(seq) != T:
+                    raise ValueError(
+                        f"Ragged batch: sequence {b} has length {len(seq)}, expected {T}."
+                    )
+
+            flat: List = []
+            for seq in batch_sequences:
+                for g in seq:
+                    if not hasattr(g, "x") or g.x is None:
+                        raise ValueError("Graph missing node feature matrix 'x'")
+                    if g.x.shape[1] != self.config.feature_dim:
+                        raise ValueError(
+                            f"Graph has {g.x.shape[1]} node features, "
+                            f"expected {self.config.feature_dim}"
+                        )
+                    if not hasattr(g, "edge_type") or g.edge_type is None:
+                        g.edge_type = torch.zeros(
+                            g.edge_index.shape[1],
+                            dtype=torch.long,
+                            device=g.edge_index.device,
+                        )
+                    flat.append(g)
+
+            node_counts = {g.num_nodes for g in flat}
+            if len(node_counts) > 1:
                 raise ValueError(
-                    f"Ragged batch: sequence {b} has length {len(seq)}, expected {T}."
+                    f"Inconsistent node counts across minibatch: {node_counts}."
                 )
 
-        flat: List = []
-        for seq in batch_sequences:
-            for g in seq:
-                if not hasattr(g, "x") or g.x is None:
-                    raise ValueError("Graph missing node feature matrix 'x'")
-                if g.x.shape[1] != self.config.feature_dim:
-                    raise ValueError(
-                        f"Graph has {g.x.shape[1]} node features, "
-                        f"expected {self.config.feature_dim}"
-                    )
-                if not hasattr(g, "edge_type") or g.edge_type is None:
-                    g.edge_type = torch.zeros(
-                        g.edge_index.shape[1],
-                        dtype=torch.long,
-                        device=g.edge_index.device,
-                    )
-                flat.append(g)
+            N_nodes = flat[0].num_nodes
+            batched = Batch.from_data_list(flat)
 
-        node_counts = {g.num_nodes for g in flat}
-        if len(node_counts) > 1:
-            raise ValueError(
-                f"Inconsistent node counts across minibatch: {node_counts}."
-            )
-
-        N_nodes = flat[0].num_nodes
-        batched = Batch.from_data_list(flat)
         x = F.relu(self.projection(batched.x))
         x = self.proj_norm(x)
         batched.x = x
@@ -863,50 +872,39 @@ class EnterpriseTrainer:
             except Exception as e:
                 log(f"Could not copy snapshot {path} -> {dst}: {e}")
 
-    def _compute_ranking_loss(
+    def _compute_cosine_alignment_loss(
         self,
         pred: torch.Tensor,
         target: torch.Tensor,
         mask: torch.Tensor,
     ) -> torch.Tensor:
         """
-        [R6-WIN-1] Cross-sectional ListMLE ranking loss.
+        [R6-WIN-1] Cross-sectional Cosine Similarity Alignment Loss.
 
-        For each sample in the batch, computes the negative log-likelihood
-        of the true return permutation under the predicted scores. This
-        directly trains the model to rank assets by expected return,
-        which is exactly what Long/Short portfolio strategies need.
+        For each sample in the batch, computes 1.0 - CosineSimilarity(pred, target)
+        over all valid assets on that day. Directly trains the model to orient
+        and rank return forecasts correctly without scale distortion or prediction collapse.
 
         Input shapes: pred, target, mask are [B, N] (batch x assets).
         Returns a scalar tensor.
         """
         device = pred.device
-        B, N = pred.shape
-        rank_losses = []
-
+        B = pred.shape[0]
+        cos_sims = []
         for b in range(B):
             valid = mask[b].bool()
             if valid.sum() < 2:
                 continue
-            p = pred[b][valid]    # [K] predicted scores
-            t = target[b][valid]  # [K] true returns
-
-            # Sort by true return descending (ideal ranking)
-            order = torch.argsort(t, descending=True)
-            p_sorted = p[order]  # predictions in true-return order
-
-            # ListMLE: negative log P(true permutation | scores)
-            # = sum_i [ log sum_{j>=i} exp(p_sorted[j]) - p_sorted[i] ]
-            loss_val = torch.tensor(0.0, device=device)
-            for i in range(len(p_sorted)):
-                tail = p_sorted[i:]  # [K-i]
-                log_sum_exp = torch.logsumexp(tail, dim=0)
-                loss_val = loss_val + log_sum_exp - p_sorted[i]
-            rank_losses.append(loss_val / max(len(p_sorted), 1))
-
-        if not rank_losses:
-            return torch.tensor(0.0, device=device, requires_grad=True)
-        return torch.stack(rank_losses).mean()
+            p = pred[b][valid]
+            t = target[b][valid]
+            p_norm = p.norm()
+            t_norm = t.norm()
+            if p_norm > 1e-8 and t_norm > 1e-8:
+                sim = (p * t).sum() / (p_norm * t_norm)
+                cos_sims.append(sim)
+        if cos_sims:
+            return 1.0 - torch.stack(cos_sims).mean()
+        return torch.tensor(0.0, device=device, requires_grad=True)
 
     def _compute_loss(
         self,
@@ -916,10 +914,10 @@ class EnterpriseTrainer:
         mask: torch.Tensor,
     ) -> torch.Tensor:
         """
-        Gaussian NLL + entropy regularization + auxiliary MSE + ranking loss.
+        Gaussian NLL + entropy regularization + auxiliary MSE + cosine alignment loss.
 
         [R4-BUG-1 FIX]: Auxiliary MSE breaks the degenerate NLL minimum.
-        [R6-WIN-1]: Ranking loss directly optimizes directional accuracy.
+        [R6-WIN-1]: Bounded cosine similarity alignment loss replaces ListMLE for stable ranking.
         [R6-WIN-2]: Label smoothing reduces gradient dominance by outliers.
         """
         # [R6-WIN-2] Label smoothing: soften extreme targets
@@ -954,10 +952,10 @@ class EnterpriseTrainer:
 
         total = nll_loss + entropy_reg + mse_aux
 
-        # [R6-WIN-1] Cross-sectional ranking loss
+        # [R6-WIN-1] Cross-sectional cosine similarity alignment loss
         if self.config.rank_loss_weight > 0.0 and pred.dim() == 2:
-            rank_loss = self._compute_ranking_loss(pred, target, mask)
-            total = total + self.config.rank_loss_weight * rank_loss
+            cos_loss = self._compute_cosine_alignment_loss(pred, target, mask)
+            total = total + self.config.rank_loss_weight * cos_loss
 
         return total
 
@@ -967,10 +965,13 @@ class EnterpriseTrainer:
         Non-finite loss is replaced with a parameter-tied zero to produce
         zero gradients rather than NaN/inf gradients.
         """
-        sequences_dev = [
-            [g.to(self.device, non_blocking=True) for g in seq]
-            for seq in sequences
-        ]
+        if isinstance(sequences, list):
+            sequences_dev = [
+                [g.to(self.device, non_blocking=True) for g in seq]
+                for seq in sequences
+            ]
+        else:
+            sequences_dev = sequences.to(self.device, non_blocking=True)
         targets_dev = targets.to(self.device, non_blocking=True)
         masks_dev = masks.to(self.device, non_blocking=True)
 
@@ -1109,7 +1110,10 @@ class EnterpriseTrainer:
             if masks.sum() == 0:
                 continue
 
-            sequences_dev = [[g.to(self.device) for g in seq] for seq in sequences]
+            if isinstance(sequences, list):
+                sequences_dev = [[g.to(self.device) for g in seq] for seq in sequences]
+            else:
+                sequences_dev = sequences.to(self.device)
             targets_dev = targets.to(self.device)
             masks_dev = masks.to(self.device)
 
@@ -1319,7 +1323,10 @@ class EnterpriseTrainer:
         for sequences, targets, masks in self.test_loader:
             if masks.sum() == 0:
                 continue
-            sequences_dev = [[g.to(self.device) for g in seq] for seq in sequences]
+            if isinstance(sequences, list):
+                sequences_dev = [[g.to(self.device) for g in seq] for seq in sequences]
+            else:
+                sequences_dev = sequences.to(self.device)
             mc_preds, mc_vars = [], []
             for _ in range(self.config.mc_dropout_samples):
                 pred, log_var = self.raw_model(sequences_dev, return_uncertainty=True)
@@ -1367,7 +1374,10 @@ class EnterpriseTrainer:
         for sequences, targets, masks in self.test_loader:
             if masks.sum() == 0:
                 continue
-            sequences_dev = [[g.to(self.device) for g in seq] for seq in sequences]
+            if isinstance(sequences, list):
+                sequences_dev = [[g.to(self.device) for g in seq] for seq in sequences]
+            else:
+                sequences_dev = sequences.to(self.device)
             preds_m, vars_m = [], []
             for m in models:
                 pred, log_var = m(sequences_dev, return_uncertainty=True)
@@ -1827,7 +1837,7 @@ def _verify_normalization(
 # Increment this whenever a change to feature content (e.g. new features
 # in the yfinance fallback, normalization logic, graph structure) makes
 # existing .pkl caches stale. The version is hashed into the cache key.
-_CACHE_VERSION = "r11"  # R11: Graph sparsification (top-5 corr and rank-adjacent market cap)
+_CACHE_VERSION = "r12"  # R12: Vectorized precomputation of 5 momentum features + Cosine alignment loss
 
 
 def _cache_key(symbols: List[str], config: TrainingConfig) -> str:
