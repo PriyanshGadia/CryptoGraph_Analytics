@@ -171,8 +171,10 @@ def setup_distributed():
 
 def cleanup_distributed(is_distributed: bool):
     if is_distributed:
-        dist.barrier()
-        dist.destroy_process_group()
+        try:
+            dist.destroy_process_group()
+        except Exception:
+            pass
 
 
 # ============================================================================
