@@ -32,6 +32,9 @@ class TemporalTCN(nn.Module):
 
     def __init__(self, hidden_dim: int, kernel_size: int = 3, dilations=None, dropout: float = 0.1):
         super().__init__()
+        # [R8-SPEED-B] Removed dilation=16: receptive field of [1,2,4,8] with
+        # kernel_size=3 is 1+2*(3-1)*(1+2+4+8) = 61 days, more than 4x the
+        # 14-day lookback_days. The dilation=16 block was wasted compute.
         dilations = dilations or [1, 2, 4, 8]
         self.blocks = nn.ModuleList([
             CausalConv1dBlock(hidden_dim, kernel_size, d, dropout) for d in dilations

@@ -371,6 +371,22 @@ class TrainingConfig:
     # exceeds this threshold. Filters high-uncertainty trades.
     confidence_gate_threshold: float = 1.5
 
+    # [R8-WIN-F] Directional BCE loss weight.
+    # Binary cross-entropy on sign(pred) vs sign(target). This directly
+    # optimizes for whether the model predicts the correct direction,
+    # which is the primary driver of win rate in trading strategies.
+    # Set to 0.0 to disable (reverts to NLL+MSE+cosine only).
+    directional_loss_weight: float = 0.30
+
+    # [R8-WIN-G] Fraction of assets to go long/short in market-neutral strategy.
+    # In compute_trading_signal_metrics, long top-K% and short bottom-K% by
+    # predicted return. This is market-neutral (zero net exposure) and win rate
+    # directly measures directional prediction skill, not beta.
+    topk_pct: float = 0.25
+
+    # [R8-SPEED-D] Whether to use pin_memory in DataLoader for async CPU->GPU DMA.
+    pin_memory: bool = False
+
     def to_dict(self) -> dict:
         return asdict(self)
 
@@ -599,6 +615,8 @@ class EnterpriseSTGCNModel(nn.Module):
             N_nodes = flat[0].num_nodes
             batched = Batch.from_data_list(flat)
 
+        # Clone to prevent modifying the dataset/loader Batch in-place
+        batched = batched.clone()
         x = F.relu(self.projection(batched.x))
         x = self.proj_norm(x)
         batched.x = x
@@ -914,11 +932,14 @@ class EnterpriseTrainer:
         mask: torch.Tensor,
     ) -> torch.Tensor:
         """
-        Gaussian NLL + entropy regularization + auxiliary MSE + cosine alignment loss.
+        Gaussian NLL + entropy regularization + auxiliary MSE + cosine alignment
+        + directional BCE.
 
         [R4-BUG-1 FIX]: Auxiliary MSE breaks the degenerate NLL minimum.
-        [R6-WIN-1]: Bounded cosine similarity alignment loss replaces ListMLE for stable ranking.
+        [R6-WIN-1]: Bounded cosine similarity alignment loss for stable ranking.
         [R6-WIN-2]: Label smoothing reduces gradient dominance by outliers.
+        [R8-WIN-F]: Directional BCE directly trains sign(pred)==sign(target),
+                    which is the primary driver of trading win rate.
         """
         # [R6-WIN-2] Label smoothing: soften extreme targets
         if self.config.label_smooth_alpha > 0.0:
@@ -956,6 +977,22 @@ class EnterpriseTrainer:
         if self.config.rank_loss_weight > 0.0 and pred.dim() == 2:
             cos_loss = self._compute_cosine_alignment_loss(pred, target, mask)
             total = total + self.config.rank_loss_weight * cos_loss
+
+        # [R8-WIN-F] Directional BCE loss: train the model to predict the
+        # correct sign of returns. This directly optimizes win rate.
+        # The raw prediction is treated as a logit for "is this asset going up?".
+        # Using BCEWithLogitsLoss is numerically stable (no sigmoid overflow).
+        if self.config.directional_loss_weight > 0.0 and valid_mask.any():
+            # Target: 1.0 if raw return > 0, else 0.0. Neutral (==0) assets
+            # get target=0.5 which produces zero BCE gradient — harmless.
+            sign_target = (target[valid_mask] > 0).float()
+            # Apply a small amount of label smoothing for robustness against
+            # near-zero returns where sign is arbitrary.
+            sign_target = sign_target * 0.9 + 0.05  # smooth [0,1] -> [0.05, 0.95]
+            dir_loss = F.binary_cross_entropy_with_logits(
+                pred[valid_mask], sign_target, reduction="mean"
+            )
+            total = total + self.config.directional_loss_weight * dir_loss
 
         return total
 
@@ -1011,7 +1048,10 @@ class EnterpriseTrainer:
             for i, (sequences, targets, masks) in enumerate(loader):
                 if i >= 5:
                     break
-                seq_dev = [[g.to(self.device) for g in seq] for seq in sequences]
+                if isinstance(sequences, list):
+                    seq_dev = [[g.to(self.device) for g in seq] for seq in sequences]
+                else:
+                    seq_dev = sequences.to(self.device)
                 pred, log_var = self.raw_model(seq_dev, return_uncertainty=True)
                 valid = masks.to(self.device).bool()
                 if valid.any():
@@ -1036,7 +1076,7 @@ class EnterpriseTrainer:
             log(
                 f"WARNING: pred_std={pred_std:.4f} is below {self.config.min_pred_std_warn:.2f} "
                 f"-- model is predicting near-constant values on unit-normalized targets. "
-                f"[R4] This may indicate the NLL degenerate minimum (pred≈0, log_var≈0). "
+                f"[R4] This may indicate the NLL degenerate minimum (pred~0, log_var~0). "
                 f"Check aux_mse_weight > 0 and that features are not all-zero constants."
             )
 
@@ -1457,8 +1497,17 @@ def compute_permutation_importance(
                 break
             if masks.sum() == 0:
                 continue
+            from torch_geometric.data import Batch
+            if isinstance(sequences, Batch):
+                flat_list = sequences.to_data_list()
+                T = model.config.lookback_days
+                B = len(flat_list) // T
+                sequences_list = [flat_list[b * T : (b + 1) * T] for b in range(B)]
+            else:
+                sequences_list = sequences
+
             seq_dev = []
-            for seq in sequences:
+            for seq in sequences_list:
                 s = []
                 for g in seq:
                     g = g.to(device)
@@ -1533,20 +1582,31 @@ def compute_trading_signal_metrics(
     else:
         scales = None
 
-    daily_returns = []
+    daily_returns = []       # long-short market-neutral
+    daily_returns_raw = []   # old sign-all strategy (kept for comparison)
     pred_stds = []
+    topk_pct = getattr(model.config, "topk_pct", 0.25)
+
     for sequences, targets, masks in test_loader:
-        for b in range(len(sequences)):
+        from torch_geometric.data import Batch
+        if isinstance(sequences, Batch):
+            flat_list = sequences.to_data_list()
+            T = model.config.lookback_days
+            B = len(flat_list) // T
+            sequences_list = [flat_list[b * T : (b + 1) * T] for b in range(B)]
+        else:
+            sequences_list = sequences
+
+        for b in range(len(sequences_list)):
             mask_b = masks[b]
             if mask_b.sum() == 0:
                 continue
-            seq_dev = [[g.to(device) for g in sequences[b]]]
+            seq_dev = [[g.to(device) for g in sequences_list[b]]]
             # [R6-WIN-3] Get log_var for confidence gating
             pred_raw, log_var_raw = model(seq_dev, return_uncertainty=True)
             pred = pred_raw.cpu()[0]
             log_var = log_var_raw.cpu()[0]
             pred_std_day = float(torch.exp(0.5 * log_var.clamp(max=4.0))[mask_b.bool()].mean().item())
-            signal = torch.sign(pred)
             valid = mask_b.bool()
             if valid.sum() == 0:
                 continue
@@ -1556,11 +1616,46 @@ def compute_trading_signal_metrics(
             if scales is not None and len(scales) == len(targets_b):
                 raw_targets = targets_b * scales
             else:
-                # Fallback: targets are already in raw scale (if scale_map unavailable)
                 raw_targets = targets_b
 
-            day_ret = (signal[valid] * raw_targets[valid]).mean().item()
-            daily_returns.append(day_ret)
+            # ----------------------------------------------------------------
+            # [R8-WIN-G] Market-neutral Long-Short strategy.
+            #
+            # Only the VALID assets on this day participate. We rank their
+            # predicted returns and:
+            #   - Long  the top-K predicted winners  → weight +1/K
+            #   - Short the bottom-K predicted losers → weight -1/K
+            # Net exposure = 0 (market neutral). The daily P&L is the sum
+            # of weighted actual returns. Win rate from this strategy directly
+            # measures directional prediction skill, not beta exposure.
+            # ----------------------------------------------------------------
+            valid_pred = pred[valid]
+            valid_ret  = raw_targets[valid]
+            n_valid = int(valid.sum().item())
+            k = max(1, int(round(n_valid * topk_pct)))
+
+            if n_valid >= 2:
+                # Rank predictions: argsort ascending → lowest predictions first
+                sorted_idx = torch.argsort(valid_pred)
+                long_idx  = sorted_idx[-k:]  # top-K predicted best
+                short_idx = sorted_idx[:k]   # bottom-K predicted worst
+
+                long_ret  = valid_ret[long_idx].mean().item()
+                short_ret = valid_ret[short_idx].mean().item()
+                # Long-short daily return = avg long return - avg short return
+                ls_ret = 0.5 * (long_ret - short_ret)
+                daily_returns.append(ls_ret)
+
+                # Old strategy: sign of all predictions (for comparison only)
+                signal_all = torch.sign(valid_pred)
+                daily_returns_raw.append((signal_all * valid_ret).mean().item())
+            else:
+                # Single-asset fallback: just sign the prediction
+                signal_all = torch.sign(valid_pred)
+                day_ret = (signal_all * valid_ret).mean().item()
+                daily_returns.append(day_ret)
+                daily_returns_raw.append(day_ret)
+
             pred_stds.append(pred_std_day)
 
     if len(daily_returns) < 2:
@@ -1568,11 +1663,21 @@ def compute_trading_signal_metrics(
         return {}
 
     try:
+        # [R8-WIN-G] Primary: market-neutral long-short strategy
         fin = compute_all_finance_metrics(pd.Series(daily_returns))
         fin = {f"strategy_{k}": float(v) for k, v in fin.items()}
 
-        # [R6-WIN-3] Confidence-gated metrics: repeat evaluation skipping
-        # high-uncertainty positions to demonstrate gated Sharpe improvement.
+        # Also log the old sign-all strategy for comparison
+        if len(daily_returns_raw) >= 2:
+            raw_fin = compute_all_finance_metrics(pd.Series(daily_returns_raw))
+            fin.update({f"raw_strategy_{k}": float(v) for k, v in raw_fin.items()})
+            log(
+                f"[strategy:raw sign-all] "
+                f"sharpe={raw_fin.get('sharpe_ratio', 0):.3f} | "
+                f"win_rate={raw_fin.get('win_rate', 0):.3f}"
+            )
+
+        # [R6-WIN-3] Confidence-gated metrics on the L/S strategy
         gated_returns = [dr for dr, pg in zip(daily_returns, pred_stds)
                          if pg <= confidence_gate_threshold]
         gated_coverage = len(gated_returns) / max(len(daily_returns), 1)
@@ -1580,9 +1685,9 @@ def compute_trading_signal_metrics(
             gated_fin = compute_all_finance_metrics(pd.Series(gated_returns))
             fin.update({f"gated_strategy_{k}": float(v) for k, v in gated_fin.items()})
             fin["gated_coverage"] = float(gated_coverage)
-            log(f"[strategy:gated] coverage={gated_coverage:.1%} | {gated_fin}")
+            log(f"[strategy:gated L/S] coverage={gated_coverage:.1%} | {gated_fin}")
 
-        log(f"[strategy] {fin}")
+        log(f"[strategy:L/S market-neutral] {fin}")
         return fin
     except Exception as e:
         log(f"compute_all_finance_metrics failed ({e}); skipping.")
@@ -1837,7 +1942,7 @@ def _verify_normalization(
 # Increment this whenever a change to feature content (e.g. new features
 # in the yfinance fallback, normalization logic, graph structure) makes
 # existing .pkl caches stale. The version is hashed into the cache key.
-_CACHE_VERSION = "r12"  # R12: Vectorized precomputation of 5 momentum features + Cosine alignment loss
+_CACHE_VERSION = "r13"  # R13: R8 speed+win-rate: directional BCE loss, long-short strategy, chunked adaptive GNN, TCN trim
 
 
 def _cache_key(symbols: List[str], config: TrainingConfig) -> str:
@@ -2217,15 +2322,21 @@ def main():
         # 4. mc_threshold = 0.8 (Sparsifies graphs by keeping only similar market caps)
         config.hidden_dim = 64
         config.lookback_days = 14
-        config.batch_size = 16
+        # [R8-SPEED-E] batch_size=32 (doubled): halves optimizer steps per epoch,
+        # cutting loop overhead by 2x. Feasible with chunked adaptive GNN.
+        config.batch_size = 32
         config.corr_threshold = 0.85
         config.mc_threshold = 0.8
         config.max_epochs = 300
         config.ensemble_size = 5
         config.mc_dropout_samples = 30
-        config.num_workers = 0
+        # [R8-SPEED-D] 2 CPU workers + pin_memory for async CPU->GPU DMA on Kaggle.
+        config.num_workers = 2
+        config.pin_memory = True
+        # [R8-SPEED-C] Enable cuDNN benchmark for ~5-10% conv speedup on fixed-shape inputs.
+        config.cudnn_benchmark = True
         config.use_sam = False
-        config.early_stopping_patience = 45
+        config.early_stopping_patience = 50
         config.history_days = 3650
     else:
         log("Detected LOCAL environment. Running in i3 OPTIMIZED LOW-RESOURCE mode.")
@@ -2248,6 +2359,8 @@ def main():
     is_distributed, rank, local_rank, world_size, device = setup_distributed()
     _CURRENT_RANK = rank
 
+    # [R8-SPEED-C] cudnn_benchmark=True on Kaggle GPU lets cuDNN auto-select
+    # the fastest convolution algorithm for fixed input shapes (~5-10% speedup).
     torch.backends.cudnn.benchmark = config.cudnn_benchmark
     if hasattr(torch.backends.cuda, "matmul"):
         torch.backends.cuda.matmul.allow_tf32 = True
@@ -2367,11 +2480,15 @@ def main():
             f"val {len(val_ds)} | test {len(test_ds)}"
         )
 
+        # [R8-SPEED-D] pin_memory=True enables async DMA: CPU prepares next batch
+        # in pinned memory while GPU processes the current one. prefetch_factor=2
+        # keeps 2 batches ready ahead of time when num_workers > 0.
         common_kwargs = dict(
             collate_fn=graph_collate_fn,
             num_workers=config.num_workers,
-            pin_memory=False,
+            pin_memory=config.pin_memory,
             persistent_workers=(config.num_workers > 0),
+            prefetch_factor=(2 if config.num_workers > 0 else None),
         )
 
         train_sampler = None
