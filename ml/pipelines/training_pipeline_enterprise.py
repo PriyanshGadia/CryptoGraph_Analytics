@@ -387,6 +387,12 @@ class TrainingConfig:
     # [R8-SPEED-D] Whether to use pin_memory in DataLoader for async CPU->GPU DMA.
     pin_memory: bool = False
 
+    # [R8-WIN-H] Spread gate threshold for trading strategy.
+    # In compute_trading_signal_metrics, only trade when the predicted spread
+    # between the long-group and short-group is greater than or equal to this threshold.
+    # High thresholds filter low-confidence days to achieve a high win rate.
+    spread_gate_threshold: float = 0.15
+
     def to_dict(self) -> dict:
         return asdict(self)
 
@@ -980,7 +986,8 @@ class EnterpriseTrainer:
 
         # [R8-WIN-F] Directional BCE loss: train the model to predict the
         # correct sign of returns. This directly optimizes win rate.
-        # The raw prediction is treated as a logit for "is this asset going up?".
+        # The raw prediction is normalized to unit variance so it acts as a
+        # well-behaved logit for "is this asset going up?".
         # Using BCEWithLogitsLoss is numerically stable (no sigmoid overflow).
         if self.config.directional_loss_weight > 0.0 and valid_mask.any():
             # Target: 1.0 if raw return > 0, else 0.0. Neutral (==0) assets
@@ -989,8 +996,16 @@ class EnterpriseTrainer:
             # Apply a small amount of label smoothing for robustness against
             # near-zero returns where sign is arbitrary.
             sign_target = sign_target * 0.9 + 0.05  # smooth [0,1] -> [0.05, 0.95]
+            
+            pred_valid = pred[valid_mask]
+            pred_std = pred_valid.std()
+            if pred_std > 1e-6:
+                logits = pred_valid / pred_std
+            else:
+                logits = pred_valid
+                
             dir_loss = F.binary_cross_entropy_with_logits(
-                pred[valid_mask], sign_target, reduction="mean"
+                logits, sign_target, reduction="mean"
             )
             total = total + self.config.directional_loss_weight * dir_loss
 
@@ -1584,8 +1599,10 @@ def compute_trading_signal_metrics(
 
     daily_returns = []       # long-short market-neutral
     daily_returns_raw = []   # old sign-all strategy (kept for comparison)
+    spread_gated_returns = [] # [R8-WIN-H] spread-gated long-short strategy
     pred_stds = []
     topk_pct = getattr(model.config, "topk_pct", 0.25)
+    spread_gate_thresh = getattr(model.config, "spread_gate_threshold", 0.15)
 
     for sequences, targets, masks in test_loader:
         from torch_geometric.data import Batch
@@ -1646,6 +1663,12 @@ def compute_trading_signal_metrics(
                 ls_ret = 0.5 * (long_ret - short_ret)
                 daily_returns.append(ls_ret)
 
+                # [R8-WIN-H] Spread-gated strategy: only enter position if
+                # prediction spread is large enough (indicating model conviction).
+                pred_spread = valid_pred[long_idx].mean().item() - valid_pred[short_idx].mean().item()
+                if pred_spread >= spread_gate_thresh:
+                    spread_gated_returns.append(ls_ret)
+
                 # Old strategy: sign of all predictions (for comparison only)
                 signal_all = torch.sign(valid_pred)
                 daily_returns_raw.append((signal_all * valid_ret).mean().item())
@@ -1655,6 +1678,9 @@ def compute_trading_signal_metrics(
                 day_ret = (signal_all * valid_ret).mean().item()
                 daily_returns.append(day_ret)
                 daily_returns_raw.append(day_ret)
+                # For fallback, check if pred magnitude exceeds threshold
+                if abs(valid_pred.item()) >= spread_gate_thresh:
+                    spread_gated_returns.append(day_ret)
 
             pred_stds.append(pred_std_day)
 
@@ -1676,6 +1702,13 @@ def compute_trading_signal_metrics(
                 f"sharpe={raw_fin.get('sharpe_ratio', 0):.3f} | "
                 f"win_rate={raw_fin.get('win_rate', 0):.3f}"
             )
+
+        # [R8-WIN-H] Spread-gated L/S strategy metrics (high-confidence trading)
+        if len(spread_gated_returns) >= 2:
+            spread_fin = compute_all_finance_metrics(pd.Series(spread_gated_returns))
+            fin.update({f"spread_gated_strategy_{k}": float(v) for k, v in spread_fin.items()})
+            fin["spread_gated_coverage"] = float(len(spread_gated_returns) / len(daily_returns))
+            log(f"[strategy:spread-gated L/S] coverage={fin['spread_gated_coverage']:.1%} | {spread_fin}")
 
         # [R6-WIN-3] Confidence-gated metrics on the L/S strategy
         gated_returns = [dr for dr, pg in zip(daily_returns, pred_stds)
@@ -2322,9 +2355,9 @@ def main():
         # 4. mc_threshold = 0.8 (Sparsifies graphs by keeping only similar market caps)
         config.hidden_dim = 64
         config.lookback_days = 14
-        # [R8-SPEED-E] batch_size=32 (doubled): halves optimizer steps per epoch,
-        # cutting loop overhead by 2x. Feasible with chunked adaptive GNN.
-        config.batch_size = 32
+        # [R8-SPEED-E] batch_size=16: Reduced from 32 to prevent CUDA OOM on Kaggle's T4 GPUs.
+        # This keeps edge count in batch sequences within safe limits.
+        config.batch_size = 16
         config.corr_threshold = 0.85
         config.mc_threshold = 0.8
         config.max_epochs = 300
