@@ -3,9 +3,8 @@ import json
 import time
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request
 from typing import List
-from pathlib import Path
 
-from app.core.streams.binance_ws import get_latest_features, LIVE_OHLCV_CACHE, get_global_market_state
+from app.core.streams.binance_ws import get_global_market_state
 from app.api.deps import verify_ws_api_key
 from app.api.routes.forecast import limiter
 from app.core.state import ws_manager
@@ -27,7 +26,7 @@ def get_db_symbols() -> List[str]:
                 return [a.symbol for a in assets]
         finally:
             db.close()
-    except Exception as e:
+    except Exception:
         import logging
         logging.getLogger(__name__).error("Error querying symbols from database", exc_info=True)
         

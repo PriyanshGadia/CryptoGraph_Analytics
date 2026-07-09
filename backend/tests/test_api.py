@@ -1,4 +1,3 @@
-import pytest
 import os
 from fastapi.testclient import TestClient
 
@@ -6,7 +5,6 @@ from fastapi.testclient import TestClient
 os.environ["API_KEY"] = "test_api_key"
 
 from app.main import app
-from app.core.config import settings
 
 client = TestClient(app)
 

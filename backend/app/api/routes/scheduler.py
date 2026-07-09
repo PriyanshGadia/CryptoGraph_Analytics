@@ -1,10 +1,8 @@
 """
 Scheduler & Pipeline Live Sync Endpoints
 """
-import sys
 import logging
 from datetime import datetime, timezone
-from typing import Dict, Any
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from app.api.routes.forecast import limiter
 

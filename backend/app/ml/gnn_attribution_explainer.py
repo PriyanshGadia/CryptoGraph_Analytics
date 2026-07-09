@@ -31,10 +31,16 @@ class GNNGradientAttributionExplainer:
             new_x[asset_idx] = interpolated
             last_graph.x = new_x
 
-            dir_logits, _ = model(graph_sequence)
-            target_logit = dir_logits[asset_idx].max()
-
-            grad = torch.autograd.grad(target_logit, interpolated, retain_graph=False, create_graph=False)[0]
+            if hasattr(model, "reg_head"):
+                # Enterprise regression model expects a list of sequences: [graph_sequence]
+                # it outputs pred of shape [1, num_nodes] (since B=1)
+                pred = model([graph_sequence], return_uncertainty=False)
+                target_val = pred[0, asset_idx]
+            else:
+                dir_logits, _ = model(graph_sequence)
+                target_val = dir_logits[asset_idx].max()
+ 
+            grad = torch.autograd.grad(target_val, interpolated, retain_graph=False, create_graph=False)[0]
             total_gradients += grad.detach()
 
         # Restore original tensor

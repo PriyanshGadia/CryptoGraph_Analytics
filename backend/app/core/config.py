@@ -86,7 +86,6 @@ def get_setting(key: str, default: str = None) -> Optional[str]:
     return default
 
 # Initialize LangSmith tracing securely on configuration load
-import os
 os.environ["LANGCHAIN_TRACING_V2"] = settings.langchain_tracing_v2
 if getattr(settings, 'langchain_api_key', None):
     os.environ["LANGCHAIN_API_KEY"] = settings.langchain_api_key

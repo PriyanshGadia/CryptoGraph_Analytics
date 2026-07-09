@@ -38,7 +38,6 @@ def enrich_assets():
             # Sector for crypto is usually missing or "Cryptocurrency". 
             # We can map some known ones or use what Yahoo provides.
             sector = info.get("sector", None)
-            category = info.get("category", None)
             
             # Map sectors logically if missing
             if not sector or sector == 'Cryptocurrency':

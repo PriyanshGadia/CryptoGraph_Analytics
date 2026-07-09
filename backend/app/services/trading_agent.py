@@ -5,7 +5,6 @@ Reads latest ST-GCN predictions and manages a virtual portfolio based on signals
 
 from datetime import datetime, timezone
 import asyncio
-import threading
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from app.db.database import SessionLocal

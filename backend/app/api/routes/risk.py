@@ -5,7 +5,7 @@ import pandas as pd
 import yfinance as yf
 from app.api.deps import get_db
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, text, func
+from sqlalchemy import text, func
 from datetime import datetime, timezone, timedelta
 from app.db.models import Prediction, Asset, OHLCV
 from app.core.cache import cached

@@ -19,7 +19,6 @@ from app.api.routes import (
     portfolio, stream, predictions, risk, scheduler, auth
 )
 from app.db.database import SessionLocal
-from app.db.models import AppSetting
 from app.core.limiter import limiter
 
 import logging
@@ -210,7 +209,7 @@ async def lifespan(app: FastAPI):
         finally:
             try:
                 db.close()
-            except:
+            except Exception:
                 pass
 
     # Schedule the refresh job to run every hour

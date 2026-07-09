@@ -7,7 +7,7 @@ from app.db.models import PortfolioState, TradeHistory, Asset, TradeDebate, OHLC
 from pydantic import BaseModel, Field
 from app.services.trading_agent import execute_daily_trades
 from app.api.deps import verify_api_key as get_api_key
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 router = APIRouter(prefix="/portfolio", tags=["portfolio"])
 

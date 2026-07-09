@@ -1,8 +1,7 @@
 from fastapi import APIRouter, Depends
 from app.api.deps import get_db
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, text
-from typing import List, Optional
+from sqlalchemy import text
 from datetime import datetime
 import pandas as pd
 import numpy as np

@@ -149,7 +149,7 @@ async def get_predictions(
                     sv = json.loads(sv_str) if isinstance(pred.shap_values, str) else pred.shap_values
             except Exception as e:
                 import logging
-                logging.getLogger(__name__).error(f"Failed to fetch market state for {s}: {e}", exc_info=True)
+                logging.getLogger(__name__).error(f"Failed to fetch market state for {asset.symbol}: {e}", exc_info=True)
                 
         predictions.append(Prediction(
             asset_symbol=asset.symbol,

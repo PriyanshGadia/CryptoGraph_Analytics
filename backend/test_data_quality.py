@@ -1,5 +1,6 @@
 """Verify response payloads have real data."""
-import requests, json
+import requests
+import json
 
 BASE = "http://localhost:8000"
 

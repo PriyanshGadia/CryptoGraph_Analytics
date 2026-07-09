@@ -1019,6 +1019,7 @@ class EnterpriseTrainer:
                 self._save_full_checkpoint()
                 break
 
+        # Both ranks must reach this barrier after the training loop exits.
         self._barrier()
         self._finalize_snapshots()
 
@@ -1029,16 +1030,21 @@ class EnterpriseTrainer:
                     loaded = EnterpriseSTGCNModel.load(
                         str(best_path), map_location=str(self.device)
                     ).to(self.device)
-                    if isinstance(self.model, DDP):
-                        self.model.module.load_state_dict(loaded.state_dict())
-                    else:
-                        self.model = loaded
+                    # Load into the raw (unwrapped) model only -- do NOT load
+                    # into the DDP wrapper, as that would trigger allreduce on
+                    # SyncBN buffers. The raw_model is used for all post-
+                    # training evaluation.
+                    self.raw_model.load_state_dict(loaded.state_dict())
                     log("Best model weights reloaded for final evaluation.")
                 except Exception as e:
                     log(
                         f"Could not reload best model weights: {e}. "
                         f"Using current weights."
                     )
+
+        # Final barrier: ensure rank 0 has finished reloading weights before
+        # ranks diverge (rank 0 → post-training eval, rank 1 → cleanup).
+        self._barrier()
 
         log("=" * 60)
         log(
@@ -1049,8 +1055,15 @@ class EnterpriseTrainer:
 
     @torch.no_grad()
     def evaluate_test(self) -> Dict[str, float]:
-        if self.rank != 0:
-            return {}
+        """
+        Run MC-Dropout test evaluation on rank 0 only.
+
+        IMPORTANT: This method must be called AFTER cleanup_distributed() so
+        that DDP's NCCL process group is no longer active.  Calling it while
+        DDP is alive would leave rank 1 idle during allgather ops triggered by
+        find_unused_parameters, causing the NCCL watchdog to abort after 600s.
+        """
+        # Guard: this method is always rank-0-only after DDP teardown.
         self.raw_model.eval()
         self.raw_model.enable_mc_dropout()
 
@@ -1079,8 +1092,12 @@ class EnterpriseTrainer:
 
     @torch.no_grad()
     def evaluate_test_ensemble(self) -> Dict[str, float]:
-        if self.rank != 0:
-            return {}
+        """
+        Run snapshot-ensemble test evaluation.
+
+        IMPORTANT: Must be called after cleanup_distributed() — same reason as
+        evaluate_test().
+        """
         if not self.snapshot_heap:
             log("No snapshots available for ensemble evaluation.")
             return {}
@@ -1942,17 +1959,36 @@ def main():
 
         trainer.fit()
 
-        test_metrics = trainer.evaluate_test()
-        ensemble_metrics = trainer.evaluate_test_ensemble()
-        all_metrics = {**test_metrics, **ensemble_metrics}
+        # ----------------------------------------------------------------
+        # CRITICAL: Tear down the NCCL process group BEFORE any rank-0-only
+        # post-training evaluation.
+        #
+        # Root cause of previous SIGABRT:
+        #   evaluate_test() / evaluate_test_ensemble() are rank-0-only
+        #   (rank 1 returned {} immediately), but DDP's internal reducer and
+        #   find_unused_parameters hooks can still trigger NCCL collective ops
+        #   (e.g. _ALLGATHER_BASE) during forward() on rank 0 while rank 1 is
+        #   idle.  After 600 s the NCCL watchdog kills the process with SIGABRT.
+        #
+        # Fix: destroy the process group here so that all subsequent calls are
+        # single-process CPU/GPU operations with no collective communication.
+        # ----------------------------------------------------------------
+        cleanup_distributed(is_distributed)
+        is_distributed = False  # prevent double-cleanup in finally
 
-        if rank == 0 and config.run_trading_metrics:
-            trading_metrics = compute_trading_signal_metrics(
-                trainer.raw_model, test_loader, device
-            )
-            all_metrics.update(trading_metrics)
-
+        # Post-training evaluation runs on rank 0 only (non-distributed).
+        all_metrics: Dict[str, Any] = {}
         if rank == 0:
+            test_metrics = trainer.evaluate_test()
+            ensemble_metrics = trainer.evaluate_test_ensemble()
+            all_metrics = {**test_metrics, **ensemble_metrics}
+
+            if config.run_trading_metrics:
+                trading_metrics = compute_trading_signal_metrics(
+                    trainer.raw_model, test_loader, device
+                )
+                all_metrics.update(trading_metrics)
+
             with open(run_dir / "config.json", "w") as f:
                 json.dump(config.to_dict(), f, indent=2)
             with open(run_dir / "test_metrics.json", "w") as f:
@@ -2014,6 +2050,7 @@ def main():
         log(f"FATAL ERROR:\n{traceback.format_exc()}", force=True)
         raise
     finally:
+        # Idempotent: is_distributed is set to False above if already cleaned up.
         cleanup_distributed(is_distributed)
 
 

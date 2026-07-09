@@ -6,7 +6,6 @@ logger = logging.getLogger("cryptograph.tasks")
 @celery_app.task(name="app.tasks.run_inference_pipeline_task")
 def run_inference_pipeline_task():
     """Celery task to run technical feature calculations and ML inference."""
-    import asyncio
     from datetime import datetime, timezone
     from app.db.database import SessionLocal
     from app.db.models import AppSetting

@@ -26,19 +26,34 @@ class MLOpsPipeline:
             print(f"[MLOps] Model path {model_path} does not exist.")
             return float('inf')
         try:
-            model = STGCNModel.load(model_path, map_location=self.device)
+            is_ent = False
+            try:
+                from ml.pipelines.training_pipeline_enterprise import EnterpriseSTGCNModel
+                model = EnterpriseSTGCNModel.load(model_path)
+                is_ent = True
+                print("[MLOps] Loaded model as EnterpriseSTGCNModel for evaluation.")
+            except Exception:
+                model = STGCNModel.load(model_path, map_location=self.device)
+                
             model.eval()
             criterion = nn.CrossEntropyLoss()
             total_loss = 0.0
             with torch.no_grad():
                 for graph_seq, dir_labels, vol_labels, returns in val_graphs:
                     graph_seq = [g.to(self.device) for g in graph_seq]
-                    dir_labels = dir_labels.to(self.device)
-                    vol_labels = vol_labels.to(self.device)
-                    dir_logits, vol_logits = model(graph_seq)
-                    loss_dir = criterion(dir_logits, dir_labels)
-                    loss_vol = criterion(vol_logits, vol_labels)
-                    total_loss += (loss_dir.item() + loss_vol.item())
+                    if is_ent:
+                        returns = returns.to(self.device)
+                        # Enterprise STGCNModel expects batch_sequences List[List[Data]]
+                        pred, log_var = model([graph_seq], return_uncertainty=True)
+                        loss = nn.functional.mse_loss(pred[0].squeeze(), returns)
+                        total_loss += loss.item()
+                    else:
+                        dir_labels = dir_labels.to(self.device)
+                        vol_labels = vol_labels.to(self.device)
+                        dir_logits, vol_logits = model(graph_seq)
+                        loss_dir = criterion(dir_logits, dir_labels)
+                        loss_vol = criterion(vol_logits, vol_labels)
+                        total_loss += (loss_dir.item() + loss_vol.item())
             return total_loss / max(1, len(val_graphs))
         except Exception as e:
             print(f"[MLOps] Error evaluating model at {model_path}: {e}")
@@ -67,21 +82,40 @@ class MLOpsPipeline:
             print("[MLOps] Insufficient features loaded. Retraining aborted.")
             return
             
-        print(f"[MLOps] Loaded features for validation evaluation.")
-        
-        # Build sliding windows for evaluation
-        builder = DynamicGraphBuilder()
-        all_graphs, graph_dates = builder.build_dynamic_graph_sequence(features, available_symbols)
+        print("[MLOps] Loaded features for validation evaluation.")
         
         # Use lookback of 14 for evaluation
         lookback_window = 14
+
+        # Build sliding windows for evaluation
+        start_dt = (now - timedelta(days=60)).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
+        end_dt = now.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
+        builder = DynamicGraphBuilder(None, available_symbols, feature_dim=24)
         
-        # Get active assets features
         proc_features = {}
         for sym in available_symbols:
             df = features[sym].copy()
-            df.index = pd.to_datetime(df.index).tz_localize(None)
+            if "timestamp" in df.columns:
+                df = df.set_index("timestamp")
+            if df.index.tz is None:
+                df.index = df.index.tz_localize("UTC")
+            df.index = df.index.floor('D')
+            df = df[~df.index.duplicated(keep='last')]
             proc_features[sym] = df
+
+        all_graphs = []
+        graph_dates = []
+        current_date = start_dt
+        while current_date <= end_dt:
+            missing_count = 0
+            for sym in available_symbols:
+                if sym not in proc_features or current_date not in proc_features[sym].index:
+                    missing_count += 1
+            if missing_count / len(available_symbols) <= 0.1:
+                g = builder.build_graph(current_date, proc_features)
+                all_graphs.append(g)
+                graph_dates.append(current_date)
+            current_date += timedelta(days=1)
             
         # Collect all historical returns to compute dynamic percentiles
         all_returns = []

@@ -1,9 +1,8 @@
 """Performance routes — local SQLAlchemy backend."""
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, text
+from sqlalchemy import desc
 from datetime import datetime, timezone, timedelta
-import numpy as np
 from app.api.deps import get_db
 from app.db.models import Prediction, Asset, OHLCV
 from app.core.cache import cached
@@ -83,7 +82,7 @@ def get_model_performance(
     calib_buckets = {i: {"total": 0, "correct": 0} for i in range(10)}
 
     confusion_labels = ["strong_up", "up", "neutral", "down", "strong_down"]
-    label_to_idx = {l: i for i, l in enumerate(confusion_labels)}
+    label_to_idx = {lbl: i for i, lbl in enumerate(confusion_labels)}
     confusion_matrix = [[0 for _ in range(5)] for _ in range(5)]
 
     daily_stats = {}

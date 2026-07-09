@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.api.deps import verify_api_key
 from app.db.models import AppSetting
 from app.core.security import encrypt_secret, decrypt_secret
 from pydantic import BaseModel, field_validator
-from typing import Dict, Any, Optional
+from typing import Dict, Optional
 
 router = APIRouter(prefix="/settings", tags=["settings"], dependencies=[Depends(verify_api_key)])
 

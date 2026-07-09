@@ -3,7 +3,6 @@ Deterministic Historical Predictions Seeder.
 Uses the PyTorch ST-GCN inference engine to generate authentic, non-random historical predictions.
 """
 import sys
-import os
 from pathlib import Path
 
 # Add root folder to sys.path

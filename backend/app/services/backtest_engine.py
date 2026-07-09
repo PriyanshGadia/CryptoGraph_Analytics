@@ -8,16 +8,14 @@ Generates compliance-ready financial performance metrics:
 - Sortino Ratio (Downside Risk)
 """
 
-import numpy as np
 import pandas as pd
-from typing import List, Dict, Any
+from typing import Dict, Any
 from sqlalchemy.orm import Session
 from app.db.models import PortfolioState
 from ml.evaluation.finance_metrics import sharpe_ratio, sortino_ratio
 
 
 import os
-import requests
 from datetime import datetime, timedelta, timezone
 
 def get_current_risk_free_rate() -> float:
@@ -146,7 +144,7 @@ def run_asset_backtest(
     over a time range, calculating realistic trading performance metrics.
     """
     from app.db.models import Asset, Prediction, OHLCV
-    from datetime import datetime, timezone
+    from datetime import datetime
     
     # Resolve asset
     asset = db.query(Asset).filter(Asset.symbol == symbol.upper()).first()

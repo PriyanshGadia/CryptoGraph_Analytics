@@ -1,0 +1,8 @@
+# Ruff configuration for CryptoGraph Analytics
+line-length = 120
+
+[lint]
+# Ignore module-level import placement (E402) and single-line statements (E701)
+# E402 is common due to sys.path modifications required before model/db imports
+# E701 is common for single-line condition checks (e.g. if cond: continue)
+ignore = ["E402", "E701"]

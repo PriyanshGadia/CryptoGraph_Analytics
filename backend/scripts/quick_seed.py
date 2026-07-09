@@ -3,7 +3,6 @@ import os
 import ccxt
 import uuid
 import pandas as pd
-import numpy as np
 from datetime import datetime, timezone, timedelta
 import sys
 
@@ -32,7 +31,6 @@ def main():
     
     # Ensure tables exist
     from app.db.database import engine, Base
-    import app.db.models as models
     Base.metadata.create_all(bind=engine)
     
     conn = sqlite3.connect(db_path)

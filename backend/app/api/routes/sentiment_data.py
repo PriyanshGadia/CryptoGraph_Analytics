@@ -5,10 +5,10 @@ since there is no dedicated sentiment/fear_greed table in the local DB.
 """
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, text, func
+from sqlalchemy import desc, text
 from datetime import datetime, timezone, timedelta
 from app.api.deps import get_db
-from app.db.models import Asset, OHLCV, AssetNews, Prediction
+from app.db.models import Asset, OHLCV
 from app.core.cache import cached
 import math
 

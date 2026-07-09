@@ -96,7 +96,6 @@ async def trigger_refresh_all(background_tasks: BackgroundTasks, db: Session = D
         
     # 4. Trigger prediction broadcast
     try:
-        from app.api.routes.stream import FORCE_PREDICTION_BROADCAST
         import app.api.routes.stream as stream_module
         stream_module.FORCE_PREDICTION_BROADCAST = True
         results["predictions_broadcast"] = "broadcast triggered"

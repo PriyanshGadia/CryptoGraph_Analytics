@@ -2,8 +2,6 @@
 On-demand deep learning forecast endpoint.
 Fetches 60 days of OHLCV, runs LSTM+Prophet ensemble, returns forecast.
 """
-import sys
-import numpy as np
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Request
 from datetime import datetime, timezone, timedelta
@@ -11,11 +9,9 @@ import asyncio
 from app.api.deps import get_db
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
-from app.db.models import Asset, OHLCV, Prediction as SQLAPrediction, Forecast as SQLAForecast
+from app.db.models import Asset, OHLCV, Prediction as SQLAPrediction
 from app.core.limiter import limiter
 from cachetools import TTLCache
-import json
-from pathlib import Path
 from ml.models.forecast_model import run_ensemble_forecast
 from app.core.streams.binance_ws import get_global_market_state
 # 1-hour TTL cache for ML forecast models to eliminate wait times
@@ -83,7 +79,6 @@ async def get_forecast(request: Request, symbol: str, db: Session = Depends(get_
     ssot_state = get_global_market_state().get(symbol.upper(), {})
     live_price = float(ssot_state.get("current_price", 0.0))
     last_price = live_price if live_price > 0 else db_last_price
-    ssot_updated_at = ssot_state.get("updated_at", "unknown")
     
     # 3. Get ST-GCN model prediction (SSOT flagship model)
     pred = db.query(SQLAPrediction).filter(SQLAPrediction.asset_id == asset_id).order_by(desc(SQLAPrediction.predicted_at)).first()

@@ -21,10 +21,12 @@ from typing import Dict, List, Optional
 
 import torch
 import torch.nn.functional as F
+import math
 
 from ml.data.feature_store.store import FeatureStore
 from ml.graph.graph_builder import DynamicGraphBuilder
 from ml.models.stgcn import STGCNModel
+from ml.pipelines.training_pipeline_enterprise import EnterpriseSTGCNModel
 import json
 
 # Phase 9: XAI & Inference Attestation Integration
@@ -160,17 +162,27 @@ def run_inference() -> dict:
     import gc
     gate_passed = True
     gate_reason = ""
+    
+    print(f"Attempting to load PyTorch model into memory (4GB RAM safe-mode)...")
+    is_enterprise = False
+    pred_np = None
+    log_var_np = None
     dir_probs = None
     vol_probs = None
     model_version = "n/a"
-
+    
     try:
         if not MODEL_PATH.exists():
             print(f"Model checkpoint not found at {MODEL_PATH} — aborting.")
             return {"predictions_stored": 0, "model_version": "n/a"}
 
-        print(f"Attempting to load PyTorch model into memory (4GB RAM safe-mode)...")
-        model = STGCNModel.load(str(MODEL_PATH))
+        try:
+            model = EnterpriseSTGCNModel.load(str(MODEL_PATH))
+            is_enterprise = True
+            print("Loaded EnterpriseSTGCNModel successfully.")
+        except Exception as e_ent:
+            print(f"Failed to load as EnterpriseSTGCNModel ({e_ent}), trying STGCNModel...")
+            model = STGCNModel.load(str(MODEL_PATH))
         
         # Explicitly map to CPU to avoid CUDA OOM if running on low-end hardware
         model.to(torch.device("cpu"))
@@ -179,40 +191,65 @@ def run_inference() -> dict:
         print(f"Model loaded: {MODEL_PATH.name} (version={model_version})")
 
         with torch.no_grad():
-            dir_logits, vol_logits = model(graph_sequence)  # (N,3), (N,4)
-
-        # Retrieve calibrated temperature scaling factor from model config (default: 1.0)
-        temperature = getattr(model, 'config', {}).get("temperature", 1.0)
-        print(f"Applying Calibrated Temperature Scaling (T = {temperature:.2f}) to model logits...")
-        
-        # Use calibrated softmax to get true model-predicted probabilities
-        dir_probs = F.softmax(dir_logits / temperature, dim=1)   # (N, 3)
-        vol_probs = F.softmax(vol_logits, dim=1)   # (N, 4)
+            if is_enterprise:
+                # Enterprise STGCNModel expects batch_sequences List[List[Data]]
+                pred, log_var = model([graph_sequence], return_uncertainty=True)
+                pred_np = pred[0].cpu().numpy()
+                log_var_np = log_var[0].cpu().numpy()
+            else:
+                dir_logits, vol_logits = model(graph_sequence)  # (N,3), (N,4)
+                
+                # Retrieve calibrated temperature scaling factor from model config (default: 1.0)
+                temperature = getattr(model, 'config', {}).get("temperature", 1.0)
+                print(f"Applying Calibrated Temperature Scaling (T = {temperature:.2f}) to model logits...")
+                
+                # Use calibrated softmax to get true model-predicted probabilities
+                dir_probs = F.softmax(dir_logits / temperature, dim=1)   # (N, 3)
+                vol_probs = F.softmax(vol_logits, dim=1)   # (N, 4)
 
         # Free PyTorch model memory immediately after forward pass
         del model
-        del dir_logits
-        del vol_logits
+        if not is_enterprise:
+            if 'dir_logits' in locals(): del dir_logits
+            if 'vol_logits' in locals(): del vol_logits
         gc.collect()
 
         # Model Quality Gate check based on validation metrics
         try:
-            metrics_path = Path(__file__).resolve().parent.parent / "artifacts" / "validation_metrics.json"
-            if not metrics_path.exists():
-                metrics_path = Path("ml/artifacts/validation_metrics.json")
-            if not metrics_path.exists():
-                metrics_path = Path("../ml/artifacts/validation_metrics.json")
-                
-            if metrics_path.exists():
-                with open(metrics_path, "r") as f:
-                    val_metrics = json.load(f)
-                val_f1 = val_metrics.get("f1_macro", 0.0)
-                val_sharpe = val_metrics.get("sharpe_ratio", 0.0)
-                
-                if val_f1 < 0.35 or val_sharpe < 0.0:
-                    gate_passed = False
-                    gate_reason = f"F1={val_f1:.2f}, Sharpe={val_sharpe:.2f} below threshold"
-                    print(f"[QualityGate] WARN: Model failed quality gate ({gate_reason}). Serving recalibrating state.")
+            if is_enterprise:
+                metrics_path = Path(__file__).resolve().parent.parent / "artifacts" / "enterprise_test_metrics.json"
+                if not metrics_path.exists():
+                    metrics_path = Path("ml/artifacts/enterprise_test_metrics.json")
+                if not metrics_path.exists():
+                    metrics_path = Path("../ml/artifacts/enterprise_test_metrics.json")
+                    
+                if metrics_path.exists():
+                    with open(metrics_path, "r") as f:
+                        val_metrics = json.load(f)
+                    val_rmse = val_metrics.get("ensemble_test_rmse", val_metrics.get("test_rmse", 999.0))
+                    val_sharpe = val_metrics.get("strategy_sharpe_ratio", 0.0)
+                    
+                    if val_rmse > 5.0 or val_sharpe < -0.5:
+                        gate_passed = False
+                        gate_reason = f"RMSE={val_rmse:.2f}, Sharpe={val_sharpe:.2f} below threshold"
+                        print(f"[QualityGate] WARN: Enterprise model failed quality gate ({gate_reason}). Serving recalibrating state.")
+            else:
+                metrics_path = Path(__file__).resolve().parent.parent / "artifacts" / "validation_metrics.json"
+                if not metrics_path.exists():
+                    metrics_path = Path("ml/artifacts/validation_metrics.json")
+                if not metrics_path.exists():
+                    metrics_path = Path("../ml/artifacts/validation_metrics.json")
+                    
+                if metrics_path.exists():
+                    with open(metrics_path, "r") as f:
+                        val_metrics = json.load(f)
+                    val_f1 = val_metrics.get("f1_macro", 0.0)
+                    val_sharpe = val_metrics.get("sharpe_ratio", 0.0)
+                    
+                    if val_f1 < 0.35 or val_sharpe < 0.0:
+                        gate_passed = False
+                        gate_reason = f"F1={val_f1:.2f}, Sharpe={val_sharpe:.2f} below threshold"
+                        print(f"[QualityGate] WARN: Model failed quality gate ({gate_reason}). Serving recalibrating state.")
         except Exception as e:
             print(f"[QualityGate] Error reading validation metrics: {e}")
 

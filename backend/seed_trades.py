@@ -118,7 +118,6 @@ def seed_trades():
     # We evaluate from Day 10 (oldest) down to Day 1 (newest)
     for day in range(10, 0, -1):
         day_date = now - timedelta(days=day)
-        day_str = day_date.strftime("%Y-%m-%d")
         day_iso = day_date.isoformat()
 
         # Gather day's prices and predictions

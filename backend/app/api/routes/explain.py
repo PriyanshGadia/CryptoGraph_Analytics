@@ -120,8 +120,8 @@ def generate_system_explanation(symbol: str, direction: str, confidence: float,
             )
         elif macd > macd_sig:
             feature_insights.append(
-                f"MACD has crossed above its signal line (bullish crossover), "
-                f"though it remains below zero, suggesting early-stage recovery."
+                "MACD has crossed above its signal line (bullish crossover), "
+                "though it remains below zero, suggesting early-stage recovery."
             )
         elif macd < macd_sig and macd < 0:
             feature_insights.append(
@@ -130,8 +130,8 @@ def generate_system_explanation(symbol: str, direction: str, confidence: float,
             )
         elif macd < macd_sig:
             feature_insights.append(
-                f"MACD has crossed below its signal line (bearish crossover). "
-                f"Momentum is fading even though the overall trend may still be positive."
+                "MACD has crossed below its signal line (bearish crossover). "
+                "Momentum is fading even though the overall trend may still be positive."
             )
 
     ret_1d = context.get("returns_1d")

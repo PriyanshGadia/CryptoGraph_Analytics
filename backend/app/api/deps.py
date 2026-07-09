@@ -5,7 +5,7 @@ from fastapi.websockets import WebSocket
 
 from app.db.database import SessionLocal
 from app.core.config import get_setting, settings
-from app.core.security import decrypt_secret, verify_jwt_token
+from app.core.security import verify_jwt_token
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 

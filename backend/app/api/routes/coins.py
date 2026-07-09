@@ -8,7 +8,6 @@ import ccxt.async_support as ccxt
 
 router = APIRouter(prefix="/coins", tags=["coins"])
 
-import asyncio
 
 @router.get("/{symbol}/ohlcv")
 async def get_coin_ohlcv(
@@ -329,7 +328,6 @@ def get_coin_correlations(symbol: str, db: Session = Depends(get_db)):
 
 @router.get("/{symbol}/sentiment-history")
 def get_coin_sentiment_history(symbol: str, db: Session = Depends(get_db)):
-    from app.db.models import AssetNews
     
     asset = db.query(Asset).filter(Asset.symbol.ilike(symbol)).first()
     if not asset:
@@ -383,7 +381,6 @@ def get_coin_sentiment_history(symbol: str, db: Session = Depends(get_db)):
     data = []
     for row in res:
         date_str = row[0]
-        ret1d = row[1] or 0.0
         rsi = row[2] or 50.0
         
         # Use NLP sentiment if available, otherwise fallback to RSI-based momentum proxy

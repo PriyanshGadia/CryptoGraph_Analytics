@@ -5,13 +5,11 @@ to determine the best execution route and calculate true slippage.
 """
 
 import os
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 import ccxt
 import urllib.request
 import json
 from cachetools import cached, TTLCache
-from app.db.database import SessionLocal
-from app.db.models import AppSetting
 import logging
 
 logger = logging.getLogger(__name__)
@@ -38,7 +36,6 @@ class SmartOrderRouter:
 
     def _get_rpc_url(self) -> str:
         """Retrieves Ethereum RPC URL from environment whitelist."""
-        import os
         from urllib.parse import urlparse
         rpc = os.environ.get("ETHEREUM_RPC_URL", "https://cloudflare-eth.com")
         

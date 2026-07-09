@@ -1,8 +1,7 @@
 import logging
 logger = logging.getLogger(__name__)
 """Base class for Autonomous AI Swarm Agents."""
-import asyncio
-from typing import Optional, Dict, Any
+from typing import Optional
 from sqlalchemy.orm import Session
 from app.db.models import AppSetting
 from app.core.security import decrypt_secret

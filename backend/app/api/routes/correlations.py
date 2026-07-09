@@ -5,10 +5,9 @@ from sqlalchemy import text
 from datetime import datetime, timezone, timedelta
 import pandas as pd
 import numpy as np
-import asyncio
 from app.api.deps import get_db
 from app.db.models import Asset
-from app.core.cache import cached, _cache
+from app.core.cache import _cache
 
 router = APIRouter(prefix="/correlations", tags=["correlations"])
 
