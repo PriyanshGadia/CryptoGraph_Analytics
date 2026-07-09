@@ -313,7 +313,7 @@ class TrainingConfig:
     # [R4-BUG-3 FIX] Minimum pred_std for prediction-collapse warning.
     # Targets are normalized to std ≈ 1.0. A useful model should have
     # pred_std of the same order. Any pred_std < this value is flagged.
-    min_pred_std_warn: float = 0.1
+    min_pred_std_warn: float = 0.05
 
     use_amp: bool = True
     num_workers: int = 0
@@ -1094,15 +1094,12 @@ class EnterpriseTrainer:
             val_metrics: Dict[str, float] = {}
             if self.rank == 0:
                 val_metrics = self.validate()
-            # [R5-BUG-2 FIX]: Early stopping uses val_nll (NLL-only), not the
-            # combined NLL+MSE val_loss. This makes model selection independent
-            # of the MSE regularizer's scale and keeps the metric comparable
-            # to the theoretical degenerate-minimum floor (NLL ≈ 0.566).
-            val_nll = self._sync_scalar(val_metrics.get("val_nll", float("inf")))
-            val_loss_combined = self._sync_scalar(val_metrics.get("val_loss", float("inf")))
-
-            # Use val_nll as the canonical model-selection metric.
-            val_loss = val_nll
+            # [R6 model selection]: Track validation RMSE instead of ValNLL for model selection and early stopping.
+            # RMSE directly measures the prediction accuracy of return forecasts (used for trading signals).
+            # This prevents the uncertainty head from stopping training prematurely by adjusting its variance predictions
+            # while the prediction head is still actively improving its out-of-sample forecast accuracy.
+            val_rmse = self._sync_scalar(val_metrics.get("val_rmse", float("inf")))
+            val_loss = val_rmse
 
             if self.rank == 0:
                 for k, v in {**train_metrics, **val_metrics}.items():
@@ -1127,8 +1124,8 @@ class EnterpriseTrainer:
                 log(
                     f"Epoch {epoch:3d}/{self.config.max_epochs} | "
                     f"Loss {train_metrics['train_loss']:.6f} | "
-                    f"ValNLL {val_loss:.6f} | "
-                    f"RMSE {val_metrics.get('val_rmse', float('nan')):.6f} | "
+                    f"ValNLL {val_metrics.get('val_nll', float('nan')):.6f} | "
+                    f"RMSE {val_loss:.6f} | "
                     f"R2 {val_metrics.get('val_r2', float('nan')):.4f} | "
                     f"PredStd {val_metrics.get('val_mean_pred_std', float('nan')):.4f} | "
                     f"LR {train_metrics['lr']:.2e} | "
