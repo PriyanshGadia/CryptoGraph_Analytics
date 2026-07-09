@@ -21,11 +21,13 @@ class DynamicGraphBuilder:
     The SpatioTemporalGAT learns the dynamic importance of connections via Attention.
     """
 
-    def __init__(self, supabase_client: Optional[Any], asset_symbols: List[str], feature_dim: int = 24):
+    def __init__(self, supabase_client: Optional[Any], asset_symbols: List[str], feature_dim: int = 24, corr_threshold: float = 0.6, mc_threshold: float = 0.3):
         self.client = supabase_client
         self.symbols = asset_symbols
         self.symbol_to_idx = {s: i for i, s in enumerate(asset_symbols)}
         self.feature_dim = feature_dim
+        self.corr_threshold = corr_threshold
+        self.mc_threshold = mc_threshold
         self.rolling_min_cache = {}
         self.rolling_max_cache = {}
         self._cached_len = {}
@@ -154,7 +156,7 @@ class DynamicGraphBuilder:
             corr_mat = np.nan_to_num(corr_mat, nan=0.0, posinf=0.0, neginf=0.0)
             
             # Vectorized thresholding for 20k scaling
-            row_idx, col_idx = np.where(np.abs(corr_mat) > 0.6)
+            row_idx, col_idx = np.where(np.abs(corr_mat) > self.corr_threshold)
             for i, j in zip(row_idx, col_idx):
                 if i < j:
                     add_edge(int(i), int(j), float(corr_mat[i, j]), 2)
@@ -181,7 +183,7 @@ class DynamicGraphBuilder:
                     continue
                 max_mc = max(mc_i, mc_j)
                 weight = min(mc_i, mc_j) / max_mc
-                if weight > 0.3:
+                if weight > self.mc_threshold:
                     add_edge(i, j, weight, 1)
 
         # STEP 4: Sector edges (Relation 0)
@@ -295,7 +297,7 @@ class DynamicGraphBuilder:
         if padded:
             corr_mat = np.corrcoef(padded)
             # Vectorized thresholding for 20k scaling
-            row_idx, col_idx = np.where(np.abs(corr_mat) > 0.6)
+            row_idx, col_idx = np.where(np.abs(corr_mat) > self.corr_threshold)
             for i, j in zip(row_idx, col_idx):
                 if i < j:
                     add_edge(int(i), int(j), float(corr_mat[i, j]), 2)
@@ -309,7 +311,7 @@ class DynamicGraphBuilder:
                         mc_j = float(features[self.symbols[j]].iloc[-1]["market_cap_usd"])
                         max_mc = max(mc_i, mc_j)
                         weight = min(mc_i, mc_j) / max_mc if max_mc > 0 else 0
-                        if weight > 0.3:
+                        if weight > self.mc_threshold:
                             add_edge(i, j, weight, 1)
                 except KeyError:
                     pass

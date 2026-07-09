@@ -326,6 +326,9 @@ class TrainingConfig:
     importance_max_batches: int = 15
     run_trading_metrics: bool = True
 
+    corr_threshold: float = 0.6
+    mc_threshold: float = 0.3
+
     def to_dict(self) -> dict:
         return asdict(self)
 
@@ -1700,7 +1703,7 @@ def _verify_normalization(
 # Increment this whenever a change to feature content (e.g. new features
 # in the yfinance fallback, normalization logic, graph structure) makes
 # existing .pkl caches stale. The version is hashed into the cache key.
-_CACHE_VERSION = "r9"  # R9: Clipped raw target returns to [-0.5, 0.5]
+_CACHE_VERSION = "r10"  # R10: Add corr_threshold and mc_threshold to cache key to control sparsity
 
 
 def _cache_key(symbols: List[str], config: TrainingConfig) -> str:
@@ -1714,6 +1717,8 @@ def _cache_key(symbols: List[str], config: TrainingConfig) -> str:
             "max_missing_frac": config.max_missing_frac,
             "normalize_targets": config.normalize_targets,
             "target_norm_window": config.target_norm_window,
+            "corr_threshold": config.corr_threshold,
+            "mc_threshold": config.mc_threshold,
         },
         sort_keys=True,
     )
@@ -1863,6 +1868,8 @@ def _build_dataset_from_scratch(config: TrainingConfig, symbols: List[str]) -> T
         supabase_client=None,
         asset_symbols=available_symbols,
         feature_dim=config.feature_dim,
+        corr_threshold=config.corr_threshold,
+        mc_threshold=config.mc_threshold,
     )
 
     proc_features: Dict[str, pd.DataFrame] = {}
@@ -2069,8 +2076,15 @@ def main():
     is_kaggle = os.environ.get("KAGGLE_KERNEL_RUN_TYPE") is not None or os.environ.get("KAGGLE_URL_BASE") is not None
     if is_kaggle:
         log("Detected KAGGLE environment. Running in HIGH PERFORMANCE mode.")
-        config.hidden_dim = 128
-        config.batch_size = 64
+        # [KAGGLE OPTIMIZATIONS TO PREVENT CUDA OOM]
+        # 1. hidden_dim = 96 (44% VRAM saving over 128)
+        # 2. batch_size = 16 (75% VRAM saving over 64)
+        # 3. corr_threshold = 0.85 (sharply reduces correlation edges to prevent dense cliques)
+        # 4. mc_threshold = 0.8 (sharply reduces market cap edges to similar cap coins only)
+        config.hidden_dim = 96
+        config.batch_size = 16
+        config.corr_threshold = 0.85
+        config.mc_threshold = 0.8
         config.max_epochs = 300
         config.ensemble_size = 5
         config.mc_dropout_samples = 30
@@ -2091,6 +2105,8 @@ def main():
         config.early_stopping_patience = 5
         config.history_days = 365  # 1 year of data for fast local testing
         config.use_amp = False  # AMP not beneficial on CPU
+        config.corr_threshold = 0.6
+        config.mc_threshold = 0.3
 
     set_seed(config.seed)
 
