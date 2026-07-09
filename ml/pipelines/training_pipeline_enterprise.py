@@ -258,8 +258,8 @@ class TrainingConfig:
     forecast_horizon: int = 1
     feature_dim: int = 24
     target_col: str = "returns_1d"
-    history_days: int = 1825
-    max_missing_frac: float = 0.10
+    history_days: int = 3650
+    max_missing_frac: float = 0.95
     use_cache: bool = True
     cache_max_age_hours: float = 24.0
 
@@ -271,9 +271,9 @@ class TrainingConfig:
     dropout: float = 0.40
     use_tcn: bool = True
 
-    batch_size: int = 4
+    batch_size: int = 16
     max_epochs: int = 300
-    learning_rate: float = 3e-5
+    learning_rate: float = 1e-4
     weight_decay: float = 5e-2
     warmup_epochs: int = 10
     grad_clip: float = 1.0
@@ -1699,7 +1699,7 @@ def _verify_normalization(
 # Increment this whenever a change to feature content (e.g. new features
 # in the yfinance fallback, normalization logic, graph structure) makes
 # existing .pkl caches stale. The version is hashed into the cache key.
-_CACHE_VERSION = "r6"  # R6: added live proxies for macro and sentiment features
+_CACHE_VERSION = "r8"  # R8: scaled GNN correlation network to 100 symbols with bulk fetch
 
 
 def _cache_key(symbols: List[str], config: TrainingConfig) -> str:
@@ -2116,7 +2116,24 @@ def main():
                 raise ValueError("DB returned empty symbol list")
         except Exception as e:
             log(f"DB symbol lookup failed ({e}); using fallback symbol list.")
-            symbols = ["BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE"]
+            symbols = [
+                # Core Assets & High Market Cap
+                "BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", "LTC", "BCH", "LINK",
+                # Top layer 1 blockchains
+                "AVAX", "DOT", "MATIC", "NEAR", "SUI", "APT", "ICP", "STX", "FTM", "SEI",
+                "ATOM", "ALGO", "EGLD", "HBAR", "VET", "TRX", "XLM", "EOS", "FLOW", "KAVA",
+                "XTZ", "ZIL", "ONE", "IOTA", "KSM", "MINA", "INJ", "TIA", "CORE", "KNC",
+                # Scaling and Layer 2s
+                "OP", "ARB", "MNT", "METIS", "IMX", "LRC", "CELO", "MANA", "SAND", "GALA",
+                # DeFi Protocols & Apps
+                "UNI", "AAVE", "LDO", "MKR", "GRT", "SNX", "RUNE", "DYDX", "PENDLE", "ONDO",
+                "CRV", "COMP", "SUSHI", "YFI", "CAKE", "JUP", "1INCH", "WOO", "AXS", "CHZ",
+                # AI, Depin & Web3 Infra
+                "FET", "TAO", "FIL", "AR", "THETA", "JASMY", "HNT", "RENDER", "WLD", "LPT",
+                "GLM", "OCEAN", "AKT", "PYTH", "FIDA", "QTUM", "ANKR", "BAND", "API3", "RLC",
+                # High Volume Community & Memecoins
+                "SHIB", "PEPE", "WIF", "BONK", "FLOKI", "MEME", "BOME", "TURBO", "WEN", "PEOPLE"
+            ]
         log(f"Assets: {symbols}")
 
         (

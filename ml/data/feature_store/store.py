@@ -163,10 +163,32 @@ class FeatureStore:
         except Exception as macro_e:
             print(f"  [yfinance] Global macro pre-fetch failed ({macro_e}), using fallback constants")
 
+        bulk_raw = None
+        all_tickers = [yf_map[sym] for sym in assets]
+        print(f"  [yfinance] Bulk pre-fetching {len(all_tickers)} assets at once...")
+        try:
+            bulk_raw = yf.download(all_tickers, start=start_date, end=end_date, progress=False, auto_adjust=True)
+            print(f"  [yfinance] Bulk download complete. Shape={bulk_raw.shape if bulk_raw is not None else 'None'}")
+        except Exception as bulk_e:
+            print(f"  [yfinance] Bulk download failed ({bulk_e}), using sequential fallback.")
+
         for symbol in assets:
             ticker = yf_map[symbol]
             try:
-                df_raw = yf.download(ticker, start=start_date, end=end_date, progress=False, auto_adjust=True)
+                df_raw = pd.DataFrame()
+                if bulk_raw is not None and not bulk_raw.empty:
+                    if isinstance(bulk_raw.columns, pd.MultiIndex):
+                        try:
+                            # Extract columns for this specific ticker
+                            df_raw = bulk_raw.xs(ticker, axis=1, level=1).dropna(how="all")
+                        except KeyError:
+                            pass
+                    else:
+                        df_raw = bulk_raw
+
+                if df_raw.empty:
+                    df_raw = yf.download(ticker, start=start_date, end=end_date, progress=False, auto_adjust=True)
+
                 if df_raw.empty:
                     continue
 
