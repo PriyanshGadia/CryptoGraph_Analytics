@@ -134,6 +134,20 @@ class FeatureStore:
         # Map crypto symbols to yfinance tickers
         yf_map = {s: f"{s}-USD" for s in assets}
 
+        # [R5-BUG-3 FIX]: Pre-fetch VIX once for the whole date range.
+        # VIX is a global index (same for all assets on a given day).
+        _vix_series: Optional[pd.Series] = None
+        try:
+            vix_raw = yf.download("^VIX", start=start_date, end=end_date, progress=False, auto_adjust=True)
+            if isinstance(vix_raw.columns, pd.MultiIndex):
+                vix_raw.columns = vix_raw.columns.get_level_values(0)
+            if not vix_raw.empty and "Close" in vix_raw.columns:
+                _vix_series = vix_raw["Close"].astype(float)
+                _vix_series.index = pd.to_datetime(_vix_series.index, utc=True)
+                print(f"  [yfinance] ^VIX: {len(_vix_series)} rows loaded (std={_vix_series.std():.2f}, range=[{_vix_series.min():.1f}, {_vix_series.max():.1f}])")
+        except Exception as vix_e:
+            print(f"  [yfinance] ^VIX fetch failed ({vix_e}), vix will default to 15.0")
+
         for symbol in assets:
             ticker = yf_map[symbol]
             try:
@@ -219,7 +233,13 @@ class FeatureStore:
                 df["fed_rate"] = 5.25
                 df["cpi"] = 3.0
                 df["inflation"] = 2.5
-                df["vix"] = 15.0
+
+                # [R5-BUG-3 FIX]: Use real VIX if available; fall back to 15.0.
+                if _vix_series is not None:
+                    vix_aligned = _vix_series.reindex(df.index, method="ffill")
+                    df["vix"] = vix_aligned.fillna(15.0).values
+                else:
+                    df["vix"] = 15.0
 
                 if expected_features == 27:
                     df["tvl"] = 0.0

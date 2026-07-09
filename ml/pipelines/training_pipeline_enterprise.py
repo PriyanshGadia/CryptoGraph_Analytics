@@ -4,7 +4,44 @@ ENTERPRISE-GRADE ST-GCN TRAINING PIPELINE — REVISION 4
 =======================================================
 ml/pipelines/training_pipeline_enterprise.py
 
-BUGS FIXED IN THIS REVISION (R4):
+BUGS FIXED IN THIS REVISION (R5):
+
+  [R5-BUG-1, CRITICAL — STRATEGY METRICS COMPUTED ON NORMALIZED RETURNS]
+    `compute_trading_signal_metrics` fed normalized returns (σ≈1.0, values
+    in range ±3-5) directly into `finance_metrics` as portfolio daily
+    returns. finance_metrics.max_drawdown clips at -0.99, so a single day
+    where normalized targets are around -3 gives day_ret≈-300% → wealth
+    collapses to near-zero → max_drawdown≈-1.0. Sharpe and Sortino are
+    computed on return magnitudes ~100x too large.
+
+    Fix: pass `scale_map` and `available_symbols` to the function. Targets
+    are denormalized using scale_map before computing P&L. The signal
+    direction (sign of prediction) is unaffected; only the return magnitude
+    is corrected. raw_return ≈ normalized_return × scale_map[sym].
+
+  [R5-BUG-2, MEDIUM — EARLY STOPPING USES COMBINED NLL+MSE LOSS]
+    After R4, validate() returned a `val_loss` that includes both NLL and
+    the auxiliary MSE term. Early stopping tracks this combined metric,
+    causing two problems:
+      - The scale of "Val" in epoch logs jumped from ~0.6 to ~1.2 (the
+        MSE component adds ~0.5 at zero-predictor level), making it hard
+        to interpret progress against the theoretical NLL floor of 0.566.
+      - Model selection might prefer a model with lower uncertainty (low
+        MSE) rather than the most genuinely predictive model.
+
+    Fix: validate() now tracks `val_nll` (NLL + entropy only) and
+    `val_loss` (NLL + entropy + MSE). Early stopping and snapshot
+    selection use `val_nll`. The epoch log `Val` column shows `val_nll`
+    so the degenerate-minimum floor (0.566) is directly readable. The
+    full combined loss is still stored in `history` for analysis.
+
+  [R5-BUG-3, LOW — VIX IS FREE FROM YFINANCE BUT WAS HARDCODED]
+    feature `vix` was hardcoded to 15.0 in yfinance fallback mode,
+    making it a dead constant. The CBOE VIX index is available as ^VIX
+    on yfinance (updated daily). Fetching it converts one dead feature
+    to a live one with meaningful variance.
+
+BUGS FIXED IN REVISION (R4):
 
   [R4-BUG-1, CRITICAL — DEGENERATE NLL MINIMUM / MODEL COLLAPSE]
     With Gaussian NLL loss, the global minimum for a useless model is:
@@ -954,8 +991,24 @@ class EnterpriseTrainer:
 
     @torch.no_grad()
     def validate(self) -> Dict[str, float]:
+        """
+        Validation loop.
+
+        Returns two loss values:
+          - `val_nll`: NLL + entropy only. Used for early stopping and
+            snapshot selection. Comparable to the theoretical degenerate-
+            minimum floor of 0.566 for unit-normalized targets.
+          - `val_loss`: NLL + entropy + aux_mse. The training-objective
+            loss; useful for tracking overall optimization but NOT suitable
+            for model selection because the MSE component's scale depends
+            on how well the model is fitting (i.e. a low val_loss could
+            mean low NLL OR low MSE or both).
+
+        Early stopping tracks `val_nll` to select models on generalization
+        quality independent of the MSE regularizer's scale.
+        """
         self.raw_model.eval()
-        total_loss, n_steps = 0.0, 0
+        total_nll, total_combined, n_steps = 0.0, 0.0, 0
         all_preds, all_targets, all_vars = [], [], []
 
         for sequences, targets, masks in self.val_loader:
@@ -967,10 +1020,24 @@ class EnterpriseTrainer:
             masks_dev = masks.to(self.device)
 
             pred, log_var = self.raw_model(sequences_dev, return_uncertainty=True)
-            loss = self._compute_loss(pred, targets_dev, log_var, masks_dev)
 
-            if torch.isfinite(loss):
-                total_loss += loss.item()
+            # [R5-BUG-2 FIX]: Track NLL-only and combined losses separately.
+            # NLL-only is used for early stopping; combined for analysis.
+            combined_loss = self._compute_loss(pred, targets_dev, log_var, masks_dev)
+
+            # Compute NLL-only component (without aux_mse) for model selection.
+            log_var_c = torch.clamp(log_var, min=self.config.log_var_min, max=self.config.log_var_max)
+            precision = torch.exp(-log_var_c)
+            per_node = 0.5 * precision * (pred - targets_dev) ** 2 + 0.5 * log_var_c
+            denom = masks_dev.sum().clamp_min(1.0)
+            nll = (per_node * masks_dev).sum() / denom
+            valid_mask = masks_dev.bool()
+            if valid_mask.any():
+                nll = nll + self.config.entropy_beta * F.relu(-log_var_c[valid_mask]).mean()
+
+            if torch.isfinite(combined_loss):
+                total_nll += nll.item() if torch.isfinite(nll) else 0.0
+                total_combined += combined_loss.item()
                 n_steps += 1
 
             valid = masks.bool().numpy()
@@ -981,7 +1048,7 @@ class EnterpriseTrainer:
             ).cpu().numpy()
             all_vars.append(var[valid])
 
-            del pred, log_var, loss, sequences_dev, targets_dev, masks_dev
+            del pred, log_var, combined_loss, sequences_dev, targets_dev, masks_dev
 
         n_steps = max(n_steps, 1)
         preds = np.concatenate(all_preds) if all_preds else np.array([0.0])
@@ -990,7 +1057,8 @@ class EnterpriseTrainer:
 
         r2 = float(r2_score(targets_np, preds)) if len(preds) > 1 else 0.0
         return {
-            "val_loss": total_loss / n_steps,
+            "val_nll": total_nll / n_steps,
+            "val_loss": total_combined / n_steps,
             "val_rmse": float(np.sqrt(mean_squared_error(targets_np, preds))),
             "val_mae": float(mean_absolute_error(targets_np, preds)),
             "val_r2": r2,
@@ -1026,7 +1094,15 @@ class EnterpriseTrainer:
             val_metrics: Dict[str, float] = {}
             if self.rank == 0:
                 val_metrics = self.validate()
-            val_loss = self._sync_scalar(val_metrics.get("val_loss", float("inf")))
+            # [R5-BUG-2 FIX]: Early stopping uses val_nll (NLL-only), not the
+            # combined NLL+MSE val_loss. This makes model selection independent
+            # of the MSE regularizer's scale and keeps the metric comparable
+            # to the theoretical degenerate-minimum floor (NLL ≈ 0.566).
+            val_nll = self._sync_scalar(val_metrics.get("val_nll", float("inf")))
+            val_loss_combined = self._sync_scalar(val_metrics.get("val_loss", float("inf")))
+
+            # Use val_nll as the canonical model-selection metric.
+            val_loss = val_nll
 
             if self.rank == 0:
                 for k, v in {**train_metrics, **val_metrics}.items():
@@ -1051,7 +1127,7 @@ class EnterpriseTrainer:
                 log(
                     f"Epoch {epoch:3d}/{self.config.max_epochs} | "
                     f"Loss {train_metrics['train_loss']:.6f} | "
-                    f"Val {val_loss:.6f} | "
+                    f"ValNLL {val_loss:.6f} | "
                     f"RMSE {val_metrics.get('val_rmse', float('nan')):.6f} | "
                     f"R2 {val_metrics.get('val_r2', float('nan')):.4f} | "
                     f"PredStd {val_metrics.get('val_mean_pred_std', float('nan')):.4f} | "
@@ -1303,7 +1379,23 @@ def compute_trading_signal_metrics(
     model: EnterpriseSTGCNModel,
     test_loader: DataLoader,
     device: torch.device,
+    scale_map: Optional[Dict[str, float]] = None,
+    available_symbols: Optional[List[str]] = None,
 ) -> Dict[str, float]:
+    """
+    Compute trading signal performance metrics on the test set.
+
+    [R5-BUG-1 FIX]: `targets` in the test_loader are NORMALIZED returns
+    (σ ≈ 1.0, values in range ±3-5). If used directly as portfolio P&L,
+    a single bad day gives day_ret ≈ -300%, collapsing the wealth curve
+    and producing max_drawdown ≈ -1.0 regardless of strategy quality.
+
+    Fix: denormalize targets using `scale_map` (maps asset symbol to its
+    median rolling std, e.g. BTC → 0.0229) before computing P&L.
+    raw_return ≈ normalized_return × scale_map[sym]. The signal direction
+    (sign of prediction) is unaffected; only the return magnitude is
+    corrected to realistic daily return scale (σ ≈ 0.02-0.05 per asset).
+    """
     try:
         from ml.evaluation.finance_metrics import compute_all_finance_metrics
     except Exception as e:
@@ -1311,6 +1403,20 @@ def compute_trading_signal_metrics(
         return {}
 
     model.eval()
+    N = len(available_symbols) if available_symbols else None
+
+    # Build per-asset scale tensors for denormalization.
+    # scale_map[sym] = median rolling std of raw daily returns.
+    # normalized_target[j] = raw_target[j] / rolling_std[j] ≈ raw_target[j] / scale_map[sym]
+    # => raw_target[j] ≈ normalized_target[j] * scale_map[sym]
+    if scale_map and available_symbols:
+        scales = torch.tensor(
+            [scale_map.get(sym, 1.0) for sym in available_symbols],
+            dtype=torch.float32,
+        )  # shape [N]
+    else:
+        scales = None
+
     daily_returns = []
     for sequences, targets, masks in test_loader:
         for b in range(len(sequences)):
@@ -1323,7 +1429,16 @@ def compute_trading_signal_metrics(
             valid = mask_b.bool()
             if valid.sum() == 0:
                 continue
-            day_ret = (signal[valid] * targets[b][valid]).mean().item()
+
+            # [R5-BUG-1 FIX]: Denormalize targets to raw return scale.
+            targets_b = targets[b]  # normalized, shape [N]
+            if scales is not None and len(scales) == len(targets_b):
+                raw_targets = targets_b * scales
+            else:
+                # Fallback: targets are already in raw scale (if scale_map unavailable)
+                raw_targets = targets_b
+
+            day_ret = (signal[valid] * raw_targets[valid]).mean().item()
             daily_returns.append(day_ret)
 
     if len(daily_returns) < 2:
@@ -1584,9 +1699,16 @@ def _verify_normalization(
 # ============================================================================
 # 11. DATA LOADING  [R3-BUG-3 FIX in _determine_surviving_dates]
 # ============================================================================
+# Increment this whenever a change to feature content (e.g. new features
+# in the yfinance fallback, normalization logic, graph structure) makes
+# existing .pkl caches stale. The version is hashed into the cache key.
+_CACHE_VERSION = "r5"  # R5: added real VIX from ^VIX
+
+
 def _cache_key(symbols: List[str], config: TrainingConfig) -> str:
     payload = json.dumps(
         {
+            "cache_version": _CACHE_VERSION,  # bust on pipeline feature changes
             "symbols": sorted(symbols),
             "history_days": config.history_days,
             "feature_dim": config.feature_dim,
@@ -2125,8 +2247,14 @@ def main():
             all_metrics = {**test_metrics, **ensemble_metrics}
 
             if config.run_trading_metrics:
+                # [R5-BUG-1 FIX]: Pass scale_map and available_symbols so
+                # targets can be denormalized to raw return scale before
+                # computing P&L. Without this, max_drawdown ≈ -1.0 and
+                # Sharpe/Sortino values are inflated by ~100x.
                 trading_metrics = compute_trading_signal_metrics(
-                    trainer.raw_model, test_loader, device
+                    trainer.raw_model, test_loader, device,
+                    scale_map=scale_map,
+                    available_symbols=available_symbols,
                 )
                 all_metrics.update(trading_metrics)
 
