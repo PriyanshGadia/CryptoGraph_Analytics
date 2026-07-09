@@ -273,11 +273,11 @@ class TrainingConfig:
 
     batch_size: int = 4
     max_epochs: int = 300
-    learning_rate: float = 1e-4
-    weight_decay: float = 1e-2
+    learning_rate: float = 3e-5
+    weight_decay: float = 5e-2
     warmup_epochs: int = 10
     grad_clip: float = 1.0
-    early_stopping_patience: int = 25
+    early_stopping_patience: int = 35
 
     # NLL stability: log_var is clamped to [log_var_min, log_var_max].
     # log_var_min = -3.0 ≈ log(0.05): model cannot claim precision tighter
@@ -298,7 +298,7 @@ class TrainingConfig:
     ensemble_size: int = 5
     mc_dropout_samples: int = 30
 
-    use_sam: bool = False
+    use_sam: bool = True
     sam_rho: float = 0.05
 
     # [R4-BUG-1 FIX] Auxiliary MSE weight.
