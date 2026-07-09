@@ -134,19 +134,34 @@ class FeatureStore:
         # Map crypto symbols to yfinance tickers
         yf_map = {s: f"{s}-USD" for s in assets}
 
-        # [R5-BUG-3 FIX]: Pre-fetch VIX once for the whole date range.
-        # VIX is a global index (same for all assets on a given day).
+        # [R5-BUG-3 FIX & R6 Live Macro]: Pre-fetch global macro proxies once for the whole date range.
+        # VIX, IRX (fed_rate), TNX (inflation), and TIP (cpi) are global indicators.
         _vix_series: Optional[pd.Series] = None
+        _fed_series: Optional[pd.Series] = None
+        _cpi_series: Optional[pd.Series] = None
+        _inf_series: Optional[pd.Series] = None
+
         try:
-            vix_raw = yf.download("^VIX", start=start_date, end=end_date, progress=False, auto_adjust=True)
-            if isinstance(vix_raw.columns, pd.MultiIndex):
-                vix_raw.columns = vix_raw.columns.get_level_values(0)
-            if not vix_raw.empty and "Close" in vix_raw.columns:
-                _vix_series = vix_raw["Close"].astype(float)
-                _vix_series.index = pd.to_datetime(_vix_series.index, utc=True)
-                print(f"  [yfinance] ^VIX: {len(_vix_series)} rows loaded (std={_vix_series.std():.2f}, range=[{_vix_series.min():.1f}, {_vix_series.max():.1f}])")
-        except Exception as vix_e:
-            print(f"  [yfinance] ^VIX fetch failed ({vix_e}), vix will default to 15.0")
+            macro_tickers = ["^VIX", "^IRX", "^TNX", "TIP"]
+            macro_raw = yf.download(macro_tickers, start=start_date, end=end_date, progress=False, auto_adjust=True)
+            if not macro_raw.empty:
+                if isinstance(macro_raw.columns, pd.MultiIndex):
+                    close_data = macro_raw["Close"]
+                else:
+                    close_data = macro_raw
+                close_data.index = pd.to_datetime(close_data.index, utc=True)
+
+                if "^VIX" in close_data.columns:
+                    _vix_series = close_data["^VIX"].astype(float)
+                if "^IRX" in close_data.columns:
+                    _fed_series = close_data["^IRX"].astype(float)
+                if "TIP" in close_data.columns:
+                    _cpi_series = close_data["TIP"].astype(float)
+                if "^TNX" in close_data.columns:
+                    _inf_series = close_data["^TNX"].astype(float)
+                print(f"  [yfinance] Global macro proxies pre-fetched: vix={_vix_series is not None}, fed={_fed_series is not None}, cpi={_cpi_series is not None}, inf={_inf_series is not None}")
+        except Exception as macro_e:
+            print(f"  [yfinance] Global macro pre-fetch failed ({macro_e}), using fallback constants")
 
         for symbol in assets:
             ticker = yf_map[symbol]
@@ -217,24 +232,53 @@ class FeatureStore:
                 df["returns_7d"] = close.pct_change(7)
                 df["volatility_7d"] = df["returns_1d"].rolling(7).std()
                 print(f"  [yfinance debug] {symbol}: returns_1d head={df['returns_1d'].head().values.tolist()}, std={df['returns_1d'].std()}")
+                # [R6 Sentiment & Social Proxies]: Derive dynamic indicators from price returns and volume to avoid dead constants.
+                # 1. fear_greed_norm: blend of RSI and volatility momentum
+                rsi_sig = (df["rsi_14"] - 50.0) / 50.0  # range [-1, 1]
+                vol_rolling = df["volatility_7d"].rolling(30, min_periods=1)
+                vol_mean = vol_rolling.mean().fillna(0.05)
+                vol_std = vol_rolling.std().fillna(0.01).replace(0.0, 0.01)
+                vol_z = ((df["volatility_7d"] - vol_mean) / vol_std).fillna(0.0)
+                fg_blend = 0.5 + 0.3 * rsi_sig - 0.2 * vol_z.clip(-2.0, 2.0) / 2.0
+                df["fear_greed_norm"] = fg_blend.clip(0.05, 0.95)
 
-                # Sentiment placeholders (no API available on Kaggle)
-                df["sentiment_score"] = 0.0
-                df["fear_greed_norm"] = 0.5
-                df["community_score"] = 0.0
-                df["public_interest"] = 0.0
-                df["sentiment_rolling_3d"] = 0.0
-                df["sentiment_momentum"] = 0.0
+                # 2. sentiment_score: ewm mean of returns, scaled to roughly [-1, 1]
+                ret_ewm = df["returns_1d"].ewm(span=3, min_periods=1).mean().fillna(0.0)
+                df["sentiment_score"] = (ret_ewm / 0.03).clip(-1.0, 1.0)
+                df["sentiment_rolling_3d"] = df["sentiment_score"].rolling(3, min_periods=1).mean().fillna(0.0)
+                df["sentiment_momentum"] = df["sentiment_score"].diff().fillna(0.0)
+
+                # 3. community_score: volume ratio against 14-day mean
+                vol_ratio = (df["volume"] / df["volume"].rolling(14, min_periods=1).mean()).fillna(1.0)
+                df["community_score"] = vol_ratio.clip(0.1, 5.0)
+
+                # 4. public_interest: absolute price deviation from 30-day moving average
+                close_sma30 = df["close"].rolling(30, min_periods=1).mean()
+                close_std30 = df["close"].rolling(30, min_periods=1).std().fillna(1.0).replace(0.0, 1.0)
+                df["public_interest"] = ((df["close"] - close_sma30).abs() / close_std30).fillna(1.0).clip(0.1, 5.0)
 
                 # Market cap estimate (price * circulating supply proxy)
                 df["market_cap_usd"] = close * df["volume"].rolling(30).mean()
 
-                # Macro placeholders
-                df["fed_rate"] = 5.25
-                df["cpi"] = 3.0
-                df["inflation"] = 2.5
+                # [R6 Live Macro Proxies]: Use real macro series if available; fall back to constants.
+                if _fed_series is not None:
+                    fed_aligned = _fed_series.reindex(df.index, method="ffill")
+                    df["fed_rate"] = fed_aligned.fillna(5.25).values
+                else:
+                    df["fed_rate"] = 5.25
 
-                # [R5-BUG-3 FIX]: Use real VIX if available; fall back to 15.0.
+                if _cpi_series is not None:
+                    cpi_aligned = _cpi_series.reindex(df.index, method="ffill")
+                    df["cpi"] = cpi_aligned.fillna(3.0).values
+                else:
+                    df["cpi"] = 3.0
+
+                if _inf_series is not None:
+                    inf_aligned = _inf_series.reindex(df.index, method="ffill")
+                    df["inflation"] = inf_aligned.fillna(2.5).values
+                else:
+                    df["inflation"] = 2.5
+
                 if _vix_series is not None:
                     vix_aligned = _vix_series.reindex(df.index, method="ffill")
                     df["vix"] = vix_aligned.fillna(15.0).values

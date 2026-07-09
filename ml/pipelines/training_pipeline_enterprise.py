@@ -1702,7 +1702,7 @@ def _verify_normalization(
 # Increment this whenever a change to feature content (e.g. new features
 # in the yfinance fallback, normalization logic, graph structure) makes
 # existing .pkl caches stale. The version is hashed into the cache key.
-_CACHE_VERSION = "r5"  # R5: added real VIX from ^VIX
+_CACHE_VERSION = "r6"  # R6: added live proxies for macro and sentiment features
 
 
 def _cache_key(symbols: List[str], config: TrainingConfig) -> str:
@@ -2109,8 +2109,8 @@ def main():
         log(f"Run ID: {rid} | Artifacts: {run_dir}")
 
         try:
-            from backend.app.db.database import SessionLocal
-            from backend.app.db.models import Asset
+            from app.db.database import SessionLocal
+            from app.db.models import Asset
 
             db = SessionLocal()
             symbols = [a.symbol for a in db.query(Asset).all()]
@@ -2283,8 +2283,8 @@ def main():
                     log(f"Permutation importance failed (non-fatal): {e}")
 
             try:
-                from backend.app.db.database import SessionLocal, Base, engine
-                from backend.app.db.models import ModelRegistry
+                from app.db.database import SessionLocal, Base, engine
+                from app.db.models import ModelRegistry
 
                 Base.metadata.create_all(bind=engine)
                 db = SessionLocal()
