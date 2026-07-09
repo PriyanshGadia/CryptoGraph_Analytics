@@ -249,10 +249,10 @@ class FeatureStore:
                 lower_bb = sma20 - 2 * std20
                 df["bb_width"] = (upper_bb - lower_bb) / (sma20 + 1e-10)
 
-                # Returns
-                df["returns_1d"] = close.pct_change(1)
-                df["returns_7d"] = close.pct_change(7)
-                df["volatility_7d"] = df["returns_1d"].rolling(7).std()
+                # Returns - clip outliers to handle ticker conflict launch day spikes (e.g. TIA, UNI, OP, ARB)
+                df["returns_1d"] = close.pct_change(1).fillna(0.0).clip(-0.5, 0.5)
+                df["returns_7d"] = close.pct_change(7).fillna(0.0).clip(-1.5, 1.5)
+                df["volatility_7d"] = df["returns_1d"].rolling(7).std().fillna(0.0)
                 print(f"  [yfinance debug] {symbol}: returns_1d head={df['returns_1d'].head().values.tolist()}, std={df['returns_1d'].std()}")
                 # [R6 Sentiment & Social Proxies]: Derive dynamic indicators from price returns and volume to avoid dead constants.
                 # 1. fear_greed_norm: blend of RSI and volatility momentum
