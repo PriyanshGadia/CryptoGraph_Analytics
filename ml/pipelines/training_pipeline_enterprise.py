@@ -152,6 +152,8 @@ from torch.optim.lr_scheduler import CosineAnnealingLR, SequentialLR, LinearLR
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
 warnings.filterwarnings("ignore")
+import os
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 # ============================================================================
 # 0. LOGGING / RANK-AWARE HELPERS
@@ -2078,11 +2080,11 @@ def main():
         log("Detected KAGGLE environment. Running in HIGH PERFORMANCE mode.")
         # [KAGGLE OPTIMIZATIONS TO PREVENT CUDA OOM]
         # 1. hidden_dim = 64 (Original default, reduces parameter and activation VRAM footprint)
-        # 2. batch_size = 8 (Reduces graph counts in mini-batches to keep edge count low)
+        # 2. batch_size = 4 (Reduces graph counts in mini-batches to keep edge count low)
         # 3. corr_threshold = 0.85 (Sparsifies graphs by keeping only strong correlations)
         # 4. mc_threshold = 0.8 (Sparsifies graphs by keeping only similar market caps)
         config.hidden_dim = 64
-        config.batch_size = 8
+        config.batch_size = 4
         config.corr_threshold = 0.85
         config.mc_threshold = 0.8
         config.max_epochs = 300
