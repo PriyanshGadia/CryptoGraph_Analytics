@@ -2077,12 +2077,12 @@ def main():
     if is_kaggle:
         log("Detected KAGGLE environment. Running in HIGH PERFORMANCE mode.")
         # [KAGGLE OPTIMIZATIONS TO PREVENT CUDA OOM]
-        # 1. hidden_dim = 96 (44% VRAM saving over 128)
-        # 2. batch_size = 16 (75% VRAM saving over 64)
-        # 3. corr_threshold = 0.85 (sharply reduces correlation edges to prevent dense cliques)
-        # 4. mc_threshold = 0.8 (sharply reduces market cap edges to similar cap coins only)
-        config.hidden_dim = 96
-        config.batch_size = 16
+        # 1. hidden_dim = 64 (Original default, reduces parameter and activation VRAM footprint)
+        # 2. batch_size = 8 (Reduces graph counts in mini-batches to keep edge count low)
+        # 3. corr_threshold = 0.85 (Sparsifies graphs by keeping only strong correlations)
+        # 4. mc_threshold = 0.8 (Sparsifies graphs by keeping only similar market caps)
+        config.hidden_dim = 64
+        config.batch_size = 8
         config.corr_threshold = 0.85
         config.mc_threshold = 0.8
         config.max_epochs = 300

@@ -79,6 +79,7 @@ frontend/.babelrc
 scheduler.log
 scheduler_error.log
 logs/
+logs.txt
 
 # Database
 *.sqlite
