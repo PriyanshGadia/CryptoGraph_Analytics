@@ -6,6 +6,82 @@ import torch_geometric.data
 from typing import Any, Dict, List, Optional, Tuple
 from ml.graph.edge_types import SECTORS
 
+
+def _compute_momentum_features(df: pd.DataFrame, target_date: pd.Timestamp) -> Dict[str, float]:
+    """
+    Compute 5 engineered momentum features from OHLCV data.
+    All features are computable from yfinance OHLCV data (no external APIs needed).
+
+    Replaces the 5 dead/near-zero yfinance features:
+      macd_signal (noisy derivative), sentiment_rolling_3d (zero), inflation (constant),
+      vix (constant), low (highly correlated with close).
+
+    Returns a dict with keys: momentum_5d, volume_surge, intraday_range,
+      price_acceleration, rsi_divergence.
+    """
+    result = {
+        "momentum_5d": 0.0,
+        "volume_surge": 0.0,
+        "intraday_range": 0.0,
+        "price_acceleration": 0.0,
+        "rsi_divergence": 0.0,
+    }
+    try:
+        # Select data up to and including target_date
+        hist = df[df.index <= target_date].tail(25)  # at most 25 rows
+        if len(hist) < 2:
+            return result
+
+        close = hist["close"].values.astype(np.float64)
+        volume = hist["volume"].values.astype(np.float64) if "volume" in hist.columns else None
+        high = hist["high"].values.astype(np.float64) if "high" in hist.columns else None
+        low_col = hist["low"].values.astype(np.float64) if "low" in hist.columns else None
+
+        # 1. momentum_5d: 5-day price return (short-term momentum)
+        if len(close) >= 5:
+            mom5 = (close[-1] - close[-5]) / (abs(close[-5]) + 1e-8)
+            result["momentum_5d"] = float(np.clip(mom5, -1.0, 1.0))
+
+        # 2. volume_surge: current volume / 21-day average volume (breakout indicator)
+        if volume is not None and len(volume) >= 5:
+            vol_ma = np.mean(volume[:-1])  # exclude today in MA
+            if vol_ma > 1e-8:
+                surge = volume[-1] / vol_ma
+                result["volume_surge"] = float(np.clip(surge - 1.0, -2.0, 4.0))  # centered at 0
+
+        # 3. intraday_range: (high - low) / close — normalized daily volatility proxy
+        if high is not None and low_col is not None and len(close) >= 1:
+            rng = (high[-1] - low_col[-1]) / (abs(close[-1]) + 1e-8)
+            result["intraday_range"] = float(np.clip(rng, 0.0, 0.5))
+
+        # 4. price_acceleration: short-term momentum minus medium-term momentum
+        #    Positive = accelerating up, Negative = decelerating / mean reverting
+        if len(close) >= 15:
+            mom5_val = (close[-1] - close[-5]) / (abs(close[-5]) + 1e-8)
+            mom15_val = (close[-1] - close[-15]) / (abs(close[-15]) + 1e-8)
+            accel = mom5_val - mom15_val
+            result["price_acceleration"] = float(np.clip(accel, -0.5, 0.5))
+
+        # 5. rsi_divergence: (RSI - 50) / 50, normalized to [-1, 1]
+        #    Uses existing rsi_14 if present, else computes manually
+        if "rsi_14" in hist.columns:
+            rsi_val = float(hist["rsi_14"].iloc[-1])
+            if not np.isnan(rsi_val):
+                result["rsi_divergence"] = float(np.clip((rsi_val - 50.0) / 50.0, -1.0, 1.0))
+        elif len(close) >= 15:
+            # Compute RSI manually from close prices
+            deltas = np.diff(close[-15:])
+            gains = np.where(deltas > 0, deltas, 0.0)
+            losses = np.where(deltas < 0, -deltas, 0.0)
+            avg_gain = np.mean(gains) + 1e-8
+            avg_loss = np.mean(losses) + 1e-8
+            rs = avg_gain / avg_loss
+            rsi_manual = 100.0 - 100.0 / (1.0 + rs)
+            result["rsi_divergence"] = float(np.clip((rsi_manual - 50.0) / 50.0, -1.0, 1.0))
+    except Exception:
+        pass
+    return result
+
 # supabase is optional — inference/training pipelines pass client=None
 try:
     from supabase import Client as _SupabaseClient
@@ -56,14 +132,22 @@ class DynamicGraphBuilder:
             
         N = len(self.symbols)
         # Node features
-        feature_cols = [
-            "open", "high", "low", "close", "volume", 
-            "rsi_14", "macd", "macd_signal", "atr_14", "bb_width",
-            "returns_1d", "returns_7d", "volatility_7d", 
-            "sentiment_score", "fear_greed_norm", "community_score", "public_interest", 
-            "sentiment_rolling_3d", "sentiment_momentum", "market_cap_usd",
-            "fed_rate", "cpi", "inflation", "vix"
+        # Feature columns: 24 features.
+        # Dead/constant yfinance features (macd_signal, sentiment_rolling_3d, inflation, vix, low)
+        # are replaced with 5 engineered OHLCV momentum features:
+        #   momentum_5d, volume_surge, intraday_range, price_acceleration, rsi_divergence
+        base_feature_cols = [
+            "open", "high", "close", "volume",
+            "rsi_14", "macd", "atr_14", "bb_width",
+            "returns_1d", "returns_7d", "volatility_7d",
+            "sentiment_score", "fear_greed_norm", "community_score", "public_interest",
+            "sentiment_momentum", "market_cap_usd",
+            "fed_rate", "cpi",
         ]
+        engineered_feature_cols = [
+            "momentum_5d", "volume_surge", "intraday_range", "price_acceleration", "rsi_divergence"
+        ]
+        feature_cols = base_feature_cols + engineered_feature_cols
         if self.feature_dim == 27:
             feature_cols.extend(["tvl", "revenue", "active_users"])
         
@@ -72,16 +156,14 @@ class DynamicGraphBuilder:
         for sym in self.symbols:
             if sym in proc_features:
                 df = proc_features[sym]
-                # Cache rolling mean/std for ALL feature columns (not just 6)
+                # Cache rolling mean/std for base feature columns only
                 if sym not in self.rolling_min_cache or len(df) != self._cached_len.get(sym, -1):
-                    cols_present = [c for c in feature_cols if c in df.columns]
-                    # Store rolling mean in min_cache, rolling std in max_cache (reusing cache names)
+                    cols_present = [c for c in base_feature_cols if c in df.columns]
                     self.rolling_min_cache[sym] = df[cols_present].rolling(window=30, min_periods=1).mean()
                     rolling_std = df[cols_present].rolling(window=30, min_periods=1).std()
-                    # Replace zero std with 1.0 to avoid division by zero
                     self.rolling_max_cache[sym] = rolling_std.replace(0.0, 1.0).fillna(1.0)
                     self._cached_len[sym] = len(df)
-                
+
                 df_mean = self.rolling_min_cache[sym]
                 df_std = self.rolling_max_cache[sym]
                 try:
@@ -89,17 +171,21 @@ class DynamicGraphBuilder:
                     row_mean = df_mean.loc[target_date]
                     row_std = df_std.loc[target_date]
                     vals = []
-                    for col in feature_cols:
-                        val = row[col] if not pd.isna(row[col]) else 0.0
+                    # Base features: z-score normalized
+                    for col in base_feature_cols:
+                        val = row[col] if col in row.index and not pd.isna(row[col]) else 0.0
                         if col in row_mean.index:
                             col_mean = row_mean[col] if not pd.isna(row_mean[col]) else 0.0
                             col_std = row_std[col] if not pd.isna(row_std[col]) else 1.0
                             if col_std == 0.0:
                                 col_std = 1.0
                             val = (float(val) - col_mean) / col_std
-                        # Clip to [-5, 5] to handle outliers
                         val = max(-5.0, min(5.0, float(val)))
                         vals.append(val)
+                    # Engineered features: already bounded, append directly
+                    eng = _compute_momentum_features(df, target_date)
+                    for col in engineered_feature_cols:
+                        vals.append(eng[col])
                     vals = np.array(vals, dtype=np.float32)
                 except Exception:
                     vals = np.zeros(len(feature_cols), dtype=np.float32)
@@ -224,14 +310,18 @@ class DynamicGraphBuilder:
     ) -> torch_geometric.data.Data:
         """Constructs an instantaneous snapshot using the latest row of the provided dataframes."""
         N = len(self.symbols)
-        feature_cols = [
-            "open", "high", "low", "close", "volume", 
-            "rsi_14", "macd", "macd_signal", "atr_14", "bb_width",
-            "returns_1d", "returns_7d", "volatility_7d", 
-            "sentiment_score", "fear_greed_norm", "community_score", "public_interest", 
-            "sentiment_rolling_3d", "sentiment_momentum", "market_cap_usd",
-            "fed_rate", "cpi", "inflation", "vix"
+        base_feature_cols = [
+            "open", "high", "close", "volume",
+            "rsi_14", "macd", "atr_14", "bb_width",
+            "returns_1d", "returns_7d", "volatility_7d",
+            "sentiment_score", "fear_greed_norm", "community_score", "public_interest",
+            "sentiment_momentum", "market_cap_usd",
+            "fed_rate", "cpi",
         ]
+        engineered_feature_cols = [
+            "momentum_5d", "volume_surge", "intraday_range", "price_acceleration", "rsi_divergence"
+        ]
+        feature_cols = base_feature_cols + engineered_feature_cols
         if self.feature_dim == 27:
             feature_cols.extend(["tvl", "revenue", "active_users"])
             
@@ -240,32 +330,36 @@ class DynamicGraphBuilder:
         for sym in self.symbols:
             if sym in features and not features[sym].empty:
                 df = features[sym]
-                
+
                 if sym not in self.rolling_min_cache or len(df) != self._cached_len.get(sym, -1):
-                    cols_present = [c for c in feature_cols if c in df.columns]
+                    cols_present = [c for c in base_feature_cols if c in df.columns]
                     self.rolling_min_cache[sym] = df[cols_present].rolling(window=30, min_periods=1).mean()
                     rolling_std = df[cols_present].rolling(window=30, min_periods=1).std()
                     self.rolling_max_cache[sym] = rolling_std.replace(0.0, 1.0).fillna(1.0)
                     self._cached_len[sym] = len(df)
-                    
+
                 df_mean = self.rolling_min_cache[sym]
                 df_std = self.rolling_max_cache[sym]
                 try:
                     row = df.iloc[-1]
                     row_mean = df_mean.iloc[-1]
                     row_std = df_std.iloc[-1]
+                    # Use current index timestamp for engineered features
+                    target_ts = pd.Timestamp(df.index[-1])
                     vals = []
-                    for col in feature_cols:
-                        val = row[col] if not pd.isna(row[col]) else 0.0
+                    for col in base_feature_cols:
+                        val = row[col] if col in row.index and not pd.isna(row[col]) else 0.0
                         if col in row_mean.index:
                             col_mean = row_mean[col] if not pd.isna(row_mean[col]) else 0.0
                             col_std = row_std[col] if not pd.isna(row_std[col]) else 1.0
                             if col_std == 0.0:
                                 col_std = 1.0
                             val = (float(val) - col_mean) / col_std
-                        # Clip to [-5, 5] to handle outliers
                         val = max(-5.0, min(5.0, float(val)))
                         vals.append(val)
+                    eng = _compute_momentum_features(df, target_ts)
+                    for col in engineered_feature_cols:
+                        vals.append(eng[col])
                     vals = np.array(vals, dtype=np.float32)
                 except Exception:
                     vals = np.zeros(len(feature_cols), dtype=np.float32)
