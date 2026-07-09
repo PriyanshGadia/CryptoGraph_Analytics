@@ -1705,7 +1705,7 @@ def _verify_normalization(
 # Increment this whenever a change to feature content (e.g. new features
 # in the yfinance fallback, normalization logic, graph structure) makes
 # existing .pkl caches stale. The version is hashed into the cache key.
-_CACHE_VERSION = "r10"  # R10: Add corr_threshold and mc_threshold to cache key to control sparsity
+_CACHE_VERSION = "r11"  # R11: Graph sparsification (top-5 corr and rank-adjacent market cap)
 
 
 def _cache_key(symbols: List[str], config: TrainingConfig) -> str:

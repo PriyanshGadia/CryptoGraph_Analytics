@@ -155,11 +155,20 @@ class DynamicGraphBuilder:
             corr_mat = np.corrcoef(padded_arr)
             corr_mat = np.nan_to_num(corr_mat, nan=0.0, posinf=0.0, neginf=0.0)
             
-            # Vectorized thresholding for 20k scaling
-            row_idx, col_idx = np.where(np.abs(corr_mat) > self.corr_threshold)
-            for i, j in zip(row_idx, col_idx):
-                if i < j:
-                    add_edge(int(i), int(j), float(corr_mat[i, j]), 2)
+            # Keep only top-5 correlated peers per asset to limit density
+            K = 5
+            for i in range(N):
+                corrs = np.abs(corr_mat[i])
+                top_indices = np.argsort(corrs)[::-1]
+                count = 0
+                for j in top_indices:
+                    if j == i:
+                        continue
+                    if corrs[j] > self.corr_threshold:
+                        add_edge(i, j, float(corr_mat[i, j]), 2)
+                        count += 1
+                        if count >= K:
+                            break
 
         # STEP 3: Market cap edges (Relation 1)
         market_caps = {}
@@ -173,18 +182,18 @@ class DynamicGraphBuilder:
             else:
                 market_caps[idx] = 0.0
 
-        for i in range(N):
-            mc_i = market_caps[i]
-            if mc_i <= 0:
-                continue
-            for j in range(i + 1, N):
-                mc_j = market_caps[j]
-                if mc_j <= 0:
-                    continue
-                max_mc = max(mc_i, mc_j)
-                weight = min(mc_i, mc_j) / max_mc
-                if weight > self.mc_threshold:
-                    add_edge(i, j, weight, 1)
+        # Sort indices by market cap and connect to adjacent neighbors in ranking
+        valid_mc = [(idx, val) for idx, val in market_caps.items() if val > 0]
+        valid_mc.sort(key=lambda x: x[1], reverse=True)
+        for rank_idx in range(len(valid_mc)):
+            i, mc_i = valid_mc[rank_idx]
+            for offset in range(1, 4):  # Connect to top 3 adjacent peers
+                if rank_idx + offset < len(valid_mc):
+                    j, mc_j = valid_mc[rank_idx + offset]
+                    max_mc = max(mc_i, mc_j)
+                    weight = min(mc_i, mc_j) / max_mc if max_mc > 0 else 0
+                    if weight > self.mc_threshold:
+                        add_edge(i, j, weight, 1)
 
         # STEP 4: Sector edges (Relation 0)
         for sector, syms in SECTORS.items():
@@ -296,25 +305,47 @@ class DynamicGraphBuilder:
                 
         if padded:
             corr_mat = np.corrcoef(padded)
-            # Vectorized thresholding for 20k scaling
-            row_idx, col_idx = np.where(np.abs(corr_mat) > self.corr_threshold)
-            for i, j in zip(row_idx, col_idx):
-                if i < j:
-                    add_edge(int(i), int(j), float(corr_mat[i, j]), 2)
+            corr_mat = np.nan_to_num(corr_mat, nan=0.0, posinf=0.0, neginf=0.0)
+            
+            # Keep only top-5 correlated peers per asset to limit density
+            K = 5
+            for i in range(N):
+                corrs = np.abs(corr_mat[i])
+                top_indices = np.argsort(corrs)[::-1]
+                count = 0
+                for j in top_indices:
+                    if j == i:
+                        continue
+                    if corrs[j] > self.corr_threshold:
+                        add_edge(i, j, float(corr_mat[i, j]), 2)
+                        count += 1
+                        if count >= K:
+                            break
 
         # STEP 3: Market cap edges (Relation 1)
-        for i in range(N):
-            for j in range(i + 1, N):
+        market_caps = {}
+        for idx, sym in enumerate(self.symbols):
+            if sym in features and not features[sym].empty:
                 try:
-                    if self.symbols[i] in features and self.symbols[j] in features:
-                        mc_i = float(features[self.symbols[i]].iloc[-1]["market_cap_usd"])
-                        mc_j = float(features[self.symbols[j]].iloc[-1]["market_cap_usd"])
-                        max_mc = max(mc_i, mc_j)
-                        weight = min(mc_i, mc_j) / max_mc if max_mc > 0 else 0
-                        if weight > self.mc_threshold:
-                            add_edge(i, j, weight, 1)
-                except KeyError:
-                    pass
+                    val = features[sym].iloc[-1]["market_cap_usd"]
+                    market_caps[idx] = float(val) if not pd.isna(val) else 0.0
+                except (KeyError, IndexError):
+                    market_caps[idx] = 0.0
+            else:
+                market_caps[idx] = 0.0
+
+        # Sort indices by market cap and connect to adjacent neighbors in ranking
+        valid_mc = [(idx, val) for idx, val in market_caps.items() if val > 0]
+        valid_mc.sort(key=lambda x: x[1], reverse=True)
+        for rank_idx in range(len(valid_mc)):
+            i, mc_i = valid_mc[rank_idx]
+            for offset in range(1, 4):  # Connect to top 3 adjacent peers
+                if rank_idx + offset < len(valid_mc):
+                    j, mc_j = valid_mc[rank_idx + offset]
+                    max_mc = max(mc_i, mc_j)
+                    weight = min(mc_i, mc_j) / max_mc if max_mc > 0 else 0
+                    if weight > self.mc_threshold:
+                        add_edge(i, j, weight, 1)
 
         # STEP 4: Sector edges (Relation 0)
         for sector, syms in SECTORS.items():
