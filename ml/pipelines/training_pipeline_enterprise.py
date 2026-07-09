@@ -258,7 +258,7 @@ class TrainingConfig:
     forecast_horizon: int = 1
     feature_dim: int = 24
     target_col: str = "returns_1d"
-    history_days: int = 730
+    history_days: int = 1825
     max_missing_frac: float = 0.10
     use_cache: bool = True
     cache_max_age_hours: float = 24.0
@@ -277,7 +277,7 @@ class TrainingConfig:
     weight_decay: float = 5e-2
     warmup_epochs: int = 10
     grad_clip: float = 1.0
-    early_stopping_patience: int = 35
+    early_stopping_patience: int = 45
 
     # NLL stability: log_var is clamped to [log_var_min, log_var_max].
     # log_var_min = -3.0 ≈ log(0.05): model cannot claim precision tighter
