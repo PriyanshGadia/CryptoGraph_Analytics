@@ -1495,7 +1495,8 @@ def _extract_targets_safe(
         df = proc_features[sym]
         # reindex returns a Series aligned to pd_dates, NaN for missing.
         # This uses pandas' internal Timestamp matching -- guaranteed correct.
-        col_series = df[target_col].reindex(pd_dates)
+        # Clip raw returns to [-0.5, 0.5] to prevent volatile token outliers from dominating.
+        col_series = df[target_col].clip(lower=-0.5, upper=0.5).reindex(pd_dates)
         values_arr[:, j] = col_series.values
 
     # Build tensor lists.
@@ -1699,7 +1700,7 @@ def _verify_normalization(
 # Increment this whenever a change to feature content (e.g. new features
 # in the yfinance fallback, normalization logic, graph structure) makes
 # existing .pkl caches stale. The version is hashed into the cache key.
-_CACHE_VERSION = "r8"  # R8: scaled GNN correlation network to 100 symbols with bulk fetch
+_CACHE_VERSION = "r9"  # R9: Clipped raw target returns to [-0.5, 0.5]
 
 
 def _cache_key(symbols: List[str], config: TrainingConfig) -> str:
@@ -1820,7 +1821,7 @@ def _log_feature_coverage(
             f"  WARNING [{dead_frac:.0%} dead features]: Model is operating with "
             f"{n_dead}/{n_total} dead (all-zero after normalization) input features. "
             f"This is a PRIMARY cause of prediction collapse to the NLL degenerate "
-            f"minimum (pred≈0, R²≈0). Likely cause: yfinance fallback mode provides "
+            f"minimum (pred~0, R2~0). Likely cause: yfinance fallback mode provides "
             f"only OHLCV; sentiment/macro features are hardcoded constants. "
             f"Consider populating the database with real sentiment/macro data, or "
             f"reducing feature_dim to match actually-available features."
@@ -2063,6 +2064,34 @@ def main():
     global _CURRENT_RANK
     args = parse_args()
     config = TrainingConfig()
+
+    # Auto-detect environment to apply hardware-specific optimizations
+    is_kaggle = os.environ.get("KAGGLE_KERNEL_RUN_TYPE") is not None or os.environ.get("KAGGLE_URL_BASE") is not None
+    if is_kaggle:
+        log("Detected KAGGLE environment. Running in HIGH PERFORMANCE mode.")
+        config.hidden_dim = 128
+        config.batch_size = 64
+        config.max_epochs = 300
+        config.ensemble_size = 5
+        config.mc_dropout_samples = 30
+        config.num_workers = 2
+        config.use_sam = True
+        config.early_stopping_patience = 45
+        config.history_days = 3650
+    else:
+        log("Detected LOCAL environment. Running in i3 OPTIMIZED LOW-RESOURCE mode.")
+        config.hidden_dim = 32
+        config.batch_size = 8
+        config.max_epochs = 20
+        config.ensemble_size = 1
+        config.mc_dropout_samples = 5
+        config.num_workers = 0
+        config.use_sam = False
+        config.run_permutation_importance = False
+        config.early_stopping_patience = 5
+        config.history_days = 365  # 1 year of data for fast local testing
+        config.use_amp = False  # AMP not beneficial on CPU
+
     set_seed(config.seed)
 
     is_distributed, rank, local_rank, world_size, device = setup_distributed()
