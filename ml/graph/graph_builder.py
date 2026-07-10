@@ -137,9 +137,10 @@ class DynamicGraphBuilder:
         for sym in self.symbols:
             if sym in proc_features:
                 df = proc_features[sym]
-                # Cache rolling mean/std for base feature columns only
+                # Cache rolling mean/std for non-stationary columns only
                 if sym not in self.rolling_min_cache or len(df) != self._cached_len.get(sym, -1):
-                    cols_present = [c for c in base_feature_cols if c in df.columns]
+                    z_score_cols = ["open", "high", "close", "volume", "macd", "atr_14"]
+                    cols_present = [c for c in z_score_cols if c in df.columns]
                     self.rolling_min_cache[sym] = df[cols_present].rolling(window=30, min_periods=1).mean()
                     rolling_std = df[cols_present].rolling(window=30, min_periods=1).std()
                     self.rolling_max_cache[sym] = rolling_std.replace(0.0, 1.0).fillna(1.0)
@@ -152,7 +153,7 @@ class DynamicGraphBuilder:
                     row_mean = df_mean.loc[target_date]
                     row_std = df_std.loc[target_date]
                     vals = []
-                    # Base features: z-score normalized
+                    # Base features: z-score normalized or custom scaled
                     for col in base_feature_cols:
                         val = row[col] if col in row.index and not pd.isna(row[col]) else 0.0
                         if col in row_mean.index:
@@ -161,8 +162,34 @@ class DynamicGraphBuilder:
                             if col_std == 0.0:
                                 col_std = 1.0
                             val = (float(val) - col_mean) / col_std
-                        val = max(-5.0, min(5.0, float(val)))
-                        vals.append(val)
+                            val = max(-5.0, min(5.0, float(val)))
+                        else:
+                            # Custom static scaling for stationary/bounded features
+                            if col in ["returns_1d", "returns_7d"]:
+                                val = float(val) * 10.0
+                            elif col == "volatility_7d":
+                                val = float(val) * 10.0
+                            elif col == "rsi_14":
+                                val = (float(val) - 50.0) / 50.0
+                            elif col == "fear_greed_norm":
+                                val = (float(val) - 0.5) * 2.0
+                            elif col == "market_cap_usd":
+                                val = np.log10(max(1.0, float(val))) / 12.0
+                            elif col == "fed_rate":
+                                val = float(val) / 10.0
+                            elif col == "cpi":
+                                val = float(val) / 10.0
+                            elif col == "vix":
+                                val = float(val) / 50.0
+                            elif col == "inflation":
+                                val = float(val) / 10.0
+                            elif col in ["sentiment_score", "sentiment_rolling_3d"]:
+                                val = float(val)
+                            elif col == "sentiment_momentum":
+                                val = float(val) * 2.0
+                            elif col in ["community_score", "public_interest"]:
+                                val = np.log(max(0.1, float(val)))
+                        vals.append(float(val))
                     # Engineered features: already computed and cached, append directly
                     for col in engineered_feature_cols:
                         val = row[col] if col in row.index and not pd.isna(row[col]) else 0.0
@@ -313,7 +340,8 @@ class DynamicGraphBuilder:
                 df = features[sym]
 
                 if sym not in self.rolling_min_cache or len(df) != self._cached_len.get(sym, -1):
-                    cols_present = [c for c in base_feature_cols if c in df.columns]
+                    z_score_cols = ["open", "high", "close", "volume", "macd", "atr_14"]
+                    cols_present = [c for c in z_score_cols if c in df.columns]
                     self.rolling_min_cache[sym] = df[cols_present].rolling(window=30, min_periods=1).mean()
                     rolling_std = df[cols_present].rolling(window=30, min_periods=1).std()
                     self.rolling_max_cache[sym] = rolling_std.replace(0.0, 1.0).fillna(1.0)
@@ -336,8 +364,34 @@ class DynamicGraphBuilder:
                             if col_std == 0.0:
                                 col_std = 1.0
                             val = (float(val) - col_mean) / col_std
-                        val = max(-5.0, min(5.0, float(val)))
-                        vals.append(val)
+                            val = max(-5.0, min(5.0, float(val)))
+                        else:
+                            # Custom static scaling for stationary/bounded features
+                            if col in ["returns_1d", "returns_7d"]:
+                                val = float(val) * 10.0
+                            elif col == "volatility_7d":
+                                val = float(val) * 10.0
+                            elif col == "rsi_14":
+                                val = (float(val) - 50.0) / 50.0
+                            elif col == "fear_greed_norm":
+                                val = (float(val) - 0.5) * 2.0
+                            elif col == "market_cap_usd":
+                                val = np.log10(max(1.0, float(val))) / 12.0
+                            elif col == "fed_rate":
+                                val = float(val) / 10.0
+                            elif col == "cpi":
+                                val = float(val) / 10.0
+                            elif col == "vix":
+                                val = float(val) / 50.0
+                            elif col == "inflation":
+                                val = float(val) / 10.0
+                            elif col in ["sentiment_score", "sentiment_rolling_3d"]:
+                                val = float(val)
+                            elif col == "sentiment_momentum":
+                                val = float(val) * 2.0
+                            elif col in ["community_score", "public_interest"]:
+                                val = np.log(max(0.1, float(val)))
+                        vals.append(float(val))
                     for col in engineered_feature_cols:
                         val = row[col] if col in row.index and not pd.isna(row[col]) else 0.0
                         vals.append(float(val))

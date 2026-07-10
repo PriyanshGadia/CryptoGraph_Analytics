@@ -1741,9 +1741,9 @@ def main():
         config.mc_dropout_samples = 30
         
         # Loss Weight Adjustments to prioritize ranking and directional sign forecasting
-        config.aux_mse_weight = 1.0
-        config.rank_loss_weight = 0.15
-        config.directional_loss_weight = 0.40
+        config.aux_mse_weight = 3.0
+        config.rank_loss_weight = 0.60
+        config.directional_loss_weight = 1.50
         
         # Regularization & Learning Rate to combat validation deterioration and speed up convergence
         config.dropout = 0.35
@@ -1932,6 +1932,12 @@ def main():
 
         all_metrics = {}
         if rank == 0:
+            best_model_path = ARTIFACTS_DIR / "best_model.pt"
+            if best_model_path.exists():
+                log(f"Loading best model state from: {best_model_path} for final evaluation.")
+                ckpt = torch.load(best_model_path, map_location=device)
+                trainer.raw_model.load_state_dict(ckpt["model_state_dict"])
+                
             test_metrics = trainer.evaluate_test()
             ensemble_metrics = trainer.evaluate_test_ensemble()
             all_metrics = {**test_metrics, **ensemble_metrics}
