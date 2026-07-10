@@ -25,7 +25,8 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.distributed import DistributedSampler
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import CosineAnnealingLR, SequentialLR, LinearLR
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, SequentialLR, LinearLR
+from torch.optim.swa_utils import AveragedModel, SWALR, update_bn
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
 warnings.filterwarnings("ignore")
@@ -460,26 +461,38 @@ class EnterpriseTrainer:
                 weight_decay=config.weight_decay,
             )
 
+        # SGDR: cosine warm restarts — resets LR every T_0 epochs, doubling period each cycle.
+        # This naturally escapes overfitting basins without needing the monitor.
+        # T_0=20, T_mult=2 → restarts at epoch 20, 60, 140 …
+        warmup_steps = max(1, config.warmup_epochs * max(1, len(train_loader)))
+        warmup_sched = LinearLR(
+            self.optimizer, start_factor=0.1, end_factor=1.0, total_iters=warmup_steps
+        )
+        # After warmup: SGDR with T_0=20 epochs × batches_per_epoch steps
         steps_per_epoch = max(1, len(train_loader))
-        warmup_steps = max(1, config.warmup_epochs * steps_per_epoch)
-        total_steps = max(warmup_steps + 1, config.max_epochs * steps_per_epoch)
+        sgdr_sched = CosineAnnealingWarmRestarts(
+            self.optimizer,
+            T_0=max(1, 20 * steps_per_epoch),   # reset every 20 epochs
+            T_mult=2,                             # double period each cycle
+            eta_min=5e-6,
+        )
         self.scheduler = SequentialLR(
             self.optimizer,
-            schedulers=[
-                LinearLR(
-                    self.optimizer,
-                    start_factor=0.1,
-                    end_factor=1.0,
-                    total_iters=warmup_steps,
-                ),
-                CosineAnnealingLR(
-                    self.optimizer,
-                    T_max=total_steps - warmup_steps,
-                    eta_min=1e-6,
-                ),
-            ],
+            schedulers=[warmup_sched, sgdr_sched],
             milestones=[warmup_steps],
         )
+
+        # SWA: average weights from epoch swa_start onward.
+        # Finds flatter, better-generalizing minima — especially useful for financial time-series.
+        self.swa_start_epoch = config.warmup_epochs + 25  # start after model is stable
+        self.swa_model = AveragedModel(self.raw_model)
+        self.swa_scheduler = SWALR(
+            self.optimizer,
+            swa_lr=config.learning_rate * 0.3,  # SWA constant LR = 30% of peak
+            anneal_epochs=5,
+        )
+        self.swa_active = False
+        self._swa_updates = 0
 
         self.scaler = (
             torch.amp.GradScaler("cuda")
@@ -594,6 +607,29 @@ class EnterpriseTrainer:
         except Exception as e:
             log(f"Failed to resume checkpoint ({e}); starting fresh from epoch 1.")
             self.epoch = 1
+
+    def _poll_monitor_signals(self, epoch: int) -> str:
+        """Check signal files written by training_monitor.py. Returns action taken or ''."""
+        signal_dir = ARTIFACTS_DIR  # monitor writes signals here
+        lr_reset_flag  = signal_dir / "lr_reset.flag"
+        stop_flag      = signal_dir / "stop_training.flag"
+
+        if stop_flag.exists():
+            reason = stop_flag.read_text().strip()
+            log(f"[monitor] STOP signal received: {reason}")
+            return "STOP"
+
+        if lr_reset_flag.exists():
+            reason = lr_reset_flag.read_text().strip()
+            lr_reset_flag.unlink(missing_ok=True)  # consume the signal
+            # Reset LR to peak and clear patience counter
+            for pg in self.optimizer.param_groups:
+                pg["lr"] = self.config.learning_rate
+            self.patience_counter = max(0, self.patience_counter - 10)  # partial credit
+            log(f"[monitor] LR_RESET at epoch {epoch}: lr→{self.config.learning_rate:.2e} | {reason}")
+            return "LR_RESET"
+
+        return ""
 
     def _maybe_save_snapshot(self, val_loss: float, epoch: int):
         if self.rank != 0:
@@ -918,13 +954,27 @@ class EnterpriseTrainer:
             f"Val: {len(self.val_loader)} | Test: {len(self.test_loader)}"
         )
         log(f"Starting/resuming at epoch: {self.epoch}")
+        log(f"SGDR warm restarts: T_0=20ep, T_mult=2 | SWA starts at epoch {self.swa_start_epoch}")
         log("=" * 60)
+
+        monitor_stop = False
 
         for epoch in range(self.epoch, self.config.max_epochs + 1):
             self.epoch = epoch
             epoch_start = time.time()
 
+            # ── SWA phase toggle ─────────────────────────────────────────────
+            if epoch >= self.swa_start_epoch and not self.swa_active:
+                self.swa_active = True
+                log(f"[SWA] Stochastic Weight Averaging activated at epoch {epoch}.")
+
             train_metrics = self.train_epoch(epoch)
+
+            # ── SWA model update ─────────────────────────────────────────────
+            if self.swa_active and self.rank == 0:
+                self.swa_model.update_parameters(self.raw_model)
+                self.swa_scheduler.step()
+                self._swa_updates += 1
 
             val_metrics: Dict[str, float] = {}
             if self.rank == 0:
@@ -951,7 +1001,7 @@ class EnterpriseTrainer:
                             shutil.copy(str(ARTIFACTS_DIR / "best_model.pt"), str(shutil_target))
                         except Exception:
                             pass
-                    
+
                     root_shutil = workspace_root / "best_model.pt"
                     try:
                         import shutil
@@ -968,6 +1018,8 @@ class EnterpriseTrainer:
             if self.rank == 0:
                 dt = time.time() - epoch_start
                 suffix = " | new best" if improved else ""
+                if self.swa_active:
+                    suffix += f" | SWA({self._swa_updates})"
                 log(
                     f"Epoch {epoch:03d} | Train loss: {train_metrics['train_loss']:.4f} | "
                     f"Val Loss: {val_loss:.4f} | RMSE: {val_metrics.get('val_rmse', 0.0):.4f} | "
@@ -978,8 +1030,14 @@ class EnterpriseTrainer:
                 if epoch % 5 == 0 or improved:
                     self._check_prediction_variance(self.val_loader, "val")
 
+                # ── Poll monitor signals (rank 0 only) ────────────────────────
+                signal_action = self._poll_monitor_signals(epoch)
+                if signal_action == "STOP":
+                    monitor_stop = True
+
+            monitor_stop = self._sync_bool(monitor_stop)
             patience_triggered = self.patience_counter >= self.config.early_stopping_patience
-            global_stop = self._sync_bool(patience_triggered)
+            global_stop = self._sync_bool(patience_triggered) or monitor_stop
 
             elapsed_hours = (time.time() - self.run_start_time) / 3600.0
             timeout_triggered = elapsed_hours >= self.config.max_train_hours
@@ -990,6 +1048,16 @@ class EnterpriseTrainer:
 
             if global_stop or global_timeout:
                 break
+
+        # ── SWA BN update pass before final evaluation ────────────────────────
+        if self.swa_active and self.rank == 0 and self._swa_updates > 0:
+            log(f"[SWA] Updating BatchNorm statistics over {self._swa_updates} averaged models…")
+            try:
+                update_bn(self.train_loader, self.swa_model, device=self.device)
+                self.swa_model.module.save(str(ARTIFACTS_DIR / "swa_model.pt"))
+                log("[SWA] SWA model saved to artifacts/swa_model.pt")
+            except Exception as e:
+                log(f"[SWA] BN update failed (non-fatal): {e}")
 
         self._barrier()
         if self.rank == 0:
@@ -1774,7 +1842,7 @@ def main():
         config.weight_decay = 0.10
         config.learning_rate = 1.0e-4
         config.warmup_epochs = 12
-        config.early_stopping_patience = 60
+        config.early_stopping_patience = 25  # SGDR + monitor handle recovery; 25 is enough
 
         # [R11-TRADING]
         config.spread_gate_threshold = 0.04
