@@ -156,25 +156,35 @@ class TrainingMonitor:
         actions = []
         severity = "ok"
 
-        # 1. Overfitting (val rising while train stable/falling)
-        if (len(vl_list) >= OVERFIT_WINDOW
-                and val_slope > OVERFIT_SLOPE_THRESH
-                and overfit_gap > 0.05
-                and ep - self.last_lr_reset_epoch >= LR_RESET_COOLDOWN):
-            actions.append("LR_RESET")
-            severity = "warn"
-
-        # 2. Hard divergence
-        if diverge_gap > DIVERGE_THRESH and patience > max_patience // 2:
-            actions.append("LR_RESET")
+        # Hard guards: if loss becomes non-finite, stop immediately.
+        if not (val_loss == val_loss and val_loss != float("inf") and val_loss != float("-inf")):
+            actions.append("STOP")
             severity = "error"
+        else:
+            # 1. Overfitting (val rising while train stable/falling)
+            if (len(vl_list) >= OVERFIT_WINDOW
+                    and val_slope > OVERFIT_SLOPE_THRESH
+                    and overfit_gap > 0.05
+                    and ep - self.last_lr_reset_epoch >= LR_RESET_COOLDOWN):
+                actions.append("LR_RESET")
+                severity = "warn"
 
-        # 3. Stagnation (no improvement for STAGNATION_WINDOW epochs)
-        if (patience >= STAGNATION_WINDOW
-                and ep - self.last_lr_reset_epoch >= LR_RESET_COOLDOWN
-                and val_slope >= -0.0001):   # not actively improving
-            actions.append("LR_RESET")
-            severity = "warn"
+            # 2. Hard divergence
+            #    Previously we only LR_RESET; trainer never stopped because monitor never emitted STOP.
+            #    Emit STOP when we are clearly diverging beyond a stricter threshold.
+            if diverge_gap > (2.0 * DIVERGE_THRESH):
+                actions.append("STOP")
+                severity = "error"
+            elif diverge_gap > DIVERGE_THRESH and patience > max_patience // 2:
+                actions.append("LR_RESET")
+                severity = "error"
+
+            # 3. Stagnation (no improvement for STAGNATION_WINDOW epochs)
+            if (patience >= STAGNATION_WINDOW
+                    and ep - self.last_lr_reset_epoch >= LR_RESET_COOLDOWN
+                    and val_slope >= -0.0001):   # not actively improving
+                actions.append("LR_RESET")
+                severity = "warn"
 
         return {
             "overfit_gap":  overfit_gap,

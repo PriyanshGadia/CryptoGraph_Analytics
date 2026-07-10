@@ -9,6 +9,7 @@ import heapq
 import argparse
 import traceback
 import warnings
+import shutil
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Tuple, Optional, Any
