@@ -815,7 +815,7 @@ class EnterpriseTrainer:
         if self.config.directional_loss_weight > 0.0 and len(pred_valid) >= 4:
             # Shuffle indices to prevent order bias
             idx = torch.randperm(len(pred_valid), device=pred.device)
-            p = pred_valid[idx]
+            p = pred_valid[idx].float()
             t = target_valid[idx]
             # Compute log-sum-exp trick for numerical stability
             # ListMLE: for each position i, loss = -p_i + log(sum_{j>=i} exp(p_j))
@@ -1460,6 +1460,7 @@ def _extract_targets_safe(
     pd_dates = [pd.Timestamp(d).tz_localize("UTC") if d.tzinfo is None
                 else pd.Timestamp(d).tz_convert("UTC")
                 for d in graph_dates]
+    pd_dates_normalized = [pd.Timestamp(d).tz_localize(None).normalize() for d in pd_dates]
 
     T = len(pd_dates)
     N = len(available_symbols)
@@ -1467,7 +1468,10 @@ def _extract_targets_safe(
     values_arr = np.full((T, N), np.nan, dtype=np.float64)
     for j, sym in enumerate(available_symbols):
         df = proc_features[sym]
-        col_series = df[target_col].clip(lower=-0.5, upper=0.5).reindex(pd_dates)
+        series_index = pd.to_datetime(df.index).tz_localize(None).normalize()
+        col_series = pd.Series(df[target_col].values, index=series_index)
+        col_series = col_series.loc[~col_series.index.duplicated(keep="last")]
+        col_series = col_series.clip(lower=-0.5, upper=0.5).reindex(pd_dates_normalized)
         values_arr[:, j] = col_series.values
 
     target_returns: List[torch.Tensor] = []
@@ -1661,18 +1665,19 @@ def _determine_surviving_dates(
 ) -> List[datetime]:
     date_sets: Dict[str, set] = {}
     for s in symbols:
-        date_sets[s] = set(proc_features[s].index)
+        normalized_idx = pd.to_datetime(proc_features[s].index).tz_localize(None).normalize()
+        date_sets[s] = set(normalized_idx)
 
     surviving = []
-    current_ts = pd.Timestamp(start_dt).tz_localize("UTC")
-    end_ts = pd.Timestamp(end_dt).tz_localize("UTC")
+    current_ts = pd.Timestamp(start_dt).tz_localize(None).normalize()
+    end_ts = pd.Timestamp(end_dt).tz_localize(None).normalize()
     one_day = pd.Timedelta(days=1)
     n_symbols = len(symbols)
 
     while current_ts <= end_ts:
         missing = sum(1 for s in symbols if current_ts not in date_sets[s])
         if missing / n_symbols <= max_missing_frac:
-            surviving.append(current_ts.to_pydatetime())
+            surviving.append(current_ts.tz_localize("UTC").to_pydatetime())
         current_ts += one_day
 
     return surviving
