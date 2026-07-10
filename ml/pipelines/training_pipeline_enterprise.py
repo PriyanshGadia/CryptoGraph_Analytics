@@ -659,57 +659,78 @@ class EnterpriseTrainer:
         log_var: torch.Tensor,
         mask: torch.Tensor,
     ) -> torch.Tensor:
+        # -----------------------------------------------------------------------
+        # LOSS ARCHITECTURE (R10): MSE-primary, NLL-auxiliary
+        #
+        # The original design (NLL + aux_MSE) caused a degenerate collapse:
+        #   NLL ≈ 9.0,  aux_MSE ≈ 5.0 × 0.0001 ≈ 0.0005
+        # The NLL dominated 18,000× over MSE, so pred→0, log_var→0 was the
+        # optimal path. pred_std dropped from 0.066 → 0.0017 over 26 epochs.
+        #
+        # Fix: MSE is the primary loss (O(1) for unit-normalized targets).
+        #      NLL contributes proportionally via magnitude normalization so it
+        #      cannot dominate. Uncertainty is trained by stopping gradients on
+        #      the prediction path for the NLL term.
+        # -----------------------------------------------------------------------
+
         if self.config.label_smooth_alpha > 0.0:
             alpha = self.config.label_smooth_alpha
             target = target * (1.0 - alpha) + torch.sign(target) * alpha
 
-        log_var = torch.clamp(
-            log_var, min=self.config.log_var_min, max=self.config.log_var_max
-        )
-        precision = torch.exp(-log_var)
-        per_node = 0.5 * precision * (pred - target) ** 2 + 0.5 * log_var
-
-        denom = mask.sum().clamp_min(1.0)
-        nll_loss = (per_node * mask).sum() / denom
-
         valid_mask = mask.bool()
+        denom = mask.sum().clamp_min(1.0)
+
+        # 1) PRIMARY LOSS: MSE on valid positions.
+        #    Always O(1) for unit-normalized targets (~1.0 at init, shrinks as model learns).
         if valid_mask.any():
-            entropy_reg = self.config.entropy_beta * F.relu(
-                -log_var[valid_mask]
-            ).mean()
-            if self.config.aux_mse_weight > 0.0:
-                mse_aux = self.config.aux_mse_weight * F.mse_loss(
-                    pred[valid_mask], target[valid_mask]
-                )
-            else:
-                mse_aux = torch.tensor(0.0, device=pred.device)
+            mse_primary = F.mse_loss(pred[valid_mask], target[valid_mask])
         else:
+            mse_primary = torch.tensor(0.0, device=pred.device, requires_grad=True)
+
+        # 2) AUXILIARY NLL: uncertainty head calibration.
+        #    Detach pred so the NLL gradient only updates log_var, not the regression head.
+        #    This prevents the "set pred=0, get free NLL reduction" collapse.
+        log_var_c = torch.clamp(log_var, min=self.config.log_var_min, max=self.config.log_var_max)
+        if valid_mask.any():
+            pred_detached = pred.detach()
+            precision = torch.exp(-log_var_c)
+            nll_per = 0.5 * precision * (pred_detached - target) ** 2 + 0.5 * log_var_c
+            nll_raw = (nll_per * mask).sum() / denom
+
+            # Normalize NLL by its own magnitude so it always contributes ~nll_scale_frac
+            # of the total loss, regardless of absolute NLL value.
+            nll_scale = 0.20  # NLL contributes ~20% of total loss weight
+            with torch.no_grad():
+                nll_magnitude = nll_raw.abs().clamp(min=0.1)
+            nll_aux = nll_scale * nll_raw / nll_magnitude  # dimensionless, O(nll_scale)
+
+            # Entropy regularization: penalize overconfidence (log_var << 0)
+            entropy_reg = self.config.entropy_beta * F.relu(-log_var_c[valid_mask]).mean()
+        else:
+            nll_aux = torch.tensor(0.0, device=pred.device)
             entropy_reg = torch.tensor(0.0, device=pred.device)
-            mse_aux = torch.tensor(0.0, device=pred.device)
 
-        total = nll_loss + entropy_reg + mse_aux
+        total = mse_primary + nll_aux + entropy_reg
 
+        # 3) RANKING LOSS: cosine alignment of cross-asset predictions.
         if self.config.rank_loss_weight > 0.0 and pred.dim() == 2:
             cos_loss = self._compute_cosine_alignment_loss(pred, target, mask)
             total = total + self.config.rank_loss_weight * cos_loss
 
+        # 4) DIRECTIONAL LOSS: BCE on sign of return.
+        #    Scale raw regression predictions into logit-space before applying BCE.
         if self.config.directional_loss_weight > 0.0 and valid_mask.any():
             sign_target = (target[valid_mask] > 0).float()
-            sign_target = sign_target * 0.9 + 0.05
+            sign_target = sign_target * 0.9 + 0.05  # label smoothing
 
-            # Scale logits by 1/pred_std so BCE-with-logits gets calibrated inputs.
-            # Raw regression predictions have std ~0.05-0.10; sigmoid(0.07) ≈ 0.517,
-            # which gives nearly no gradient signal. Scaling by ~10x puts them in
-            # logit-space where sigmoid is responsive.
             with torch.no_grad():
-                p_valid = pred[valid_mask]
-                p_std = p_valid.std().clamp(min=0.01)
-                logit_scale = (0.7 / p_std).clamp(max=20.0)  # target: scaled_std ≈ 0.7
+                p_std = pred[valid_mask].std().clamp(min=0.005)
+                # Scale so that sigmoid(logit) produces responsive gradients.
+                # Target: scaled pred_std ≈ 1.0 (logistic regime center).
+                logit_scale = (1.0 / p_std).clamp(max=30.0)
             logits = pred[valid_mask] * logit_scale
 
-            dir_loss = F.binary_cross_entropy_with_logits(
-                logits, sign_target, reduction="mean"
-            )
+            dir_loss = F.binary_cross_entropy_with_logits(logits, sign_target, reduction="mean")
             total = total + self.config.directional_loss_weight * dir_loss
 
         return total
@@ -1747,29 +1768,26 @@ def main():
         config.ensemble_size = 5
         config.mc_dropout_samples = 30
 
-        # [R9-LOSS] Higher aux_mse_weight forces non-zero predictions from epoch 1,
-        # escaping the NLL degenerate minimum (pred≈0, log_var≈0) that trapped R8
-        # for the first 48 epochs. Lower entropy_beta so uncertainty can be large
-        # (i.e. log_var > 0) without being penalized — the model should be allowed
-        # to be uncertain rather than collapsing variance to 0.
-        config.aux_mse_weight = 5.0       # was 3.0 — stronger MSE anchor
-        config.entropy_beta = 0.05        # was 0.30 — stop penalizing high log_var
-        config.rank_loss_weight = 0.40    # was 0.60 — reduce cosine loss dominance
-        config.directional_loss_weight = 1.20  # was 1.50; now calibrated via logit scaling
+        # [R10-LOSS] MSE-primary architecture: NLL is now detached + magnitude-normalized.
+        # aux_mse_weight is vestigial (MSE is always primary); set to 0 to avoid confusion.
+        # entropy_beta only prevents extreme overconfidence (log_var << 0).
+        config.aux_mse_weight = 0.0        # MSE is now the primary loss directly
+        config.entropy_beta = 0.02         # small: only penalize log_var < 0 (overconfidence)
+        config.rank_loss_weight = 0.25     # cosine ranking; reduced vs R9
+        config.directional_loss_weight = 0.60  # scaled logits now ~10× more potent; reduced weight
 
-        # [R9-REGULARIZATION] Slightly less L2 decay so larger model can utilize capacity
-        config.dropout = 0.30             # was 0.35
-        config.weight_decay = 0.10        # was 0.15
+        # [R10-REGULARIZATION]
+        config.dropout = 0.30
+        config.weight_decay = 0.10
         config.learning_rate = 1.0e-4
-        config.warmup_epochs = 12         # was 8 — more warmup budget before cosine decay
-        config.early_stopping_patience = 60  # was 40 — model needs 50+ epochs to escape NLL trap
+        config.warmup_epochs = 12
+        config.early_stopping_patience = 60
 
-        # [R9-TRADING] Calibrate spread gate to normalized pred_std ≈ 0.07
-        # Old threshold of 0.15 blocked 99.5% of days; 0.04 is ~0.6σ of pred spread
-        config.spread_gate_threshold = 0.04   # was 0.15
-        config.confidence_gate_threshold = 1.2  # tighter uncertainty gate (was 1.5)
+        # [R10-TRADING]
+        config.spread_gate_threshold = 0.04
+        config.confidence_gate_threshold = 1.2
 
-        # [R9-SPEED]
+        # [R10-SPEED]
         config.num_workers = 0
         config.pin_memory = True
         config.cudnn_benchmark = True
