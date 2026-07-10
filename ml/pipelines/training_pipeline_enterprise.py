@@ -912,7 +912,7 @@ class EnterpriseTrainer:
             if self.rank == 0:
                 val_metrics = self.validate()
             val_rmse = self._sync_scalar(val_metrics.get("val_rmse", float("inf")))
-            val_loss = val_rmse
+            val_loss = self._sync_scalar(val_metrics.get("val_loss", float("inf")))
 
             if self.rank == 0:
                 for k, v in {**train_metrics, **val_metrics}.items():
@@ -946,7 +946,7 @@ class EnterpriseTrainer:
                 self.patience_counter += 1
 
             self._barrier()
-            self._maybe_save_snapshot(val_rmse, epoch)
+            self._maybe_save_snapshot(val_loss, epoch)
             self._save_full_checkpoint()
 
             if self.rank == 0:
@@ -1733,7 +1733,7 @@ def main():
     if is_kaggle:
         log("Detected KAGGLE environment. Running in HIGH PERFORMANCE mode.")
         
-        # [R8-OPTIMIZATION] Prevent overfitting and speed up training
+         # [R8-OPTIMIZATION] Prevent overfitting and speed up training
         config.hidden_dim = 32
         config.lookback_days = 14
         config.batch_size = 16
@@ -1742,6 +1742,11 @@ def main():
         config.max_epochs = 300
         config.ensemble_size = 5
         config.mc_dropout_samples = 30
+        
+        # Loss Weight Adjustments to prioritize ranking and directional sign forecasting
+        config.aux_mse_weight = 1.5
+        config.rank_loss_weight = 0.8
+        config.directional_loss_weight = 1.5
         
         # Regularization & Learning Rate to combat validation deterioration and speed up convergence
         config.dropout = 0.30
