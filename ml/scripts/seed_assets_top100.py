@@ -28,10 +28,10 @@ _RAW_ASSET_SYMBOLS = [
 
     # Tier 5 — Meme / Momentum (12)
     "DOGE", "SHIB", "PEPE", "WIF", "BONK", "FLOKI",
-    "TRUMP", "PENGU", "BRETT", "MEW", "MOG", "POPCAT",
+    "CAKE", "1INCH", "ANKR", "MEW", "RSR", "OCEAN",
 
     # Tier 6 — AI / DePIN (8)
-    "FET", "RENDER", "TAO", "AKT", "WLD", "GRT", "IO", "HNT",
+    "FET", "RENDER", "AUDIO", "AKT", "WLD", "GRT", "IO", "HNT",
 
     # Tier 7 — Stablecoins (5)
     "USDT", "USDC", "DAI", "FDUSD", "PYUSD",

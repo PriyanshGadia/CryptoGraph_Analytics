@@ -270,7 +270,8 @@ class TrainingMonitor:
 
     def run(self, poll_interval: float = 2.0):
         print(CYAN(BOLD("\n  ╔═══════════════════════════════════════════════════╗")))
-        print(CYAN(BOLD(  "  ║   CryptoGraph STGCN Training Monitor  (R11)      ║")))
+        print(CYAN(BOLD(  "  ║   CryptoGraph STGCN Training Monitor  (R12)      ║")))
+
         print(CYAN(BOLD(  "  ╚═══════════════════════════════════════════════════╝")))
         print(f"  Watching: {self.log_path}")
         print(f"  Signals → {self.signal_dir}")

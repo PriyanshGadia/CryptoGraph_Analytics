@@ -568,6 +568,8 @@ class EnterpriseTrainer:
         self.snapshot_heap: List[Tuple[float, int, str]] = []
         self.history: Dict[str, list] = defaultdict(list)
         self.run_start_time = time.time()
+        self._last_pred_std: float = 0.0  # updated by _check_prediction_variance
+
 
         self._maybe_resume()
         if self.is_distributed:
@@ -698,6 +700,12 @@ class EnterpriseTrainer:
         if not np.isfinite(val_loss):
             log(f"Epoch {epoch}: val_loss is not finite; skipping snapshot.")
             return
+        # R12: Only snapshot models where pred_std is healthy (>0.15).
+        # Collapsed models (pred_std<0.15) produce negative ensemble Sharpe by
+        # averaging a good model with a degenerate one.
+        if hasattr(self, '_last_pred_std') and self._last_pred_std < 0.15:
+            log(f"Epoch {epoch}: pred_std={self._last_pred_std:.4f} < 0.15; skipping collapsed snapshot.")
+            return
         path = self.run_dir / f"snapshot_epoch{epoch}.pt"
         entry = (-val_loss, epoch, str(path))
         if len(self.snapshot_heap) < self.config.ensemble_size:
@@ -757,14 +765,17 @@ class EnterpriseTrainer:
         mask: torch.Tensor,
     ) -> torch.Tensor:
         # -----------------------------------------------------------------------
-        # LOSS ARCHITECTURE (R11): MSE + VICReg variance floor + fixed-scale BCE
+        # LOSS ARCHITECTURE (R12): MSE + Continuous VICReg + ListMLE ranking
         #
-        # Root cause of all prior collapse: every adaptive term (NLL, scaled BCE)
-        # created a feedback loop rewarding pred→constant.
-        # R11 breaks this structurally with an explicit variance floor penalty:
-        #   var_reg = max(0, target_std - pred_std)^2
-        # This gradient ONLY points away from collapse. pred_std < target_std → large loss.
-        # NLL remains detached (uncertainty head only). Directional BCE uses FIXED scale.
+        # R11 failure analysis:
+        #   - relu() gate on var_reg → gradient ZERO when pred_std ≥ 0.30, collapse resumes.
+        #   - Fixed-scale BCE with pred_std~0.01: all logits ≈ 0.1, sigmoid ≈ 0.525, near-zero gradient.
+        #
+        # R12 fixes:
+        #   1. CONTINUOUS var_reg: no relu() → gradient always nonzero → collapse permanently prevented.
+        #   2. var_target raised 0.30→0.50: stronger push toward real return spread.
+        #   3. Pairwise ranking loss (ListMLE-style) replaces BCE: meaningful at any pred_std scale.
+        #   4. NLL detached + magnitude-normalized (unchanged from R11).
         # -----------------------------------------------------------------------
 
         valid_mask = mask.bool()
@@ -776,34 +787,46 @@ class EnterpriseTrainer:
         pred_valid = pred[valid_mask]
         target_valid = target[valid_mask]
 
-        # 1) PRIMARY LOSS: MSE. Always O(1) for unit-normalized targets.
+        # 1) PRIMARY LOSS: MSE.
         mse_loss = F.mse_loss(pred_valid, target_valid)
 
-        # 2) VARIANCE REGULARIZATION (VICReg-style): hard floor on pred_std.
-        #    Penalizes pred_std < var_target. Gradient always pushes pred_std UP.
-        #    target_std=0.30 means predictions must spread at least 30% of unit-std.
-        #    This is the only mathematically guaranteed anti-collapse mechanism.
-        var_target = 0.30
+        # 2) CONTINUOUS VARIANCE REGULARIZATION (R12 fix: NO relu gate).
+        #    var_reg = (var_target - pred_std)^2 — gradient is ALWAYS nonzero.
+        #    When pred_std > var_target: gradient pushes pred_std DOWN (from above target).
+        #    When pred_std < var_target: gradient pushes pred_std UP (toward target).
+        #    The quadratic attractor prevents both collapse AND excessive spread.
+        var_target = 0.50  # Raised from 0.30: unit-norm targets have std~1.0, so 0.50 is healthy.
         pred_std = pred_valid.std().clamp(min=1e-8)
-        var_reg = F.relu(var_target - pred_std) ** 2
+        var_reg = (var_target - pred_std) ** 2  # Continuous — no relu, always gradient
 
-        # 3) AUXILIARY NLL: uncertainty head only. Detach pred → gradient goes to log_var only.
+        # 3) AUXILIARY NLL: uncertainty head only. Gradient does NOT flow to pred.
         log_var_c = torch.clamp(log_var, min=self.config.log_var_min, max=self.config.log_var_max)
         pred_det = pred.detach()
         precision = torch.exp(-log_var_c)
         nll_per = 0.5 * precision * (pred_det - target) ** 2 + 0.5 * log_var_c
         nll_raw = (nll_per * mask).sum() / denom
-        # Magnitude-normalize so NLL can never dominate regardless of absolute scale
         with torch.no_grad():
             nll_mag = nll_raw.abs().clamp(min=0.1)
         nll_aux = 0.15 * nll_raw / nll_mag
 
-        # 4) DIRECTIONAL LOSS: BCE with FIXED logit scale (no adaptive scaling = no feedback loop).
-        #    Fixed scale=10 puts predictions in sigmoid-responsive range once pred_std≈0.1.
-        if self.config.directional_loss_weight > 0.0:
-            sign_target = (target_valid > 0).float() * 0.9 + 0.05
-            logits = pred_valid * 10.0  # FIXED scale — cannot create adaptive feedback
-            dir_loss = F.binary_cross_entropy_with_logits(logits, sign_target, reduction="mean")
+        # 4) PAIRWISE RANKING LOSS (ListMLE-style, replaces fixed-scale BCE).
+        #    Operates on relative ordering — provides meaningful gradient at ANY pred_std scale.
+        #    For each sample in the batch, compute the negative log-likelihood of the correct ranking.
+        if self.config.directional_loss_weight > 0.0 and len(pred_valid) >= 4:
+            # Shuffle indices to prevent order bias
+            idx = torch.randperm(len(pred_valid), device=pred.device)
+            p = pred_valid[idx]
+            t = target_valid[idx]
+            # Compute log-sum-exp trick for numerical stability
+            # ListMLE: for each position i, loss = -p_i + log(sum_{j>=i} exp(p_j))
+            # Use targets as the "true" ranking signal via sorted order
+            t_sort_idx = torch.argsort(t, descending=True)
+            p_sorted = p[t_sort_idx]
+            # Numerically stable log-sum-exp from right
+            max_val = p_sorted.detach().max()
+            log_cumsum = torch.logcumsumexp(p_sorted - max_val, dim=0) + max_val
+            rank_loss = -(p_sorted - log_cumsum).mean()
+            dir_loss = rank_loss.clamp(max=5.0)  # Safety cap
         else:
             dir_loss = torch.tensor(0.0, device=pred.device)
 
@@ -813,11 +836,11 @@ class EnterpriseTrainer:
         else:
             cos_loss = torch.tensor(0.0, device=pred.device)
 
-        # Weight budget:  MSE(1.0) + VarReg(2.0) + NLL(0.15) + Dir(0.60) + Rank(0.25)
-        # VarReg gets 2× weight because it's the critical anti-collapse term.
+        # Weight budget: MSE(1.0) + VarReg(3.0) + NLL(0.15) + ListMLE(0.40) + Rank(0.25)
+        # VarReg weight raised from 2.0→3.0 to compensate for the softer continuous penalty.
         total = (
             mse_loss
-            + 2.0 * var_reg
+            + 3.0 * var_reg
             + nll_aux
             + self.config.directional_loss_weight * dir_loss
             + self.config.rank_loss_weight * cos_loss
@@ -881,6 +904,8 @@ class EnterpriseTrainer:
         all_log_vars = torch.cat(log_vars_collected)
         pred_std = all_preds.std().item()
         mean_pred_std = torch.exp(0.5 * all_log_vars).mean().item()
+        # Store for snapshot gate check
+        self._last_pred_std = pred_std
 
         log(
             f"[{label} diagnostic] pred_std={pred_std:.6f} | "
@@ -1088,8 +1113,9 @@ class EnterpriseTrainer:
                     f"patience: {self.patience_counter}/{self.config.early_stopping_patience} | "
                     f"lr: {train_metrics['lr']:.2e} | time: {dt:.1f}s{suffix}"
                 )
-                if epoch % 5 == 0 or improved:
-                    self._check_prediction_variance(self.val_loader, "val")
+                # Run pred_std check every epoch: cheap (5 batches), needed for snapshot gate + monitor.
+                self._check_prediction_variance(self.val_loader, "val")
+
 
                 # ── Poll monitor signals (rank 0 only) ────────────────────────
                 signal_action = self._poll_monitor_signals(epoch)
@@ -1593,7 +1619,8 @@ def _verify_normalization(
             "Target normalization produced near-zero std for one or more assets."
         )
 
-_CACHE_VERSION = "r14"
+_CACHE_VERSION = "r15"
+
 
 def _cache_key(symbols: List[str], config: TrainingConfig) -> str:
     payload = json.dumps(
@@ -1917,31 +1944,36 @@ def main():
         config.ensemble_size = 5
         config.mc_dropout_samples = 30
 
-        # [R11-LOSS] VICReg variance floor + fixed-scale BCE + detached NLL.
-        # var_reg = 2.0 * relu(0.30 - pred_std)^2 — hard anti-collapse constraint.
-        # Directional BCE uses fixed scale=10 (no adaptive feedback loop).
-        # aux_mse_weight and entropy_beta are now vestigial; set to 0.
+        # [R12-LOSS] Continuous VICReg (no relu gate) + ListMLE ranking loss.
+        # var_reg = 3.0*(var_target - pred_std)^2: continuous attractor, never zero gradient.
+        # Directional loss = ListMLE pairwise ranking: meaningful at ANY pred_std scale.
+        # var_target raised 0.30→0.50 for stronger diversity push on unit-norm targets.
         config.aux_mse_weight = 0.0
-        config.entropy_beta = 0.0          # entropy handled internally by var_reg
-        config.rank_loss_weight = 0.25     # cosine cross-asset alignment
-        config.directional_loss_weight = 0.30  # fixed scale=10 is more potent; lower weight
+        config.entropy_beta = 0.0
+        config.rank_loss_weight = 0.25      # cosine cross-asset alignment
+        config.directional_loss_weight = 0.40  # ListMLE ranking loss weight
 
-        # [R11-REGULARIZATION]
-        config.dropout = 0.30
-        config.weight_decay = 0.10
-        config.learning_rate = 1.0e-4
-        config.warmup_epochs = 12
-        config.early_stopping_patience = 25  # SGDR + monitor handle recovery; 25 is enough
+        # [R12-REGULARIZATION] Lowered dropout from 0.30→0.20 to allow more signal through.
+        # Higher dropout was causing underfitting that compounded the collapse.
+        config.dropout = 0.20
+        config.weight_decay = 0.05          # Lowered from 0.10 — less L2 contraction
+        config.learning_rate = 3.0e-4       # Higher base LR: AdamW (no SAM overhead) converges faster
+        config.warmup_epochs = 8            # Shorter warmup: start training signal faster
+        config.early_stopping_patience = 30  # Slightly more patience for SGDR cycles
 
-        # [R11-TRADING]
+        # [R12-TRADING]
         config.spread_gate_threshold = 0.04
         config.confidence_gate_threshold = 1.2
 
-        # [R11-SPEED]
-        config.num_workers = 0
+        # [R12-SPEED] SAM DISABLED: 2× forward passes = 2× epoch time.
+        # AdamW + AMP gives equivalent or better generalization for financial time-series.
+        # Batch size 16→32 to better fill T4 VRAM (16GB each) and halve per-epoch steps.
+        config.num_workers = 2              # Use 2 workers for async data prefetch on Kaggle CPU
         config.pin_memory = True
         config.cudnn_benchmark = True
-        config.use_sam = True
+        config.use_sam = False              # DISABLED: was causing 47s/ep; target <18s
+        config.use_amp = True               # Re-enabled: safe without SAM
+        config.batch_size = 32              # Was 16; 32 fills T4 better, fewer steps/epoch
         config.history_days = 3650
     else:
         log("Detected LOCAL environment. Running in i3 OPTIMIZED LOW-RESOURCE mode.")
