@@ -34,6 +34,7 @@ warnings.filterwarnings("ignore")
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 _CURRENT_RANK = 0
+_LOG_FILE_PATH: Optional[Path] = None
 
 def now_utc() -> datetime:
     return datetime.now(timezone.utc)
@@ -44,7 +45,18 @@ def ts() -> str:
 def log(msg: str, force: bool = False) -> None:
     if _CURRENT_RANK == 0 or force:
         prefix = f"[rank{_CURRENT_RANK}] " if _CURRENT_RANK != 0 else ""
-        print(f"[{ts()}] {prefix}{msg}", flush=True)
+        line = f"[{ts()}] {prefix}{msg}"
+        print(line, flush=True)
+
+        # Also persist to disk for training_monitor tailing (Kaggle-safe).
+        if _LOG_FILE_PATH is not None:
+            try:
+                _LOG_FILE_PATH.parent.mkdir(parents=True, exist_ok=True)
+                with open(_LOG_FILE_PATH, "a", encoding="utf-8") as f:
+                    f.write(line + "\n")
+            except Exception:
+                # Never fail training because of log persistence.
+                pass
 
 def new_run_id() -> str:
     return now_utc().strftime("%Y%m%d-%H%M%S")
@@ -2077,17 +2089,29 @@ def main():
                 import threading
                 from ml.pipelines.training_monitor import TrainingMonitor
 
-                monitor_log = Path("logs.txt")
-                if not monitor_log.exists():
-                    for parent in [Path(".."), Path("../.."), Path("../../..")]:
-                        candidate = parent / "logs.txt"
-                        if candidate.exists():
-                            monitor_log = candidate
-                            break
-                monitor = TrainingMonitor(log_path=monitor_log, signal_dir=ARTIFACTS_DIR)
-                t = threading.Thread(target=monitor.run, kwargs={"poll_interval": 2.0}, daemon=True)
+                # Use a dedicated persistent log file (not git-ignored logs.txt).
+                global _LOG_FILE_PATH
+                _LOG_FILE_PATH = ARTIFACTS_DIR / "training_logs.txt"
+                try:
+                    _LOG_FILE_PATH.parent.mkdir(parents=True, exist_ok=True)
+                    # Truncate for a clean per-run tail
+                    with open(_LOG_FILE_PATH, "w", encoding="utf-8") as _f:
+                        _f.write("")
+                except Exception:
+                    pass
+
+                monitor_log = _LOG_FILE_PATH
+                monitor = TrainingMonitor(
+                    log_path=monitor_log,
+                    signal_dir=ARTIFACTS_DIR,
+                )
+                t = threading.Thread(
+                    target=monitor.run,
+                    kwargs={"poll_interval": 2.0},
+                    daemon=True,
+                )
                 t.start()
-                log("Training monitor started in-thread (daemon) — signals → ml/artifacts")
+                log(f"Training monitor started in-thread (daemon). log→{monitor_log}")
             except Exception as e:
                 log(f"Could not start in-process training monitor (non-fatal): {e}")
 
