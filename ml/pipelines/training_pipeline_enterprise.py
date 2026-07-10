@@ -696,10 +696,17 @@ class EnterpriseTrainer:
         if self.config.directional_loss_weight > 0.0 and valid_mask.any():
             sign_target = (target[valid_mask] > 0).float()
             sign_target = sign_target * 0.9 + 0.05
-            
-            # Use raw predictions directly as logits to prevent 1/pred_std gradient explosion
-            logits = pred[valid_mask]
-                
+
+            # Scale logits by 1/pred_std so BCE-with-logits gets calibrated inputs.
+            # Raw regression predictions have std ~0.05-0.10; sigmoid(0.07) ≈ 0.517,
+            # which gives nearly no gradient signal. Scaling by ~10x puts them in
+            # logit-space where sigmoid is responsive.
+            with torch.no_grad():
+                p_valid = pred[valid_mask]
+                p_std = p_valid.std().clamp(min=0.01)
+                logit_scale = (0.7 / p_std).clamp(max=20.0)  # target: scaled_std ≈ 0.7
+            logits = pred[valid_mask] * logit_scale
+
             dir_loss = F.binary_cross_entropy_with_logits(
                 logits, sign_target, reduction="mean"
             )
@@ -1444,7 +1451,7 @@ def _verify_normalization(
             "Target normalization produced near-zero std for one or more assets."
         )
 
-_CACHE_VERSION = "r13"
+_CACHE_VERSION = "r14"
 
 def _cache_key(symbols: List[str], config: TrainingConfig) -> str:
     payload = json.dumps(
@@ -1730,29 +1737,39 @@ def main():
     if is_kaggle:
         log("Detected KAGGLE environment. Running in HIGH PERFORMANCE mode.")
         
-         # [R8-OPTIMIZATION] Prevent overfitting and speed up training
-        config.hidden_dim = 32
-        config.lookback_days = 14
+        # [R9-OPTIMIZATION] Larger model + anti-degenerate-minimum fixes
+        config.hidden_dim = 64           # was 32 — 25K params was too small; 64→~100K
+        config.lookback_days = 20         # was 14 — more temporal context for TCN
         config.batch_size = 16
         config.corr_threshold = 0.85
         config.mc_threshold = 0.8
         config.max_epochs = 300
         config.ensemble_size = 5
         config.mc_dropout_samples = 30
-        
-        # Loss Weight Adjustments to prioritize ranking and directional sign forecasting
-        config.aux_mse_weight = 3.0
-        config.rank_loss_weight = 0.60
-        config.directional_loss_weight = 1.50
-        
-        # Regularization & Learning Rate to combat validation deterioration and speed up convergence
-        config.dropout = 0.35
-        config.weight_decay = 0.15
+
+        # [R9-LOSS] Higher aux_mse_weight forces non-zero predictions from epoch 1,
+        # escaping the NLL degenerate minimum (pred≈0, log_var≈0) that trapped R8
+        # for the first 48 epochs. Lower entropy_beta so uncertainty can be large
+        # (i.e. log_var > 0) without being penalized — the model should be allowed
+        # to be uncertain rather than collapsing variance to 0.
+        config.aux_mse_weight = 5.0       # was 3.0 — stronger MSE anchor
+        config.entropy_beta = 0.05        # was 0.30 — stop penalizing high log_var
+        config.rank_loss_weight = 0.40    # was 0.60 — reduce cosine loss dominance
+        config.directional_loss_weight = 1.20  # was 1.50; now calibrated via logit scaling
+
+        # [R9-REGULARIZATION] Slightly less L2 decay so larger model can utilize capacity
+        config.dropout = 0.30             # was 0.35
+        config.weight_decay = 0.10        # was 0.15
         config.learning_rate = 1.0e-4
-        config.warmup_epochs = 8
-        config.early_stopping_patience = 40
-        
-        # [R8-SPEED] Set num_workers=0 on Kaggle to bypass PyG CPU-GPU serialization overheads
+        config.warmup_epochs = 12         # was 8 — more warmup budget before cosine decay
+        config.early_stopping_patience = 60  # was 40 — model needs 50+ epochs to escape NLL trap
+
+        # [R9-TRADING] Calibrate spread gate to normalized pred_std ≈ 0.07
+        # Old threshold of 0.15 blocked 99.5% of days; 0.04 is ~0.6σ of pred spread
+        config.spread_gate_threshold = 0.04   # was 0.15
+        config.confidence_gate_threshold = 1.2  # tighter uncertainty gate (was 1.5)
+
+        # [R9-SPEED]
         config.num_workers = 0
         config.pin_memory = True
         config.cudnn_benchmark = True
