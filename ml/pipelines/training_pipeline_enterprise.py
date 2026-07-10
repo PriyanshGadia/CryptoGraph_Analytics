@@ -266,6 +266,7 @@ class EnterpriseSTGCNModel(nn.Module):
 
         self.projection = nn.Linear(config.feature_dim, config.hidden_dim)
         self.proj_norm = nn.LayerNorm(config.hidden_dim)
+        self.proj_dropout = nn.Dropout(config.dropout)
 
         self.spatial_gat = SpatioTemporalGAT(
             config.hidden_dim,
@@ -370,6 +371,7 @@ class EnterpriseSTGCNModel(nn.Module):
         batched = batched.clone()
         x = F.relu(self.projection(batched.x))
         x = self.proj_norm(x)
+        x = self.proj_dropout(x)
         batched.x = x
 
         x = self.spatial_gat(batched, T=T, B=B)
@@ -931,17 +933,15 @@ class EnterpriseTrainer:
                         try:
                             import shutil
                             shutil.copy(str(ARTIFACTS_DIR / "best_model.pt"), str(shutil_target))
-                            log(f"Copied best model to {shutil_target}")
-                        except Exception as e:
-                            log(f"Failed to copy to top-level working (non-fatal): {e}")
+                        except Exception:
+                            pass
                     
                     root_shutil = workspace_root / "best_model.pt"
                     try:
                         import shutil
                         shutil.copy(str(ARTIFACTS_DIR / "best_model.pt"), str(root_shutil))
-                        log(f"Copied best model to repo root: {root_shutil}")
-                    except Exception as e:
-                        log(f"Failed to copy to repo root (non-fatal): {e}")
+                    except Exception:
+                        pass
             else:
                 self.patience_counter += 1
 
@@ -951,12 +951,13 @@ class EnterpriseTrainer:
 
             if self.rank == 0:
                 dt = time.time() - epoch_start
+                suffix = " | new best" if improved else ""
                 log(
                     f"Epoch {epoch:03d} | Train loss: {train_metrics['train_loss']:.4f} | "
                     f"Val Loss: {val_loss:.4f} | RMSE: {val_metrics.get('val_rmse', 0.0):.4f} | "
                     f"R2: {val_metrics.get('val_r2', 0.0):.4f} | "
                     f"patience: {self.patience_counter}/{self.config.early_stopping_patience} | "
-                    f"lr: {train_metrics['lr']:.2e} | time: {dt:.1f}s"
+                    f"lr: {train_metrics['lr']:.2e} | time: {dt:.1f}s{suffix}"
                 )
                 if epoch % 5 == 0 or improved:
                     self._check_prediction_variance(self.val_loader, "val")
@@ -1749,9 +1750,10 @@ def main():
         config.directional_loss_weight = 1.5
         
         # Regularization & Learning Rate to combat validation deterioration and speed up convergence
-        config.dropout = 0.30
-        config.weight_decay = 0.05
-        config.learning_rate = 1.5e-4
+        config.dropout = 0.50
+        config.weight_decay = 0.15
+        config.learning_rate = 8.0e-5
+        config.warmup_epochs = 5
         config.early_stopping_patience = 40
         
         # [R8-SPEED] Set num_workers=0 on Kaggle to bypass PyG CPU-GPU serialization overheads
