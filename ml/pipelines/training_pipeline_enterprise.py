@@ -217,10 +217,28 @@ class SAM(torch.optim.Optimizer):
 def graph_collate_fn(batch):
     from torch_geometric.data import Batch
     sequences = [item[0] for item in batch]
+    # verify sequence lengths are consistent and capture T, B
+    seq_lens = [len(seq) for seq in sequences]
+    if len(set(seq_lens)) != 1:
+        # helpful diagnostic for ragged batches
+        raise ValueError(f"Ragged sequences in collate_fn: lengths={seq_lens}")
+    T = seq_lens[0]
+    B = len(sequences)
     flat_graphs = []
     for seq in sequences:
         flat_graphs.extend(seq)
+
+    if len(flat_graphs) != T * B:
+        raise ValueError(
+            f"Collate produced {len(flat_graphs)} flattened graphs but expected T*B={T}*{B}={T*B}."
+            f" Sequence lengths: {seq_lens}"
+        )
+
     batched_graphs = Batch.from_data_list(flat_graphs)
+    # annotate metadata so downstream code can trust T/B
+    setattr(batched_graphs, "seq_len", T)
+    setattr(batched_graphs, "batch_size", B)
+
     targets = torch.stack([item[1] for item in batch], dim=0)
     masks = torch.stack([item[2] for item in batch], dim=0)
     return batched_graphs, targets, masks
@@ -307,6 +325,21 @@ class EnterpriseSTGCNModel(nn.Module):
             nn.Linear(config.hidden_dim // 2, 1),
         )
 
+        # Robust weight initialization to avoid dead/zero weights
+        def _init_weights(m):
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+            elif isinstance(m, nn.LayerNorm):
+                try:
+                    nn.init.ones_(m.weight)
+                    nn.init.zeros_(m.bias)
+                except Exception:
+                    pass
+
+        self.apply(_init_weights)
+
     def enable_mc_dropout(self):
         self.train()
         for m in self.modules():
@@ -325,8 +358,23 @@ class EnterpriseSTGCNModel(nn.Module):
 
         if isinstance(batch_sequences, Batch):
             batched = batch_sequences
-            T = self.config.lookback_days
-            B = batched.num_graphs // T
+            # prefer explicit metadata attached by collate_fn
+            if hasattr(batched, "seq_len") and hasattr(batched, "batch_size"):
+                T = int(getattr(batched, "seq_len"))
+                B = int(getattr(batched, "batch_size"))
+            else:
+                # fall back to config but validate divisibility
+                T = int(self.config.lookback_days)
+                if T <= 0:
+                    raise ValueError("Invalid lookback_days in config: must be >0")
+                if batched.num_graphs % T != 0:
+                    # diagnostic divisors to help debugging
+                    divisors = [d for d in range(1, min(128, batched.num_graphs) + 1) if batched.num_graphs % d == 0]
+                    raise ValueError(
+                        f"batched Batch missing seq metadata and config.lookback_days={T} does not divide "
+                        f"batched.num_graphs={batched.num_graphs}. Possible divisors: {divisors}."
+                    )
+                B = batched.num_graphs // T
             N_nodes = batched.num_nodes // batched.num_graphs
         else:
             B = len(batch_sequences)
@@ -1909,8 +1957,8 @@ def main():
         log(f"Run ID: {rid} | Artifacts: {run_dir}")
 
         try:
-            from app.db.database import SessionLocal
-            from app.db.models import Asset
+            from backend.app.db.database import SessionLocal
+            from backend.app.db.models import Asset
 
             db = SessionLocal()
             symbols = [a.symbol for a in db.query(Asset).all()]
@@ -2020,6 +2068,21 @@ def main():
             config, device, run_dir,
             is_distributed, rank, world_size, train_sampler,
         )
+
+        # Start training monitor in-process on rank 0 so Kaggle single-cell runs
+        # can still benefit from live monitoring and signals.
+        if rank == 0:
+            try:
+                import threading
+                from ml.pipelines.training_monitor import TrainingMonitor
+
+                monitor_log = Path("logs.txt")
+                monitor = TrainingMonitor(log_path=monitor_log, signal_dir=ARTIFACTS_DIR)
+                t = threading.Thread(target=monitor.run, kwargs={"poll_interval": 2.0}, daemon=True)
+                t.start()
+                log("Training monitor started in-thread (daemon) — signals → ml/artifacts")
+            except Exception as e:
+                log(f"Could not start in-process training monitor (non-fatal): {e}")
 
         trainer.fit()
 
