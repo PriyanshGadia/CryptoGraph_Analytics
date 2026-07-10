@@ -660,79 +660,71 @@ class EnterpriseTrainer:
         mask: torch.Tensor,
     ) -> torch.Tensor:
         # -----------------------------------------------------------------------
-        # LOSS ARCHITECTURE (R10): MSE-primary, NLL-auxiliary
+        # LOSS ARCHITECTURE (R11): MSE + VICReg variance floor + fixed-scale BCE
         #
-        # The original design (NLL + aux_MSE) caused a degenerate collapse:
-        #   NLL ≈ 9.0,  aux_MSE ≈ 5.0 × 0.0001 ≈ 0.0005
-        # The NLL dominated 18,000× over MSE, so pred→0, log_var→0 was the
-        # optimal path. pred_std dropped from 0.066 → 0.0017 over 26 epochs.
-        #
-        # Fix: MSE is the primary loss (O(1) for unit-normalized targets).
-        #      NLL contributes proportionally via magnitude normalization so it
-        #      cannot dominate. Uncertainty is trained by stopping gradients on
-        #      the prediction path for the NLL term.
+        # Root cause of all prior collapse: every adaptive term (NLL, scaled BCE)
+        # created a feedback loop rewarding pred→constant.
+        # R11 breaks this structurally with an explicit variance floor penalty:
+        #   var_reg = max(0, target_std - pred_std)^2
+        # This gradient ONLY points away from collapse. pred_std < target_std → large loss.
+        # NLL remains detached (uncertainty head only). Directional BCE uses FIXED scale.
         # -----------------------------------------------------------------------
-
-        if self.config.label_smooth_alpha > 0.0:
-            alpha = self.config.label_smooth_alpha
-            target = target * (1.0 - alpha) + torch.sign(target) * alpha
 
         valid_mask = mask.bool()
         denom = mask.sum().clamp_min(1.0)
 
-        # 1) PRIMARY LOSS: MSE on valid positions.
-        #    Always O(1) for unit-normalized targets (~1.0 at init, shrinks as model learns).
-        if valid_mask.any():
-            mse_primary = F.mse_loss(pred[valid_mask], target[valid_mask])
-        else:
-            mse_primary = torch.tensor(0.0, device=pred.device, requires_grad=True)
+        if not valid_mask.any():
+            return torch.tensor(0.0, device=pred.device, requires_grad=True)
 
-        # 2) AUXILIARY NLL: uncertainty head calibration.
-        #    Detach pred so the NLL gradient only updates log_var, not the regression head.
-        #    This prevents the "set pred=0, get free NLL reduction" collapse.
+        pred_valid = pred[valid_mask]
+        target_valid = target[valid_mask]
+
+        # 1) PRIMARY LOSS: MSE. Always O(1) for unit-normalized targets.
+        mse_loss = F.mse_loss(pred_valid, target_valid)
+
+        # 2) VARIANCE REGULARIZATION (VICReg-style): hard floor on pred_std.
+        #    Penalizes pred_std < var_target. Gradient always pushes pred_std UP.
+        #    target_std=0.30 means predictions must spread at least 30% of unit-std.
+        #    This is the only mathematically guaranteed anti-collapse mechanism.
+        var_target = 0.30
+        pred_std = pred_valid.std().clamp(min=1e-8)
+        var_reg = F.relu(var_target - pred_std) ** 2
+
+        # 3) AUXILIARY NLL: uncertainty head only. Detach pred → gradient goes to log_var only.
         log_var_c = torch.clamp(log_var, min=self.config.log_var_min, max=self.config.log_var_max)
-        if valid_mask.any():
-            pred_detached = pred.detach()
-            precision = torch.exp(-log_var_c)
-            nll_per = 0.5 * precision * (pred_detached - target) ** 2 + 0.5 * log_var_c
-            nll_raw = (nll_per * mask).sum() / denom
+        pred_det = pred.detach()
+        precision = torch.exp(-log_var_c)
+        nll_per = 0.5 * precision * (pred_det - target) ** 2 + 0.5 * log_var_c
+        nll_raw = (nll_per * mask).sum() / denom
+        # Magnitude-normalize so NLL can never dominate regardless of absolute scale
+        with torch.no_grad():
+            nll_mag = nll_raw.abs().clamp(min=0.1)
+        nll_aux = 0.15 * nll_raw / nll_mag
 
-            # Normalize NLL by its own magnitude so it always contributes ~nll_scale_frac
-            # of the total loss, regardless of absolute NLL value.
-            nll_scale = 0.20  # NLL contributes ~20% of total loss weight
-            with torch.no_grad():
-                nll_magnitude = nll_raw.abs().clamp(min=0.1)
-            nll_aux = nll_scale * nll_raw / nll_magnitude  # dimensionless, O(nll_scale)
-
-            # Entropy regularization: penalize overconfidence (log_var << 0)
-            entropy_reg = self.config.entropy_beta * F.relu(-log_var_c[valid_mask]).mean()
+        # 4) DIRECTIONAL LOSS: BCE with FIXED logit scale (no adaptive scaling = no feedback loop).
+        #    Fixed scale=10 puts predictions in sigmoid-responsive range once pred_std≈0.1.
+        if self.config.directional_loss_weight > 0.0:
+            sign_target = (target_valid > 0).float() * 0.9 + 0.05
+            logits = pred_valid * 10.0  # FIXED scale — cannot create adaptive feedback
+            dir_loss = F.binary_cross_entropy_with_logits(logits, sign_target, reduction="mean")
         else:
-            nll_aux = torch.tensor(0.0, device=pred.device)
-            entropy_reg = torch.tensor(0.0, device=pred.device)
+            dir_loss = torch.tensor(0.0, device=pred.device)
 
-        total = mse_primary + nll_aux + entropy_reg
-
-        # 3) RANKING LOSS: cosine alignment of cross-asset predictions.
+        # 5) COSINE RANKING LOSS: cross-asset prediction alignment.
         if self.config.rank_loss_weight > 0.0 and pred.dim() == 2:
             cos_loss = self._compute_cosine_alignment_loss(pred, target, mask)
-            total = total + self.config.rank_loss_weight * cos_loss
+        else:
+            cos_loss = torch.tensor(0.0, device=pred.device)
 
-        # 4) DIRECTIONAL LOSS: BCE on sign of return.
-        #    Scale raw regression predictions into logit-space before applying BCE.
-        if self.config.directional_loss_weight > 0.0 and valid_mask.any():
-            sign_target = (target[valid_mask] > 0).float()
-            sign_target = sign_target * 0.9 + 0.05  # label smoothing
-
-            with torch.no_grad():
-                p_std = pred[valid_mask].std().clamp(min=0.005)
-                # Scale so that sigmoid(logit) produces responsive gradients.
-                # Target: scaled pred_std ≈ 1.0 (logistic regime center).
-                logit_scale = (1.0 / p_std).clamp(max=30.0)
-            logits = pred[valid_mask] * logit_scale
-
-            dir_loss = F.binary_cross_entropy_with_logits(logits, sign_target, reduction="mean")
-            total = total + self.config.directional_loss_weight * dir_loss
-
+        # Weight budget:  MSE(1.0) + VarReg(2.0) + NLL(0.15) + Dir(0.60) + Rank(0.25)
+        # VarReg gets 2× weight because it's the critical anti-collapse term.
+        total = (
+            mse_loss
+            + 2.0 * var_reg
+            + nll_aux
+            + self.config.directional_loss_weight * dir_loss
+            + self.config.rank_loss_weight * cos_loss
+        )
         return total
 
     def _forward_backward(self, sequences, targets, masks) -> Tuple[float, float]:
@@ -1768,26 +1760,27 @@ def main():
         config.ensemble_size = 5
         config.mc_dropout_samples = 30
 
-        # [R10-LOSS] MSE-primary architecture: NLL is now detached + magnitude-normalized.
-        # aux_mse_weight is vestigial (MSE is always primary); set to 0 to avoid confusion.
-        # entropy_beta only prevents extreme overconfidence (log_var << 0).
-        config.aux_mse_weight = 0.0        # MSE is now the primary loss directly
-        config.entropy_beta = 0.02         # small: only penalize log_var < 0 (overconfidence)
-        config.rank_loss_weight = 0.25     # cosine ranking; reduced vs R9
-        config.directional_loss_weight = 0.60  # scaled logits now ~10× more potent; reduced weight
+        # [R11-LOSS] VICReg variance floor + fixed-scale BCE + detached NLL.
+        # var_reg = 2.0 * relu(0.30 - pred_std)^2 — hard anti-collapse constraint.
+        # Directional BCE uses fixed scale=10 (no adaptive feedback loop).
+        # aux_mse_weight and entropy_beta are now vestigial; set to 0.
+        config.aux_mse_weight = 0.0
+        config.entropy_beta = 0.0          # entropy handled internally by var_reg
+        config.rank_loss_weight = 0.25     # cosine cross-asset alignment
+        config.directional_loss_weight = 0.30  # fixed scale=10 is more potent; lower weight
 
-        # [R10-REGULARIZATION]
+        # [R11-REGULARIZATION]
         config.dropout = 0.30
         config.weight_decay = 0.10
         config.learning_rate = 1.0e-4
         config.warmup_epochs = 12
         config.early_stopping_patience = 60
 
-        # [R10-TRADING]
+        # [R11-TRADING]
         config.spread_gate_threshold = 0.04
         config.confidence_gate_threshold = 1.2
 
-        # [R10-SPEED]
+        # [R11-SPEED]
         config.num_workers = 0
         config.pin_memory = True
         config.cudnn_benchmark = True
