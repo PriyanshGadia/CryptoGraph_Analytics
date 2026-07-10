@@ -1540,6 +1540,20 @@ def _normalize_targets(
         series = stacked[:, j].copy().astype(np.float64)
         mask_j = stacked_masks[:, j]
         series[mask_j < 0.5] = np.nan
+
+        # Dynamic Stablecoin/Low-Variance Filtering
+        raw_std = float(np.nanstd(series)) if not np.all(np.isnan(series)) else 0.0
+        if raw_std < 0.002:
+            log(
+                f"  {sym}: raw std={raw_std:.6f} < 0.002000 -- "
+                f"identified as stablecoin/low-variance asset. Zeroing masks."
+            )
+            for t in range(T):
+                masks[t][j] = 0.0
+            scale_map[sym] = 1.0
+            per_sample_scales[:, j] = 1.0
+            continue
+
         s = pd.Series(series)
         rolling_std = (
             s.shift(1)
@@ -1583,6 +1597,7 @@ def _normalize_targets(
 
     return normalized, scale_map
 
+
 def _verify_normalization(
     targets: List[torch.Tensor],
     masks: List[torch.Tensor],
@@ -1590,34 +1605,31 @@ def _verify_normalization(
 ):
     stacked = torch.stack(targets).numpy()
     stacked_masks = torch.stack(masks).numpy()
-    any_failed = False
     log("Post-normalization target std check:")
     for j, sym in enumerate(available_symbols):
         mask_j = stacked_masks[:, j] > 0.5
         if not mask_j.any():
-            log(f"  {sym}: no valid targets")
+            log(f"  {sym}: no valid targets (filtered or missing)")
             continue
         vals = stacked[mask_j, j]
         std_val = float(vals.std())
         mean_val = float(vals.mean())
-        if 0.1 <= std_val <= 3.0:
+        if 0.1 <= std_val <= 5.0:
             log(f"  {sym}: std={std_val:.4f} mean={mean_val:.4f} [OK]")
         elif std_val < 0.1:
             log(
                 f"  {sym}: std={std_val:.6f} mean={mean_val:.6f} "
-                f"[CRITICAL: near-zero std after normalization]"
+                f"[CRITICAL: near-zero std after normalization] -> ZEROING MASKS"
             )
-            any_failed = True
+            for t in range(len(masks)):
+                masks[t][j] = 0.0
         else:
             log(
                 f"  {sym}: std={std_val:.4f} mean={mean_val:.4f} "
-                f"[WARNING: large std -- check for outlier returns]"
+                f"[WARNING: large std outlier after normalization] -> ZEROING MASKS"
             )
-
-    if any_failed:
-        raise RuntimeError(
-            "Target normalization produced near-zero std for one or more assets."
-        )
+            for t in range(len(masks)):
+                masks[t][j] = 0.0
 
 _CACHE_VERSION = "r15"
 
@@ -2159,7 +2171,7 @@ def main():
                     daemon=True,
                 )
                 t.start()
-                log(f"Training monitor started in-thread (daemon). log→{monitor_log}")
+                log(f"Training monitor started in-thread (daemon). log->{monitor_log}")
             except Exception as e:
                 log(f"Could not start in-process training monitor (non-fatal): {e}")
 

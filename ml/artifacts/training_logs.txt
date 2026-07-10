@@ -1,0 +1,19 @@
+[2026-07-10 21:00:22 UTC] Could not start in-process training monitor (non-fatal): 'charmap' codec can't encode character '\u2192' in position 74: character maps to <undefined>
+[2026-07-10 21:00:22 UTC] ============================================================
+[2026-07-10 21:00:22 UTC] ENTERPRISE ST-GCN TRAINING
+[2026-07-10 21:00:22 UTC] Distributed: False | world_size=1 | device=cpu
+[2026-07-10 21:00:22 UTC] Model params: 25,346
+[2026-07-10 21:00:22 UTC] Train batches/rank: 28 | Val: 4 | Test: 4
+[2026-07-10 21:00:22 UTC] Starting/resuming at epoch: 1
+[2026-07-10 21:00:22 UTC] SGDR warm restarts: T_0=20ep, T_mult=2 | SWA starts at epoch 35
+[2026-07-10 21:00:22 UTC] ============================================================
+[2026-07-10 21:03:56 UTC] Epoch 1: pred_std=0.0000 < 0.15; skipping collapsed snapshot.
+[2026-07-10 21:04:30 UTC] Epoch 001 | Train loss: 47.8486 | Val Loss: 13.2379 | RMSE: 3.4045 | R2: -0.4900 | patience: 0/5 | lr: 1.90e-05 | time: 248.7s | new best
+[2026-07-10 21:04:40 UTC] [val diagnostic] pred_std=0.474613 | mean_pred_uncertainty=0.077665
+[2026-07-10 21:08:24 UTC] Epoch 002 | Train loss: 45.8042 | Val Loss: 13.2391 | RMSE: 3.4033 | R2: -0.4889 | patience: 1/5 | lr: 2.80e-05 | time: 223.8s
+[2026-07-10 21:08:32 UTC] [val diagnostic] pred_std=0.488928 | mean_pred_uncertainty=0.074518
+[2026-07-10 21:09:07 UTC] Epoch 1: pred_std=0.0000 < 0.15; skipping collapsed snapshot.
+[2026-07-10 21:09:44 UTC] Epoch 001 | Train loss: 47.8486 | Val Loss: 13.2379 | RMSE: 3.4045 | R2: -0.4900 | patience: 0/5 | lr: 1.90e-05 | time: 703.3s | new best
+[2026-07-10 21:11:02 UTC] [val diagnostic] pred_std=0.474613 | mean_pred_uncertainty=0.077665
+[2026-07-10 21:12:16 UTC] Epoch 003 | Train loss: 43.3990 | Val Loss: 13.0408 | RMSE: 3.3754 | R2: -0.4646 | patience: 0/5 | lr: 3.70e-05 | time: 223.8s | new best
+[2026-07-10 21:12:20 UTC] [val diagnostic] pred_std=0.486598 | mean_pred_uncertainty=0.078159

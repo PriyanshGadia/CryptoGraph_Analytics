@@ -149,7 +149,6 @@ class FeatureStore:
             "RSR":   "RSR-USD",
             "OCEAN": "OCEAN-USD",
             "AUDIO": "AUDIO-USD",
-            "MEW":   "MEW11638-USD",  # yfinance uses CoinGecko ID for this
         }
         yf_map = {s: _TICKER_OVERRIDES.get(s, f"{s}-USD") for s in assets}
 

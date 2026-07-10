@@ -28,7 +28,7 @@ _RAW_ASSET_SYMBOLS = [
 
     # Tier 5 — Meme / Momentum (12)
     "DOGE", "SHIB", "PEPE", "WIF", "BONK", "FLOKI",
-    "CAKE", "1INCH", "ANKR", "MEW", "RSR", "OCEAN",
+    "CAKE", "1INCH", "ANKR", "BAT", "RSR", "OCEAN",
 
     # Tier 6 — AI / DePIN (8)
     "FET", "RENDER", "AUDIO", "AKT", "WLD", "GRT", "IO", "HNT",

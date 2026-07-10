@@ -6,8 +6,8 @@ It tails the log file, computes rolling convergence analytics, detects
 overfitting in real-time, and writes signal files that the trainer polls:
 
     Signal files (written to ARTIFACTS_DIR / ml/artifacts/):
-        lr_reset.flag       → trainer resets LR to learning_rate and clears patience
-        stop_training.flag  → trainer stops gracefully at next epoch boundary
+        lr_reset.flag       -> trainer resets LR to learning_rate and clears patience
+        stop_training.flag  -> trainer stops gracefully at next epoch boundary
 
 Usage (Kaggle):
     import subprocess
@@ -67,7 +67,7 @@ OVERFIT_WINDOW        = 8    # epochs to measure val trend
 OVERFIT_SLOPE_THRESH  = 0.002  # val_loss rising this much/epoch = overfit signal
 STAGNATION_WINDOW     = 15   # epochs of no improvement before LR-reset signal
 LR_RESET_COOLDOWN     = 20   # min epochs between successive LR resets
-DIVERGE_THRESH        = 0.10  # val_loss > best + this → hard diverge flag
+DIVERGE_THRESH        = 0.10  # val_loss > best + this -> hard diverge flag
 PRINT_INTERVAL_S      = 5    # seconds between status reprints (when no new epoch)
 
 class TrainingMonitor:
@@ -117,7 +117,7 @@ class TrainingMonitor:
     def _write_signal(self, name: str, reason: str):
         path = self.signal_dir / name
         path.write_text(reason)
-        print(YELLOW(f"  [monitor] ⚡ Signal written: {name} — {reason}"))
+        print(YELLOW(f"  [monitor]  Signal written: {name} — {reason}"))
 
     def _clear_signal(self, name: str):
         path = self.signal_dir / name
@@ -212,31 +212,31 @@ class TrainingMonitor:
         dgap  = analysis["diverge_gap"]
 
         color = GREEN if sev == "ok" else (YELLOW if sev == "warn" else RED)
-        best_tag = GREEN(" ★ BEST") if is_best else ""
+        best_tag = GREEN(" * BEST") if is_best else ""
 
         # Pred std bar (0.0 to 0.5 range)
         pstd_str = ""
         if pred_std is not None:
             bar_len = int(min(pred_std / 0.5, 1.0) * 20)
-            bar = "█" * bar_len + "░" * (20 - bar_len)
+            bar = "#" * bar_len + "-" * (20 - bar_len)
             pstd_col = GREEN if pred_std >= 0.20 else (YELLOW if pred_std >= 0.10 else RED)
             pstd_str = f"  pred_std [{pstd_col(f'{pred_std:.3f}')}] [{bar}]"
 
         lines = [
             "",
-            BOLD(f"  ╔══ Epoch {ep:03d} ══════════════════════════════════════════"),
-            f"  ║  Train: {tl:.4f}  │  Val: {color(f'{vl:.4f}')}  │  R²: {r2:+.4f}{best_tag}",
-            f"  ║  LR: {lr:.2e}  │  Patience: {pat}/{maxp}  │  Overfit gap: {gap:+.4f}",
-            f"  ║  Val slope ({OVERFIT_WINDOW}ep): {slope:+.5f}/ep  │  Δ from best: {dgap:+.4f}",
+            BOLD(f"  +-- Epoch {ep:03d} ------------------------------------------"),
+            f"  |  Train: {tl:.4f}  │  Val: {color(f'{vl:.4f}')}  │  R²: {r2:+.4f}{best_tag}",
+            f"  |  LR: {lr:.2e}  │  Patience: {pat}/{maxp}  │  Overfit gap: {gap:+.4f}",
+            f"  |  Val slope ({OVERFIT_WINDOW}ep): {slope:+.5f}/ep  │  Δ from best: {dgap:+.4f}",
         ]
         if pstd_str:
-            lines.append(f"  ║{pstd_str}")
+            lines.append(f"  |{pstd_str}")
 
         if analysis["actions"]:
             for a in analysis["actions"]:
-                lines.append(f"  ║  " + YELLOW(f"⚡ Action queued: {a}"))
+                lines.append(f"  |  " + YELLOW(f" Action queued: {a}"))
 
-        lines.append(BOLD("  ╚══════════════════════════════════════════════════════"))
+        lines.append(BOLD("  +------------------------------------------------------"))
         print("\n".join(lines))
         self._last_print = time.time()
 
@@ -248,13 +248,13 @@ class TrainingMonitor:
         if len(self.epochs) >= 3:
             recent_vl = [e["val_loss"] for e in self.epochs[-3:]]
             if recent_vl[-1] < recent_vl[0]:
-                trend = GREEN("↓ improving")
+                trend = GREEN("v improving")
             elif recent_vl[-1] > recent_vl[0] + 0.01:
-                trend = RED("↑ diverging")
+                trend = RED("^ diverging")
             else:
-                trend = YELLOW("→ stagnant")
+                trend = YELLOW("-> stagnant")
         else:
-            trend = DIM("…")
+            trend = DIM("...")
         
         pred_std_now = self.pred_stds[-1] if self.pred_stds else None
         pstd_display = f"{pred_std_now:.3f}" if pred_std_now else "n/a"
@@ -269,12 +269,12 @@ class TrainingMonitor:
     # ─── Main loop ────────────────────────────────────────────────────────────
 
     def run(self, poll_interval: float = 2.0):
-        print(CYAN(BOLD("\n  ╔═══════════════════════════════════════════════════╗")))
-        print(CYAN(BOLD(  "  ║   CryptoGraph STGCN Training Monitor  (R12)      ║")))
+        print(CYAN(BOLD("\n  +---------------------------------------------------+")))
+        print(CYAN(BOLD(  "  |   CryptoGraph STGCN Training Monitor  (R12)      |")))
 
-        print(CYAN(BOLD(  "  ╚═══════════════════════════════════════════════════╝")))
+        print(CYAN(BOLD(  "  +---------------------------------------------------+")))
         print(f"  Watching: {self.log_path}")
-        print(f"  Signals → {self.signal_dir}")
+        print(f"  Signals -> {self.signal_dir}")
         print(f"  Overfitting detection: slope > {OVERFIT_SLOPE_THRESH}/ep over {OVERFIT_WINDOW} epochs")
         print(f"  LR reset cooldown: {LR_RESET_COOLDOWN} epochs\n")
 
@@ -349,7 +349,7 @@ class TrainingMonitor:
                 else:
                     # No new data — print keepalive if TTY
                     if time.time() - self._last_print > PRINT_INTERVAL_S and sys.stdout.isatty():
-                        print(DIM(f"  [monitor] waiting… best={self.best_val:.4f}@ep{self.best_epoch}"),
+                        print(DIM(f"  [monitor] waiting... best={self.best_val:.4f}@ep{self.best_epoch}"),
                               end="\r", flush=True)
                     time.sleep(poll_interval)
 
