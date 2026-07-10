@@ -1990,7 +1990,7 @@ def main():
         config.cudnn_benchmark = True
         config.use_sam = False              # DISABLED: was causing 47s/ep; target <18s
         config.use_amp = True               # Re-enabled: safe without SAM
-        config.batch_size = 32              # Was 16; 32 fills T4 better, fewer steps/epoch
+        config.batch_size = 16              # Reduced from 32 to prevent CUDA OOM under hidden_dim=64 and lookback=20
         config.history_days = 3650
     else:
         log("Detected LOCAL environment. Running in i3 OPTIMIZED LOW-RESOURCE mode.")
