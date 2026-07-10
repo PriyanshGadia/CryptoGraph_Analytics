@@ -697,12 +697,8 @@ class EnterpriseTrainer:
             sign_target = (target[valid_mask] > 0).float()
             sign_target = sign_target * 0.9 + 0.05
             
-            pred_valid = pred[valid_mask]
-            pred_std = pred_valid.std()
-            if pred_std > 1e-6:
-                logits = pred_valid / pred_std
-            else:
-                logits = pred_valid
+            # Use raw predictions directly as logits to prevent 1/pred_std gradient explosion
+            logits = pred[valid_mask]
                 
             dir_loss = F.binary_cross_entropy_with_logits(
                 logits, sign_target, reduction="mean"
@@ -1745,22 +1741,22 @@ def main():
         config.mc_dropout_samples = 30
         
         # Loss Weight Adjustments to prioritize ranking and directional sign forecasting
-        config.aux_mse_weight = 1.5
-        config.rank_loss_weight = 0.8
-        config.directional_loss_weight = 1.5
+        config.aux_mse_weight = 1.0
+        config.rank_loss_weight = 0.15
+        config.directional_loss_weight = 0.40
         
         # Regularization & Learning Rate to combat validation deterioration and speed up convergence
-        config.dropout = 0.50
+        config.dropout = 0.35
         config.weight_decay = 0.15
-        config.learning_rate = 8.0e-5
-        config.warmup_epochs = 5
+        config.learning_rate = 1.0e-4
+        config.warmup_epochs = 8
         config.early_stopping_patience = 40
         
         # [R8-SPEED] Set num_workers=0 on Kaggle to bypass PyG CPU-GPU serialization overheads
         config.num_workers = 0
         config.pin_memory = True
         config.cudnn_benchmark = True
-        config.use_sam = False
+        config.use_sam = True
         config.history_days = 3650
     else:
         log("Detected LOCAL environment. Running in i3 OPTIMIZED LOW-RESOURCE mode.")
