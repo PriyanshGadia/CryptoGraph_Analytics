@@ -1477,8 +1477,8 @@ def _determine_surviving_dates(
         date_sets[s] = set(proc_features[s].index)
 
     surviving = []
-    current_ts = pd.Timestamp(start_dt).tz_convert("UTC")
-    end_ts = pd.Timestamp(end_dt).tz_convert("UTC")
+    current_ts = pd.Timestamp(start_dt).tz_localize("UTC")
+    end_ts = pd.Timestamp(end_dt).tz_localize("UTC")
     one_day = pd.Timedelta(days=1)
     n_symbols = len(symbols)
 
