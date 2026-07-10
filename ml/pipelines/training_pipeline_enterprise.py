@@ -1707,9 +1707,37 @@ def _build_dataset_from_scratch(config: TrainingConfig, symbols: List[str]) -> T
     end_date = now.strftime("%Y-%m-%d")
 
     log(f"Loading features from {start_date} to {end_date}...")
-    features = store.load_node_features(
-        start_date, end_date, symbols, expected_features=config.feature_dim
-    )
+
+    try:
+        features = store.load_node_features(
+            start_date, end_date, symbols, expected_features=config.feature_dim
+        )
+    except Exception as e:
+        # Auto-seed DB schema/data if SQLite is missing core tables like `assets`.
+        # This prevents silent yfinance fallback to a tiny symbol subset.
+        msg = str(e).lower()
+        if "no such table" in msg and "assets" in msg:
+            log(
+                f"[FeatureStore] DB assets table missing; seeding TOP-100 assets and retrying. Error={e}"
+            )
+            try:
+                import subprocess
+                seed_cmd = [
+                    sys.executable,
+                    "-m",
+                    "ml.scripts.seed_assets_top100",
+                    "--count",
+                    "100",
+                ]
+                subprocess.run(seed_cmd, check=True, capture_output=True, text=True)
+            except Exception as seed_e:
+                log(f"[FeatureStore] Auto-seed failed (non-fatal): {seed_e}", force=True)
+            # Retry exactly once
+            features = store.load_node_features(
+                start_date, end_date, symbols, expected_features=config.feature_dim
+            )
+        else:
+            raise
 
     available_symbols = [
         s for s in symbols if s in features and not features[s].empty
@@ -1969,19 +1997,12 @@ def main():
 
         log(f"Run ID: {rid} | Artifacts: {run_dir}")
 
-        symbols = [
-            "BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "AVAX", "LINK", "DOT",
-            "MATIC", "UNI", "BCH", "LTC", "NEAR", "APT", "ICP", "STX", "FIL", "ATOM",
-            "XMR", "AR", "HBAR", "VET", "MKR", "INJ", "GRT", "OP", "THETA", "LDO",
-            "FET", "FTM", "TAO", "TIA", "SEI", "SUI", "PYTH", "JUP", "GALA", "AAVE",
-            "ALGO", "SAND", "EGLD", "QNT", "SNX", "AXS", "CHZ", "MANA", "MINA", "DYDX",
-            "TRX", "XLM", "SHIB", "TON", "PEPE", "WIF", "IMX", "RNDR", "JASMY", "ONDO",
-            "PENDLE", "ENS", "ENA", "STRK", "EIGEN", "IO", "ATH", "SAFE", "CRV", "LRC",
-            "KAVA", "FLOW", "EOS", "XTZ", "ZEC", "NEO", "QTUM", "IOTA", "ZIL", "ONE",
-            "HOT", "BAT", "ENJ", "ANKR", "RVN", "BTT", "LUNA", "USTC", "LUNC", "GMT",
-            "APE", "GMX", "DYM", "ALT", "MANTA", "RON", "PIXEL", "PORTAL", "AXL", "METIS"
-        ]
-        log(f"Assets: {symbols}")
+        # Canonical 100-symbol list is maintained in a single place so the
+        # DB seed, FeatureStore asset loading, and training are consistent.
+        from ml.scripts.seed_assets_top100 import TOP_100_SYMBOLS
+
+        symbols = list(TOP_100_SYMBOLS)
+        log(f"Assets: {symbols} (n={len(symbols)})")
 
         (
             all_graphs,
