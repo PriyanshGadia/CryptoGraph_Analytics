@@ -1741,11 +1741,11 @@ def main():
         config.ensemble_size = 5
         config.mc_dropout_samples = 30
         
-        # Regularization & Learning Rate to combat validation deterioration
-        config.dropout = 0.50
-        config.weight_decay = 0.1
-        config.learning_rate = 5e-5
-        config.early_stopping_patience = 60
+        # Regularization & Learning Rate to combat validation deterioration and speed up convergence
+        config.dropout = 0.30
+        config.weight_decay = 0.05
+        config.learning_rate = 1.5e-4
+        config.early_stopping_patience = 40
         
         # [R8-SPEED] Set num_workers=0 on Kaggle to bypass PyG CPU-GPU serialization overheads
         config.num_workers = 0
