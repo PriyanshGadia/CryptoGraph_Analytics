@@ -1031,7 +1031,9 @@ class EnterpriseTrainer:
         for entry in ranked:
             path = entry[2]
             try:
-                models.append(EnterpriseSTGCNModel.load(path, map_location=str(self.device)))
+                m_loaded = EnterpriseSTGCNModel.load(path, map_location=str(self.device))
+                m_loaded.to(self.device)
+                models.append(m_loaded)
             except Exception as e:
                 log(f"Failed to load snapshot {path} for ensembling: {e}")
 
