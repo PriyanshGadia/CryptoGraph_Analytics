@@ -237,7 +237,7 @@ def graph_collate_fn(batch):
     batched_graphs = Batch.from_data_list(flat_graphs)
     # annotate metadata so downstream code can trust T/B
     setattr(batched_graphs, "seq_len", T)
-    setattr(batched_graphs, "batch_size", B)
+    setattr(batched_graphs, "seq_batch_size", B)
 
     targets = torch.stack([item[1] for item in batch], dim=0)
     masks = torch.stack([item[2] for item in batch], dim=0)
@@ -359,9 +359,9 @@ class EnterpriseSTGCNModel(nn.Module):
         if isinstance(batch_sequences, Batch):
             batched = batch_sequences
             # prefer explicit metadata attached by collate_fn
-            if hasattr(batched, "seq_len") and hasattr(batched, "batch_size"):
+            if hasattr(batched, "seq_len") and hasattr(batched, "seq_batch_size"):
                 T = int(getattr(batched, "seq_len"))
-                B = int(getattr(batched, "batch_size"))
+                B = int(getattr(batched, "seq_batch_size"))
             else:
                 # fall back to config but validate divisibility
                 T = int(self.config.lookback_days)
@@ -2077,6 +2077,12 @@ def main():
                 from ml.pipelines.training_monitor import TrainingMonitor
 
                 monitor_log = Path("logs.txt")
+                if not monitor_log.exists():
+                    for parent in [Path(".."), Path("../.."), Path("../../..")]:
+                        candidate = parent / "logs.txt"
+                        if candidate.exists():
+                            monitor_log = candidate
+                            break
                 monitor = TrainingMonitor(log_path=monitor_log, signal_dir=ARTIFACTS_DIR)
                 t = threading.Thread(target=monitor.run, kwargs={"poll_interval": 2.0}, daemon=True)
                 t.start()
@@ -2135,8 +2141,9 @@ def main():
                     log(f"Failed to compute permutation feature importance: {e}")
 
             try:
-                from app.db.database import SessionLocal, Base, engine
-                from app.db.models import ModelRegistry
+                # /app is present in /backend
+                from backend.app.db.database import SessionLocal, Base, engine
+                from backend.app.db.models import ModelRegistry
 
                 Base.metadata.create_all(bind=engine)
                 db = SessionLocal()
