@@ -1969,23 +1969,18 @@ def main():
 
         log(f"Run ID: {rid} | Artifacts: {run_dir}")
 
-        try:
-            from backend.app.db.database import SessionLocal
-            from backend.app.db.models import Asset
-
-            db = SessionLocal()
-            symbols = [a.symbol for a in db.query(Asset).all()]
-            db.close()
-            if not symbols:
-                raise ValueError("DB returned empty symbol list")
-        except Exception as e:
-            log(f"DB symbol lookup failed ({e}); using fallback symbol list.")
-            symbols = [
-                # Institutional Large Cap Utility & Layer-1 Chains (No noisy micro-caps/memes)
-                "BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", "LTC", "BCH", "LINK",
-                "AVAX", "DOT", "MATIC", "NEAR", "SUI", "APT", "ICP", "STX", "FTM", "ATOM",
-                "UNI", "AAVE", "LDO", "MKR", "GRT"
-            ]
+        symbols = [
+            "BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "AVAX", "LINK", "DOT",
+            "MATIC", "UNI", "BCH", "LTC", "NEAR", "APT", "ICP", "STX", "FIL", "ATOM",
+            "XMR", "AR", "HBAR", "VET", "MKR", "INJ", "GRT", "OP", "THETA", "LDO",
+            "FET", "FTM", "TAO", "TIA", "SEI", "SUI", "PYTH", "JUP", "GALA", "AAVE",
+            "ALGO", "SAND", "EGLD", "QNT", "SNX", "AXS", "CHZ", "MANA", "MINA", "DYDX",
+            "TRX", "XLM", "SHIB", "TON", "PEPE", "WIF", "IMX", "RNDR", "JASMY", "ONDO",
+            "PENDLE", "ENS", "ENA", "STRK", "EIGEN", "IO", "ATH", "SAFE", "CRV", "LRC",
+            "KAVA", "FLOW", "EOS", "XTZ", "ZEC", "NEO", "QTUM", "IOTA", "ZIL", "ONE",
+            "HOT", "BAT", "ENJ", "ANKR", "RVN", "BTT", "LUNA", "USTC", "LUNC", "GMT",
+            "APE", "GMX", "DYM", "ALT", "MANTA", "RON", "PIXEL", "PORTAL", "AXL", "METIS"
+        ]
         log(f"Assets: {symbols}")
 
         (
