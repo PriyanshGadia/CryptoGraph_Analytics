@@ -71,10 +71,12 @@ DIVERGE_THRESH        = 0.40  # val_loss > best + this -> hard diverge flag
 PRINT_INTERVAL_S      = 5    # seconds between status reprints (when no new epoch)
 
 class TrainingMonitor:
-    def __init__(self, log_path: Path, signal_dir: Path, tail_from_last_run: bool = True):
+    def __init__(self, log_path: Path, signal_dir: Path, tail_from_last_run: bool = True,
+                 warmup_epochs: int = 10):
         self.log_path   = log_path
         self.signal_dir = signal_dir
         self.signal_dir.mkdir(parents=True, exist_ok=True)
+        self.warmup_epochs = warmup_epochs
 
         # Clear stale signals from previous runs
         for flag in ["lr_reset.flag", "stop_training.flag"]:
@@ -160,6 +162,10 @@ class TrainingMonitor:
         if not (val_loss == val_loss and val_loss != float("inf") and val_loss != float("-inf")):
             actions.append("STOP")
             severity = "error"
+        elif ep <= self.warmup_epochs:
+            # During warmup the LR is still ramping up — val loss fluctuations are expected.
+            # Never emit signals here; let the trainer finish its warmup phase.
+            pass
         else:
             # 1. Overfitting (val rising while train stable/falling)
             if (len(vl_list) >= OVERFIT_WINDOW

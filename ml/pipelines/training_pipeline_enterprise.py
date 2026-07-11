@@ -664,6 +664,7 @@ class EnterpriseTrainer:
         self.history: Dict[str, list] = defaultdict(list)
         self.run_start_time = time.time()
         self._last_pred_std: float = 0.0  # updated by _check_prediction_variance
+        self._lr_reset_epoch: int = -999  # epoch of last LR_RESET, for snapshot gate bypass
 
 
         self._maybe_resume()
@@ -772,8 +773,21 @@ class EnterpriseTrainer:
         lr_reset_flag  = signal_dir / "lr_reset.flag"
         stop_flag      = signal_dir / "stop_training.flag"
 
+        warmup_ep = getattr(self.config, 'warmup_epochs', 10)
+
+        # Consume and discard any signals written during warmup — they reflect normal
+        # LR ramp noise, not model divergence. The trainer must finish warmup first.
+        if epoch <= warmup_ep:
+            for flag in [lr_reset_flag, stop_flag]:
+                if flag.exists():
+                    reason = flag.read_text().strip()
+                    flag.unlink(missing_ok=True)
+                    log(f"[monitor] Warmup epoch {epoch}: discarding monitor signal '{flag.name}' | {reason}")
+            return ""
+
         if stop_flag.exists():
             reason = stop_flag.read_text().strip()
+            stop_flag.unlink(missing_ok=True)
             log(f"[monitor] STOP signal received: {reason}")
             return "STOP"
 
@@ -789,6 +803,12 @@ class EnterpriseTrainer:
                     if "model_state_dict" in checkpoint:
                         self.raw_model.load_state_dict(checkpoint["model_state_dict"])
                         log(f"[monitor] LR_RESET: reloaded best model weights from {best_model_path.name}")
+                        # CRITICAL: reset Adam first/second moment estimates so stale
+                        # momentum from diverged weights does not corrupt the new trajectory.
+                        self.optimizer.state.clear()
+                        if self.scaler is not None:
+                            self.scaler = torch.amp.GradScaler("cuda")
+                        log(f"[monitor] LR_RESET: optimizer state cleared (Adam momentum reset).")
                 except Exception as e:
                     log(f"[monitor] LR_RESET: failed to reload best model (non-fatal): {e}")
 
@@ -808,6 +828,7 @@ class EnterpriseTrainer:
                         s.base_lrs = [new_lr] * len(s.base_lrs)
 
             self.patience_counter = 0  # reset patience to 0 to start fresh
+            self._lr_reset_epoch = epoch  # track for snapshot gate bypass
             log(f"[monitor] LR_RESET at epoch {epoch}: lr decayed {current_lr:.2e} → {new_lr:.2e} | {reason}")
             return "LR_RESET"
 
@@ -820,8 +841,13 @@ class EnterpriseTrainer:
             log(f"Epoch {epoch}: val_loss is not finite; skipping snapshot.")
             return
         # FIX(R11): Never gate on pred_std during warmup — structural low pred_std is expected.
+        # FIX(R13): Skip the pred_std < 0.20 gate for 5 epochs after an LR_RESET event, since the
+        # model is freshly restored to best weights and pred_std being low is an artifact of the
+        # weight reload, not a real collapse.
         warmup_ep = getattr(self.config, 'warmup_epochs', 10)
-        if epoch > warmup_ep and hasattr(self, '_last_pred_std') and self._last_pred_std < 0.20:
+        lr_reset_ep = getattr(self, '_lr_reset_epoch', -999)
+        in_lr_reset_cooldown = (epoch - lr_reset_ep) <= 5
+        if epoch > warmup_ep and not in_lr_reset_cooldown and hasattr(self, '_last_pred_std') and self._last_pred_std < 0.20:
             log(f"Epoch {epoch}: pred_std={self._last_pred_std:.4f} < 0.20; skipping collapsed snapshot.")
             return
         # Skip snapshots with very poor R2 after epoch 30
@@ -2169,8 +2195,11 @@ def main():
         # Reduce batch_size to 4 and scale gradient_accumulation_steps to 8.
         # This keeps the effective batch size at 64 (4 * 8 = 32 per GPU, 64 total across 2 GPUs)
         # while cutting GPU activation memory usage by 4x.
-        config.batch_size = 4
-        config.gradient_accumulation_steps = 8
+        # Batch size 8 with grad_accum=4 gives effective batch 64 and halves step count vs
+        # batch_size=4/accum=8. Pre-collated batches have no runtime Batch.from_data_list cost,
+        # so the OOM risk from batch_size=4 is gone.
+        config.batch_size = 8
+        config.gradient_accumulation_steps = 4
         config.num_workers = 4              # More workers to saturate 30GB RAM bus
         config.target_col = "returns_5d"
         config.forecast_horizon = 5
@@ -2353,6 +2382,7 @@ def main():
                 monitor = TrainingMonitor(
                     log_path=monitor_log,
                     signal_dir=ARTIFACTS_DIR,
+                    warmup_epochs=config.warmup_epochs,
                 )
                 t = threading.Thread(
                     target=monitor.run,
