@@ -32,6 +32,9 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
 warnings.filterwarnings("ignore")
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+# FIX(R11-SPEED): Override torchrun's OMP_NUM_THREADS=1 default — allows collate workers
+# to use 4 threads each for Batch.from_data_list() (Kaggle has 4 CPU cores/process).
+os.environ.setdefault("OMP_NUM_THREADS", "4")
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
@@ -595,25 +598,24 @@ class EnterpriseTrainer:
                 weight_decay=config.weight_decay,
             )
 
-        # SGDR: cosine warm restarts — resets LR every T_0 epochs, doubling period each cycle.
-        # This naturally escapes overfitting basins without needing the monitor.
-        # T_0=20, T_mult=2 → restarts at epoch 20, 60, 140 …
-        warmup_steps = max(1, config.warmup_epochs * max(1, len(train_loader)))
+        # FIX(R11-LR): Per-EPOCH scheduler. T_0=20 means 20 EPOCH restarts, not 20×steps.
+        # Previously T_0=20*steps_per_epoch and stepped every batch → SGDR completed a
+        # "20-epoch" restart in ~9 minutes (step 20), causing wild LR oscillation.
+        # Now: warmup over config.warmup_epochs epochs, then SGDR T_0=20 epochs.
         warmup_sched = LinearLR(
-            self.optimizer, start_factor=0.1, end_factor=1.0, total_iters=warmup_steps
+            self.optimizer, start_factor=0.1, end_factor=1.0,
+            total_iters=max(1, config.warmup_epochs),  # epochs, not steps
         )
-        # After warmup: SGDR with T_0=20 epochs × batches_per_epoch steps
-        steps_per_epoch = max(1, len(train_loader))
         sgdr_sched = CosineAnnealingWarmRestarts(
             self.optimizer,
-            T_0=max(1, 20 * steps_per_epoch),   # reset every 20 epochs
-            T_mult=2,                             # double period each cycle
+            T_0=20,      # reset every 20 EPOCHS (correct semantics for per-epoch step())
+            T_mult=2,    # double period each cycle → restarts at ep20, 60, 140…
             eta_min=5e-6,
         )
         self.scheduler = SequentialLR(
             self.optimizer,
             schedulers=[warmup_sched, sgdr_sched],
-            milestones=[warmup_steps],
+            milestones=[max(1, config.warmup_epochs)],  # switch after warmup_epochs epochs
         )
 
         # SWA: average weights from epoch swa_start onward.
@@ -773,8 +775,9 @@ class EnterpriseTrainer:
         if not np.isfinite(val_loss):
             log(f"Epoch {epoch}: val_loss is not finite; skipping snapshot.")
             return
-        # R12: Only snapshot models where pred_std is healthy (>0.20).
-        if hasattr(self, '_last_pred_std') and self._last_pred_std < 0.20:
+        # FIX(R11): Never gate on pred_std during warmup — structural low pred_std is expected.
+        warmup_ep = getattr(self.config, 'warmup_epochs', 10)
+        if epoch > warmup_ep and hasattr(self, '_last_pred_std') and self._last_pred_std < 0.20:
             log(f"Epoch {epoch}: pred_std={self._last_pred_std:.4f} < 0.20; skipping collapsed snapshot.")
             return
         # Skip snapshots with very poor R2 after epoch 30
@@ -868,14 +871,13 @@ class EnterpriseTrainer:
         # 1) PRIMARY LOSS: MSE.
         mse_loss = F.mse_loss(pred_valid, target_valid)
 
-        # 2) CONTINUOUS VARIANCE REGULARIZATION (R12 fix: NO relu gate).
+        # 2) CONTINUOUS VARIANCE REGULARIZATION (FIX R11: lowered weight 3.0→1.5, var_target raised 0.50→0.60).
         #    var_reg = (var_target - pred_std)^2 — gradient is ALWAYS nonzero.
-        #    When pred_std > var_target: gradient pushes pred_std DOWN (from above target).
-        #    When pred_std < var_target: gradient pushes pred_std UP (toward target).
-        #    The quadratic attractor prevents both collapse AND excessive spread.
-        var_target = 0.50  # Raised from 0.30: unit-norm targets have std~1.0, so 0.50 is healthy.
+        #    Lower weight prevents VarReg from drowning MSE signal in early epochs.
+        #    var_target=0.60 better matches post-normalization target std ~1.1.
+        var_target = 0.60
         pred_std = pred_valid.std().clamp(min=1e-8)
-        var_reg = (var_target - pred_std) ** 2  # Continuous — no relu, always gradient
+        var_reg = (var_target - pred_std) ** 2
 
         # 3) AUXILIARY NLL: uncertainty head only. Gradient does NOT flow to pred.
         log_var_c = torch.clamp(log_var, min=self.config.log_var_min, max=self.config.log_var_max)
@@ -887,24 +889,28 @@ class EnterpriseTrainer:
             nll_mag = nll_raw.abs().clamp(min=0.1)
         nll_aux = 0.15 * nll_raw / nll_mag
 
-        # 4) PAIRWISE RANKING LOSS (ListMLE-style, replaces fixed-scale BCE).
-        #    Operates on relative ordering — provides meaningful gradient at ANY pred_std scale.
-        #    For each sample in the batch, compute the negative log-likelihood of the correct ranking.
-        if self.config.directional_loss_weight > 0.0 and len(pred_valid) >= 4:
-            # Shuffle indices to prevent order bias
+        # 4) PAIRWISE RANKING LOSS (ListMLE-style).
+        #    FIX R11: Warmup-gated — disabled for first warmup_epochs to avoid gradient conflict
+        #    with MSE when model hasn't learned basic scale. Ramped 0→0.5×→1× after warmup.
+        warmup_ep = getattr(self.config, 'warmup_epochs', 10)
+        current_ep = getattr(self, '_current_epoch', 999)
+        if current_ep <= warmup_ep:
+            eff_dir_weight = 0.0                                           # off during warmup
+        elif current_ep <= 30:
+            eff_dir_weight = self.config.directional_loss_weight * 0.5    # half weight, ep 11-30
+        else:
+            eff_dir_weight = self.config.directional_loss_weight           # full weight after ep30
+
+        if eff_dir_weight > 0.0 and len(pred_valid) >= 4:
             idx = torch.randperm(len(pred_valid), device=pred.device)
             p = pred_valid[idx].float()
             t = target_valid[idx]
-            # Compute log-sum-exp trick for numerical stability
-            # ListMLE: for each position i, loss = -p_i + log(sum_{j>=i} exp(p_j))
-            # Use targets as the "true" ranking signal via sorted order
             t_sort_idx = torch.argsort(t, descending=True)
             p_sorted = p[t_sort_idx]
-            # Numerically stable log-sum-exp from right
             max_val = p_sorted.detach().max()
             log_cumsum = torch.logcumsumexp(p_sorted - max_val, dim=0) + max_val
             rank_loss = -(p_sorted - log_cumsum).mean()
-            dir_loss = rank_loss.clamp(max=5.0)  # Safety cap
+            dir_loss = rank_loss.clamp(max=5.0)
         else:
             dir_loss = torch.tensor(0.0, device=pred.device)
 
@@ -914,13 +920,13 @@ class EnterpriseTrainer:
         else:
             cos_loss = torch.tensor(0.0, device=pred.device)
 
-        # Weight budget: MSE(1.0) + VarReg(3.0) + NLL(0.15) + ListMLE(0.40) + Rank(0.25)
-        # VarReg weight raised from 2.0→3.0 to compensate for the softer continuous penalty.
+        # Weight budget: MSE(1.0) + VarReg(1.5) + NLL(0.15) + ListMLE(gated) + Rank(0.25)
+        # VarReg LOWERED 3.0→1.5: prevents it dominating MSE signal in early training.
         total = (
             mse_loss
-            + 3.0 * var_reg
+            + 1.5 * var_reg
             + nll_aux
-            + self.config.directional_loss_weight * dir_loss
+            + eff_dir_weight * dir_loss
             + self.config.rank_loss_weight * cos_loss
         )
         return total
@@ -1003,6 +1009,8 @@ class EnterpriseTrainer:
 
     def train_epoch(self, epoch: int) -> Dict[str, float]:
         self.model.train()
+        # FIX(R11): Track current epoch on self so _compute_loss can apply warmup gating.
+        self._current_epoch = epoch
         if self.train_sampler is not None:
             self.train_sampler.set_epoch(epoch)
 
@@ -1019,10 +1027,12 @@ class EnterpriseTrainer:
                     self.model.parameters(), self.config.grad_clip
                 )
                 self.optimizer.second_step(zero_grad=True)
-                self.scheduler.step()
                 total_loss += loss1
                 total_mse += mse1
                 n_steps += 1
+            # FIX(R11): Per-EPOCH scheduler step (not per-step).
+            # Per-step was completing a "20-epoch" SGDR cycle in ~9 minutes — LR oscillated wildly.
+            self.scheduler.step()
         else:
             self.optimizer.zero_grad(set_to_none=True)
             for step, (sequences, targets, masks) in enumerate(self.train_loader):
@@ -1044,8 +1054,11 @@ class EnterpriseTrainer:
                         self.optimizer.step()
                     self.optimizer.zero_grad(set_to_none=True)
 
-                self.scheduler.step()
                 n_steps += 1
+            # FIX(R11): Per-EPOCH scheduler step — moved OUT of the inner step loop.
+            # CosineAnnealingWarmRestarts T_0 is in epochs (×steps_per_epoch in setup),
+            # but actual restart semantics only make sense per-epoch when stepping once/epoch.
+            self.scheduler.step()
 
         n_steps = max(n_steps, 1)
         return {
@@ -1649,12 +1662,26 @@ def _normalize_targets(
             per_sample_scales[:, j] = 1.0
             continue
 
+        # FIX(R11): Compute and subtract per-asset mean (valid samples only) before std-scaling.
+        # Logs showed many assets with mean ≠ 0 post-normalization (e.g. BTC=+0.10, TRX=+0.15).
+        # Centering forces the model to learn the signal shape, not the long-run drift bias.
+        valid_vals = series[~np.isnan(series)]
+        asset_mean = float(np.mean(valid_vals)) if len(valid_vals) > 0 else 0.0
+        series = series - asset_mean  # mean-center BEFORE rolling std
+
         s = pd.Series(series)
         rolling_std = (
             s.shift(1)
             .rolling(window=W, min_periods=max(5, W // 4))
             .std()
             .values
+        )
+
+        # FIX(R11): Clip rolling std at min=0.02 to prevent near-zero early-listing windows
+        # from inflating post-normalization std (e.g. JUP std=2.7 was caused by this).
+        rolling_std = np.where(
+            np.isnan(rolling_std), rolling_std,
+            np.clip(rolling_std, 0.02, None)
         )
 
         valid_stds = rolling_std[~np.isnan(rolling_std) & (rolling_std > 1e-6)]
@@ -2080,8 +2107,11 @@ def main():
         config.cudnn_benchmark = True
         config.use_sam = False              # DISABLED: was causing 47s/ep; target <18s
         config.use_amp = True               # Re-enabled: safe without SAM
-        config.batch_size = 8               # Halved from 16 → prevents backward CUDA OOM; effective batch = 8×2GPU×4=64
-        config.gradient_accumulation_steps = 4  # Raised from 2 → maintain effective batch=64 with half the per-step activation
+        # FIX(R11-SPEED): MHA SectorPoolingHead is gone → OOM risk eliminated → restore batch_size=16.
+        # Effective batch = 16 × 2 GPUs × 2 accum = 64. Batches/rank = 2192÷16÷2 = 68 (was 137).
+        config.batch_size = 16
+        config.gradient_accumulation_steps = 2
+        config.num_workers = 4              # More workers to saturate 30GB RAM bus
         config.target_col = "returns_5d"
         config.forecast_horizon = 5
         config.history_days = 3650

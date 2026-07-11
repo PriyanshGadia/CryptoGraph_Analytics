@@ -87,7 +87,11 @@ class FeatureStore:
             if result:
                 return result
         except (sqlite3.OperationalError, FileNotFoundError, Exception) as e:
-            print(f"[FeatureStore] Database load failed ({e}); falling back to yfinance...")
+            err_str = str(e).lower()
+            # Suppress the expected "no such table: assets" noise on Kaggle where DB is not seeded.
+            # This is a known, benign fallback — yfinance always handles it correctly.
+            if "no such table" not in err_str:
+                print(f"[FeatureStore] Database load failed ({e}); falling back to yfinance...")
 
         # Fallback: fetch from yfinance
         return self._load_from_yfinance(start_date, end_date, assets, expected_features)
