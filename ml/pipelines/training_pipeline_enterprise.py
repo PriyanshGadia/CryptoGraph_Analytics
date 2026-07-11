@@ -32,6 +32,8 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
 warnings.filterwarnings("ignore")
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
 
 _CURRENT_RANK = 0
 _LOG_FILE_PATH: Optional[Path] = None
@@ -114,9 +116,10 @@ def cleanup_distributed(is_distributed: bool):
 @dataclass
 class TrainingConfig:
     lookback_days: int = 30
-    forecast_horizon: int = 1
+    forecast_horizon: int = 5
     feature_dim: int = 24
-    target_col: str = "returns_1d"
+    target_col: str = "returns_5d"
+    gradient_accumulation_steps: int = 1
     history_days: int = 3650
     max_missing_frac: float = 0.95
     use_cache: bool = True
@@ -291,6 +294,38 @@ class WindowedGraphDataset(Dataset):
         )
         return window, self.all_targets[t], self.all_masks[t]
 
+class SectorPoolingHead(nn.Module):
+    def __init__(self, hidden_dim: int, n_sectors: int = 9):
+        super().__init__()
+        self.n_sectors = n_sectors
+        self.sector_attn = nn.MultiheadAttention(hidden_dim, num_heads=4, batch_first=True)
+        self.node_proj = nn.Linear(hidden_dim * 2, hidden_dim)
+        self.norm = nn.LayerNorm(hidden_dim)
+
+    def forward(self, x: torch.Tensor, sector_assignments: torch.Tensor, B: int, N_nodes: int) -> torch.Tensor:
+        x_reshaped = x.view(B, N_nodes, -1)  # (B, N_nodes, hidden_dim)
+
+        sector_embs = []
+        for s in range(self.n_sectors):
+            s_idx = (sector_assignments == s).nonzero(as_tuple=True)[0]
+            if s_idx.numel() == 0:
+                sector_embs.append(torch.zeros(B, x.shape[-1], device=x.device))
+            else:
+                sector_embs.append(x_reshaped[:, s_idx].mean(dim=1))
+        
+        sector_embs = torch.stack(sector_embs, dim=1)  # (B, n_sectors, hidden_dim)
+
+        attn_out, _ = self.sector_attn(
+            x_reshaped,
+            sector_embs,
+            sector_embs
+        )  # (B, N_nodes, hidden_dim)
+
+        combined = torch.cat([x_reshaped, attn_out], dim=-1)  # (B, N_nodes, hidden_dim * 2)
+        out = self.norm(self.node_proj(combined))  # (B, N_nodes, hidden_dim)
+        
+        return out.view(B * N_nodes, -1)
+
 class EnterpriseSTGCNModel(nn.Module):
     def __init__(self, config: TrainingConfig):
         super().__init__()
@@ -321,6 +356,9 @@ class EnterpriseSTGCNModel(nn.Module):
                 config.transformer_layers,
                 config.dropout,
             )
+
+        self.sector_pooling_head = SectorPoolingHead(config.hidden_dim, n_sectors=9)
+        self.register_buffer("sector_assignments", torch.zeros(100, dtype=torch.long))
 
         self.reg_head = nn.Sequential(
             nn.Linear(config.hidden_dim, config.hidden_dim // 2),
@@ -361,6 +399,24 @@ class EnterpriseSTGCNModel(nn.Module):
 
     def disable_mc_dropout(self):
         self.eval()
+
+    def set_sectors(self, available_symbols: List[str]):
+        SECTOR_MAP = {
+            "BTC": 0, "LTC": 0, "BCH": 0, "DASH": 0, "ZEC": 0, "XMR": 0, "XVG": 0, "SYS": 0, "DGB": 0, "RVN": 0,
+            "ETH": 1, "SOL": 1, "AVAX": 1, "DOT": 1, "NEAR": 1, "ATOM": 1, "APT": 1, "SUI": 1, "HBAR": 1, "ICP": 1, "ALGO": 1, "SEI": 1, "TIA": 1, "XTZ": 1, "EOS": 1, "KAS": 1, "FTM": 1, "EGLD": 1, "FLOW": 1, "VET": 1, "QTUM": 1, "WAVES": 1, "ZIL": 1,
+            "ARB": 2, "OP": 2, "POL": 2, "LRC": 2, "LSK": 2, "OMG": 2, "ONT": 2, "CELR": 2, "SKL": 2,
+            "LINK": 3, "FIL": 3, "AR": 3, "PYTH": 3, "INJ": 3, "QNT": 3, "STORJ": 3, "BAND": 3, "IOTA": 3, "THETA": 3,
+            "UNI": 4, "AAVE": 4, "MKR": 4, "LDO": 4, "CRV": 4, "SNX": 4, "KAVA": 4, "SUSHI": 4, "ZRX": 4, "BAL": 4, "YFI": 4, "KNC": 4, "ENS": 4, "FXS": 4, "RUNE": 4, "DYDX": 4,
+            "BNB": 5, "CRO": 5, "OKB": 5, "LEO": 5,
+            "FET": 6, "RENDER": 6, "AKT": 6, "GRT": 6, "HNT": 6, "NMR": 6, "OCEAN": 6,
+            "DOGE": 7, "SHIB": 7, "WIF": 7, "BONK": 7, "CAKE": 7, "ANKR": 7, "BAT": 7, "RSR": 7, "JUP": 7, "RAY": 7, "CORE": 7, "ORDI": 7, "ONDO": 7, "SAND": 7, "MANA": 7,
+            "USDT": 8, "USDC": 8, "DAI": 8
+        }
+        assignments = []
+        for sym in available_symbols:
+            s_id = SECTOR_MAP.get(sym, 8)
+            assignments.append(s_id)
+        self.register_buffer("sector_assignments", torch.tensor(assignments, dtype=torch.long, device=self.sector_assignments.device))
 
     def forward(
         self,
@@ -444,6 +500,8 @@ class EnterpriseSTGCNModel(nn.Module):
                 f"temporal_encoder output shape {tuple(x.shape)} unexpected; "
                 f"expected [{B * N_nodes}, hidden_dim]."
             )
+
+        x = self.sector_pooling_head(x, self.sector_assignments, B, N_nodes)
 
         pred = self.reg_head(x).squeeze(-1).view(B, N_nodes)
         log_var = self.uncertainty_head(x).squeeze(-1).view(B, N_nodes)
@@ -700,11 +758,16 @@ class EnterpriseTrainer:
         if not np.isfinite(val_loss):
             log(f"Epoch {epoch}: val_loss is not finite; skipping snapshot.")
             return
-        # R12: Only snapshot models where pred_std is healthy (>0.15).
-        # Collapsed models (pred_std<0.15) produce negative ensemble Sharpe by
-        # averaging a good model with a degenerate one.
-        if hasattr(self, '_last_pred_std') and self._last_pred_std < 0.15:
-            log(f"Epoch {epoch}: pred_std={self._last_pred_std:.4f} < 0.15; skipping collapsed snapshot.")
+        # R12: Only snapshot models where pred_std is healthy (>0.20).
+        if hasattr(self, '_last_pred_std') and self._last_pred_std < 0.20:
+            log(f"Epoch {epoch}: pred_std={self._last_pred_std:.4f} < 0.20; skipping collapsed snapshot.")
+            return
+        # Skip snapshots with very poor R2 after epoch 30
+        val_r2 = 0.0
+        if "val_r2" in self.history and len(self.history["val_r2"]) > 0:
+            val_r2 = self.history["val_r2"][-1]
+        if epoch > 30 and val_r2 < -0.10:
+            log(f"Epoch {epoch}: val_r2={val_r2:.4f} < -0.10; skipping snapshot.")
             return
         path = self.run_dir / f"snapshot_epoch{epoch}.pt"
         entry = (-val_loss, epoch, str(path))
@@ -862,6 +925,10 @@ class EnterpriseTrainer:
         with torch.amp.autocast("cuda", enabled=amp_enabled):
             pred, log_var = self.model(sequences_dev, return_uncertainty=True)
             loss = self._compute_loss(pred, targets_dev, log_var, masks_dev)
+            
+            grad_accum_steps = getattr(self.config, "gradient_accumulation_steps", 1)
+            if grad_accum_steps > 1 and not isinstance(self.optimizer, SAM):
+                loss = loss / grad_accum_steps
 
         if not torch.isfinite(loss):
             p_tied = sum(p.sum() for p in self.model.parameters())
@@ -925,11 +992,11 @@ class EnterpriseTrainer:
             self.train_sampler.set_epoch(epoch)
 
         total_loss, total_mse, n_steps = 0.0, 0.0, 0
+        grad_accum_steps = getattr(self.config, "gradient_accumulation_steps", 1)
 
-        for sequences, targets, masks in self.train_loader:
-            self.optimizer.zero_grad(set_to_none=True)
-
-            if isinstance(self.optimizer, SAM):
+        if isinstance(self.optimizer, SAM):
+            for sequences, targets, masks in self.train_loader:
+                self.optimizer.zero_grad(set_to_none=True)
                 loss1, mse1 = self._forward_backward(sequences, targets, masks)
                 self.optimizer.first_step(zero_grad=True)
                 self._forward_backward(sequences, targets, masks)
@@ -937,24 +1004,33 @@ class EnterpriseTrainer:
                     self.model.parameters(), self.config.grad_clip
                 )
                 self.optimizer.second_step(zero_grad=True)
-                loss_val, mse_val = loss1, mse1
-            else:
+                self.scheduler.step()
+                total_loss += loss1
+                total_mse += mse1
+                n_steps += 1
+        else:
+            self.optimizer.zero_grad(set_to_none=True)
+            for step, (sequences, targets, masks) in enumerate(self.train_loader):
                 loss_val, mse_val = self._forward_backward(sequences, targets, masks)
-                if self.scaler is not None:
-                    self.scaler.unscale_(self.optimizer)
-                torch.nn.utils.clip_grad_norm_(
-                    self.model.parameters(), self.config.grad_clip
-                )
-                if self.scaler is not None:
-                    self.scaler.step(self.optimizer)
-                    self.scaler.update()
-                else:
-                    self.optimizer.step()
+                # Note: loss_val is already divided by grad_accum_steps in _forward_backward
+                total_loss += loss_val * grad_accum_steps
+                total_mse += mse_val
 
-            self.scheduler.step()
-            total_loss += loss_val
-            total_mse += mse_val
-            n_steps += 1
+                if (step + 1) % grad_accum_steps == 0 or (step + 1) == len(self.train_loader):
+                    if self.scaler is not None:
+                        self.scaler.unscale_(self.optimizer)
+                    torch.nn.utils.clip_grad_norm_(
+                        self.model.parameters(), self.config.grad_clip
+                    )
+                    if self.scaler is not None:
+                        self.scaler.step(self.optimizer)
+                        self.scaler.update()
+                    else:
+                        self.optimizer.step()
+                    self.optimizer.zero_grad(set_to_none=True)
+
+                self.scheduler.step()
+                n_steps += 1
 
         n_steps = max(n_steps, 1)
         return {
@@ -1065,6 +1141,8 @@ class EnterpriseTrainer:
             val_metrics: Dict[str, float] = {}
             if self.rank == 0:
                 val_metrics = self.validate()
+                # Run pred_std check every epoch: cheap (5 batches), needed for snapshot gate + monitor.
+                self._check_prediction_variance(self.val_loader, "val")
             val_rmse = self._sync_scalar(val_metrics.get("val_rmse", float("inf")))
             val_loss = self._sync_scalar(val_metrics.get("val_loss", float("inf")))
 
@@ -1113,8 +1191,6 @@ class EnterpriseTrainer:
                     f"patience: {self.patience_counter}/{self.config.early_stopping_patience} | "
                     f"lr: {train_metrics['lr']:.2e} | time: {dt:.1f}s{suffix}"
                 )
-                # Run pred_std check every epoch: cheap (5 batches), needed for snapshot gate + monitor.
-                self._check_prediction_variance(self.val_loader, "val")
 
 
                 # ── Poll monitor signals (rank 0 only) ────────────────────────
@@ -1471,7 +1547,7 @@ def _extract_targets_safe(
         series_index = pd.to_datetime(df.index).tz_localize(None).normalize()
         col_series = pd.Series(df[target_col].values, index=series_index)
         col_series = col_series.loc[~col_series.index.duplicated(keep="last")]
-        col_series = col_series.clip(lower=-0.5, upper=0.5).reindex(pd_dates_normalized)
+        col_series = col_series.clip(lower=-0.75, upper=0.75).reindex(pd_dates_normalized)
         values_arr[:, j] = col_series.values
 
     target_returns: List[torch.Tensor] = []
@@ -1547,7 +1623,7 @@ def _normalize_targets(
 
         # Dynamic Stablecoin/Low-Variance Filtering
         raw_std = float(np.nanstd(series)) if not np.all(np.isnan(series)) else 0.0
-        if raw_std < 0.002:
+        if raw_std < 0.008:
             log(
                 f"  {sym}: raw std={raw_std:.6f} < 0.002000 -- "
                 f"identified as stablecoin/low-variance asset. Zeroing masks."
@@ -1984,13 +2060,15 @@ def main():
 
         # [R12-SPEED] SAM DISABLED: 2× forward passes = 2× epoch time.
         # AdamW + AMP gives equivalent or better generalization for financial time-series.
-        # Batch size 16→32 to better fill T4 VRAM (16GB each) and halve per-epoch steps.
         config.num_workers = 2              # Use 2 workers for async data prefetch on Kaggle CPU
         config.pin_memory = True
         config.cudnn_benchmark = True
         config.use_sam = False              # DISABLED: was causing 47s/ep; target <18s
         config.use_amp = True               # Re-enabled: safe without SAM
         config.batch_size = 16              # Reduced from 32 to prevent CUDA OOM under hidden_dim=64 and lookback=20
+        config.gradient_accumulation_steps = 2
+        config.target_col = "returns_5d"
+        config.forecast_horizon = 5
         config.history_days = 3650
     else:
         log("Detected LOCAL environment. Running in i3 OPTIMIZED LOW-RESOURCE mode.")
@@ -2141,6 +2219,7 @@ def main():
 
         log(f"Device: {device}")
         model = EnterpriseSTGCNModel(config)
+        model.set_sectors(available_symbols)
         trainer = EnterpriseTrainer(
             model, train_loader, val_loader, test_loader,
             config, device, run_dir,

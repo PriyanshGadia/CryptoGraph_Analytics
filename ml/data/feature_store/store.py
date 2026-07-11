@@ -372,6 +372,7 @@ class FeatureStore:
                 # Returns - clip outliers to handle ticker conflict launch day spikes (e.g. TIA, UNI, OP, ARB)
                 df["returns_1d"] = close.pct_change(1).fillna(0.0).clip(-0.5, 0.5)
                 df["returns_7d"] = close.pct_change(7).fillna(0.0).clip(-1.5, 1.5)
+                df["returns_5d"] = close.pct_change(5).shift(-5).fillna(0.0).clip(-0.75, 0.75)
                 df["volatility_7d"] = df["returns_1d"].rolling(7).std().fillna(0.0)
                 print(f"  [yfinance debug] {symbol}: returns_1d head={df['returns_1d'].head().values.tolist()}, std={df['returns_1d'].std()}")
                 # [R6 Sentiment & Social Proxies]: Derive dynamic indicators from price returns and volume to avoid dead constants.
@@ -437,7 +438,7 @@ class FeatureStore:
                     "rsi_14": 50.0, "fear_greed_norm": 0.5, "sentiment_score": 0.0,
                     "sentiment_rolling_3d": 0.0, "sentiment_momentum": 0.0,
                     "fed_rate": 5.25, "cpi": 3.0, "inflation": 2.5, "vix": 15.0,
-                    "returns_1d": 0.0, "returns_7d": 0.0, "volatility_7d": 0.0
+                    "returns_1d": 0.0, "returns_7d": 0.0, "returns_5d": 0.0, "volatility_7d": 0.0
                 }
                 df = df.interpolate(method='linear', limit_direction='both').fillna(0.0)
                 for col, val in fill_values.items():
@@ -447,7 +448,7 @@ class FeatureStore:
                 expected_cols = [
                     "open", "high", "low", "close", "volume",
                     "rsi_14", "macd", "macd_signal", "atr_14", "bb_width",
-                    "returns_1d", "returns_7d", "volatility_7d",
+                    "returns_1d", "returns_7d", "returns_5d", "volatility_7d",
                     "sentiment_score", "fear_greed_norm", "community_score",
                     "public_interest", "sentiment_rolling_3d", "sentiment_momentum",
                     "market_cap_usd",
@@ -619,6 +620,7 @@ class FeatureStore:
 
             df["market_cap_usd"] = mcap
             df = df.astype(float)
+            df["returns_5d"] = df["close"].pct_change(5).shift(-5).fillna(0.0).clip(-0.75, 0.75)
             
             # Standard neutral values to avoid artificial signal leakage
             fill_values = {
@@ -633,6 +635,7 @@ class FeatureStore:
                 "vix": 15.0,
                 "returns_1d": 0.0,
                 "returns_7d": 0.0,
+                "returns_5d": 0.0,
                 "volatility_7d": 0.0
             }
             df = df.interpolate(method='linear', limit_direction='both').fillna(0.0)
@@ -644,7 +647,7 @@ class FeatureStore:
             expected_cols = [
                 "open", "high", "low", "close", "volume",
                 "rsi_14", "macd", "macd_signal", "atr_14", "bb_width",
-                "returns_1d", "returns_7d", "volatility_7d",
+                "returns_1d", "returns_7d", "returns_5d", "volatility_7d",
                 "sentiment_score", "fear_greed_norm", "community_score",
                 "public_interest", "sentiment_rolling_3d", "sentiment_momentum",
                 "market_cap_usd",

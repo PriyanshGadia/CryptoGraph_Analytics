@@ -17,30 +17,30 @@ _RAW_ASSET_SYMBOLS = [
     "NEAR", "ATOM", "APT", "SUI", "HBAR", "ICP", "ALGO", "XLM", "SEI", "TIA", "XMR",
 
     # Tier 2 — L2 / Scaling (7)
-    "ARB", "OP", "POL", "IMX", "STRK", "MNT", "ZK",
+    "ARB", "OP", "POL", "LRC", "LSK", "OMG", "ONT",
 
     # Tier 3 — DeFi Blue Chip (14)
     "LINK", "UNI", "AAVE", "MKR", "LDO", "CRV", "SNX",
-    "COMP", "SUSHI", "GMX", "PENDLE", "ENA", "FXS", "ENS",
+    "KAVA", "SUSHI", "ZRX", "BAL", "YFI", "KNC", "ENS",
 
     # Tier 4 — Exchange Tokens (4)
-    "CRO", "OKB", "LEO", "HYPE",
+    "CRO", "OKB", "LEO", "QTUM",
 
     # Tier 5 — Meme / Momentum (12)
-    "DOGE", "SHIB", "PEPE", "WIF", "BONK", "FLOKI",
-    "CAKE", "1INCH", "ANKR", "BAT", "RSR", "OCEAN",
+    "DOGE", "SHIB", "WIF", "BONK", "CAKE", "ANKR", "BAT", "RSR", "OCEAN",
+    "WAVES", "ZIL", "REN",
 
     # Tier 6 — AI / DePIN (8)
-    "FET", "RENDER", "AUDIO", "AKT", "WLD", "GRT", "IO", "HNT",
+    "FET", "RENDER", "AKT", "GRT", "HNT", "STORJ", "BAND", "CELR",
 
     # Tier 7 — Stablecoins (5)
-    "USDT", "USDC", "DAI", "FDUSD", "PYUSD",
+    "USDT", "USDC", "DAI", "SKL", "NMR",
 
     # Tier 8 — Oracle / Storage / Infra (5)
     "FIL", "AR", "PYTH", "INJ", "QNT",
 
-    # Tier 9 — Legacy Forks / Majors (6)
-    "LTC", "BCH", "ETC", "ZEC", "XTZ", "EOS",
+    # Tier 9 — Legacy Forks / Majors (7)
+    "LTC", "BCH", "ETC", "ZEC", "XTZ", "EOS", "DASH",
 
     # Tier 10 — Bitcoin-Ecosystem Expansion (2)
     "CORE", "ORDI",
@@ -48,14 +48,11 @@ _RAW_ASSET_SYMBOLS = [
     # Tier 11 — RWA (1)
     "ONDO",
 
-    # Tier 12 — Gaming / Metaverse (4)
-    "SAND", "MANA", "AXS", "GALA",
+    # Tier 12 — Gaming / Metaverse / RWA (4)
+    "SAND", "MANA", "IOTA", "FXS",
 
     # Tier 13 — Solana Ecosystem (2)
     "JUP", "RAY",
-
-    # Tier 14 — Interop (1)
-    "W",
 
     # Tier 15 — Index-Grade Majors (8)
     "DYDX", "EGLD", "FLOW", "FTM", "KAS", "RUNE", "THETA", "VET",
