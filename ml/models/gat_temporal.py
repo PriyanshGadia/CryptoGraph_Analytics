@@ -91,11 +91,42 @@ class SpatioTemporalGAT(nn.Module):
                 )
 
         h = batched_graph.x
-        # Single CUDA kernel call per layer — no Python loops.
-        h = self.rgat1(h, batched_graph.edge_index, batched_graph.edge_type,
-                       edge_attr=batched_graph.edge_attr, T=T_total, N=N)
-        h = self.rgat2(h, batched_graph.edge_index, batched_graph.edge_type,
-                       edge_attr=batched_graph.edge_attr, T=T_total, N=N)
+        edge_index = batched_graph.edge_index
+        edge_type = batched_graph.edge_type
+        edge_attr = batched_graph.edge_attr
+
+        # To prevent OutOfMemoryError in RGATConv on large batch sequences (e.g. B*T = 240 graphs),
+        # we process the GNN passes sample-by-sample (or chunk-by-chunk) if B_actual > 1.
+        # This is mathematically identical since the physical graphs are disjoint.
+        if B_actual > 1:
+            h_out_list = []
+            T_per_sample = T  # number of graphs per sample
+            for b in range(B_actual):
+                start_node = b * T_per_sample * N
+                end_node = (b + 1) * T_per_sample * N
+                
+                # Slice node features
+                x_b = h[start_node:end_node]
+                
+                # Slice and shift edge indices
+                mask = (edge_index[0] >= start_node) & (edge_index[0] < end_node)
+                edge_index_b = edge_index[:, mask] - start_node
+                edge_type_b = edge_type[mask] if edge_type is not None else None
+                edge_attr_b = edge_attr[mask] if edge_attr is not None else None
+                
+                # Forward through rgat1 and rgat2 for this sample
+                h_b = self.rgat1(x_b, edge_index_b, edge_type_b,
+                                 edge_attr=edge_attr_b, T=T_per_sample, N=N)
+                h_b = self.rgat2(h_b, edge_index_b, edge_type_b,
+                                 edge_attr=edge_attr_b, T=T_per_sample, N=N)
+                h_out_list.append(h_b)
+            h = torch.cat(h_out_list, dim=0)
+        else:
+            # Single sample/sequence path (B=1)
+            h = self.rgat1(h, edge_index, edge_type,
+                           edge_attr=edge_attr, T=T_total, N=N)
+            h = self.rgat2(h, edge_index, edge_type,
+                           edge_attr=edge_attr, T=T_total, N=N)
 
         if B_actual == 1:
             return h.view(T_total, N, -1).transpose(0, 1)

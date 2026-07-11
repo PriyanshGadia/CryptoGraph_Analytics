@@ -75,3 +75,53 @@ def test_sector_pooling_head_robustness():
         )
     print("SectorPoolingHead robustness unit tests passed successfully!")
 
+
+def test_enterprise_model_batched_forward_pass():
+    from ml.pipelines.training_pipeline_enterprise import (
+        TrainingConfig, EnterpriseSTGCNModel, graph_collate_fn
+    )
+    
+    config = TrainingConfig()
+    config.hidden_dim = 32
+    config.batch_size = 2
+    config.lookback_days = 5
+    config.feature_dim = 24
+    
+    model = EnterpriseSTGCNModel(config)
+    model.eval()
+    
+    # 100 nodes, 24 features
+    num_nodes = 100
+    available_symbols = [f"SYM{i}" for i in range(num_nodes)]
+    model.set_sectors(available_symbols)
+    
+    # Create mock batch of sequences
+    # Batch size = 2, lookback_days = 5
+    batch_data = []
+    for b in range(2):
+        seq = []
+        for t in range(5):
+            x = torch.randn((num_nodes, config.feature_dim), dtype=torch.float32)
+            # Some random edges
+            edges = torch.randint(0, num_nodes, (2, 50), dtype=torch.long)
+            edge_type = torch.randint(0, 3, (50,), dtype=torch.long)
+            edge_attr = torch.randn((50, 1), dtype=torch.float32)
+            g = Data(x=x, edge_index=edges, edge_type=edge_type, edge_attr=edge_attr, num_nodes=num_nodes)
+            seq.append(g)
+        
+        # Target returns for this sequence (num_nodes,)
+        target = torch.randn(num_nodes, dtype=torch.float32)
+        mask = torch.ones(num_nodes, dtype=torch.float32)
+        batch_data.append((seq, target, mask))
+        
+    # Collate
+    batched_graphs, targets, masks = graph_collate_fn(batch_data)
+    
+    with torch.no_grad():
+        preds, log_vars = model(batched_graphs, return_uncertainty=True)
+        
+    assert preds.shape == (2, num_nodes)
+    assert log_vars.shape == (2, num_nodes)
+    print("EnterpriseSTGCNModel batched forward pass unit test passed successfully!")
+
+

@@ -2216,11 +2216,11 @@ def main():
 
         # ── Speed & Memory ────────────────────────────────────────────────────
         # R13-SPEED: No Python loops in RGAT (chunking removed). Speedup: ~5-10x per epoch.
-        # num_workers=4: DataLoader prefetches on CPU while GPU trains. Uses ~3-5GB CPU RAM
-        # for pinned prefetch queue (4 workers × prefetch_factor=2 × ~300MB/batch).
+        # num_workers=8: DataLoader prefetches on CPU while GPU trains. Uses ~5-10GB CPU RAM
+        # for pinned prefetch queue (8 workers × prefetch_factor=4 × ~300MB/batch).
         config.use_sam = False            # Confirmed: SAM bypasses grad_accum, causes instability
         config.use_amp = True
-        config.num_workers = 4
+        config.num_workers = 8
         config.pin_memory = True
         config.cudnn_benchmark = True     # cuDNN auto-tunes kernels for fixed (B*T*N,H) shapes
 
@@ -2339,7 +2339,7 @@ def main():
             num_workers=config.num_workers,
             pin_memory=config.pin_memory,
             persistent_workers=(config.num_workers > 0),
-            prefetch_factor=(2 if config.num_workers > 0 else None),
+            prefetch_factor=(4 if config.num_workers > 0 else None),
         )
 
         train_sampler = None
