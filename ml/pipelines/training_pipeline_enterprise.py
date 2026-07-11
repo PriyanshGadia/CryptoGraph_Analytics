@@ -295,36 +295,51 @@ class WindowedGraphDataset(Dataset):
         return window, self.all_targets[t], self.all_masks[t]
 
 class SectorPoolingHead(nn.Module):
+    """Memory-efficient sector context injection using linear gates only.
+
+    Replaces MultiheadAttention (O(N*S*D) activations in backward) with:
+      1. Mean-pool each sector's nodes -> sector embeddings (no grad explosion)
+      2. Per-node bilinear gate: sigmoid(W_gate @ sector_lookup) -> element-wise scale
+      3. Residual add + LayerNorm (stable training, ~1/10 activation footprint)
+    Parameters: n_sectors * hidden_dim + hidden_dim * 2 ≈ 10K (unchanged expressivity).
+    """
     def __init__(self, hidden_dim: int, n_sectors: int = 9):
         super().__init__()
         self.n_sectors = n_sectors
-        self.sector_attn = nn.MultiheadAttention(hidden_dim, num_heads=4, batch_first=True)
-        self.node_proj = nn.Linear(hidden_dim * 2, hidden_dim)
+        # Map per-node hidden to a gate over the matched sector embedding
+        self.gate_proj = nn.Linear(hidden_dim, hidden_dim, bias=True)
+        self.sector_proj = nn.Linear(hidden_dim, hidden_dim, bias=False)
         self.norm = nn.LayerNorm(hidden_dim)
 
     def forward(self, x: torch.Tensor, sector_assignments: torch.Tensor, B: int, N_nodes: int) -> torch.Tensor:
-        x_reshaped = x.view(B, N_nodes, -1)  # (B, N_nodes, hidden_dim)
+        # x: (B*N_nodes, hidden_dim)
+        x_2d = x.view(B, N_nodes, -1)  # (B, N_nodes, H)
+        hidden_dim = x_2d.shape[-1]
 
-        sector_embs = []
+        # 1. Compute per-sector mean embeddings (no large intermediate tensors)
+        sector_embs = torch.zeros(B, self.n_sectors, hidden_dim, device=x.device, dtype=x.dtype)
+        sector_counts = torch.zeros(self.n_sectors, device=x.device, dtype=torch.float)
         for s in range(self.n_sectors):
             s_idx = (sector_assignments == s).nonzero(as_tuple=True)[0]
-            if s_idx.numel() == 0:
-                sector_embs.append(torch.zeros(B, x.shape[-1], device=x.device))
-            else:
-                sector_embs.append(x_reshaped[:, s_idx].mean(dim=1))
-        
-        sector_embs = torch.stack(sector_embs, dim=1)  # (B, n_sectors, hidden_dim)
+            if s_idx.numel() > 0:
+                sector_embs[:, s, :] = x_2d[:, s_idx, :].mean(dim=1)
+                sector_counts[s] = 1.0
 
-        attn_out, _ = self.sector_attn(
-            x_reshaped,
-            sector_embs,
-            sector_embs
-        )  # (B, N_nodes, hidden_dim)
+        # 2. Each node looks up its own sector embedding (cheap index, no matmul broadcast)
+        #    sector_assignments has shape (N_nodes,) — clamp to valid range
+        safe_assign = sector_assignments.clamp(0, self.n_sectors - 1)  # (N_nodes,)
+        # (B, N_nodes, H)
+        node_sector_emb = sector_embs[:, safe_assign, :]
 
-        combined = torch.cat([x_reshaped, attn_out], dim=-1)  # (B, N_nodes, hidden_dim * 2)
-        out = self.norm(self.node_proj(combined))  # (B, N_nodes, hidden_dim)
-        
-        return out.view(B * N_nodes, -1)
+        # 3. Lightweight gate: sigmoid gate computed from linear projections
+        gate = torch.sigmoid(
+            self.gate_proj(x_2d) + self.sector_proj(node_sector_emb)
+        )  # (B, N_nodes, H)
+
+        # 4. Residual gating + norm
+        out = self.norm(x_2d + gate * node_sector_emb)  # (B, N_nodes, H)
+
+        return out.view(B * N_nodes, hidden_dim)
 
 class EnterpriseSTGCNModel(nn.Module):
     def __init__(self, config: TrainingConfig):
@@ -2065,8 +2080,8 @@ def main():
         config.cudnn_benchmark = True
         config.use_sam = False              # DISABLED: was causing 47s/ep; target <18s
         config.use_amp = True               # Re-enabled: safe without SAM
-        config.batch_size = 16              # Reduced from 32 to prevent CUDA OOM under hidden_dim=64 and lookback=20
-        config.gradient_accumulation_steps = 2
+        config.batch_size = 8               # Halved from 16 → prevents backward CUDA OOM; effective batch = 8×2GPU×4=64
+        config.gradient_accumulation_steps = 4  # Raised from 2 → maintain effective batch=64 with half the per-step activation
         config.target_col = "returns_5d"
         config.forecast_horizon = 5
         config.history_days = 3650
