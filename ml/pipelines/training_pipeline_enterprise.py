@@ -236,24 +236,24 @@ class SAM(torch.optim.Optimizer):
 def graph_collate_fn(batch):
     from torch_geometric.data import Batch
     sequences = [item[0] for item in batch]
-    # verify sequence lengths are consistent and capture T, B
-    seq_lens = [len(seq) for seq in sequences]
-    if len(set(seq_lens)) != 1:
-        # helpful diagnostic for ragged batches
-        raise ValueError(f"Ragged sequences in collate_fn: lengths={seq_lens}")
-    T = seq_lens[0]
-    B = len(sequences)
-    flat_graphs = []
-    for seq in sequences:
-        flat_graphs.extend(seq)
+    
+    if isinstance(sequences[0], Batch):
+        T = sequences[0].num_graphs
+        B = len(sequences)
+        batched_graphs = Batch.from_data_list(sequences)
+    else:
+        # verify sequence lengths are consistent and capture T, B
+        seq_lens = [len(seq) for seq in sequences]
+        if len(set(seq_lens)) != 1:
+            # helpful diagnostic for ragged batches
+            raise ValueError(f"Ragged sequences in collate_fn: lengths={seq_lens}")
+        T = seq_lens[0]
+        B = len(sequences)
+        flat_graphs = []
+        for seq in sequences:
+            flat_graphs.extend(seq)
+        batched_graphs = Batch.from_data_list(flat_graphs)
 
-    if len(flat_graphs) != T * B:
-        raise ValueError(
-            f"Collate produced {len(flat_graphs)} flattened graphs but expected T*B={T}*{B}={T*B}."
-            f" Sequence lengths: {seq_lens}"
-        )
-
-    batched_graphs = Batch.from_data_list(flat_graphs)
     # annotate metadata so downstream code can trust T/B
     setattr(batched_graphs, "seq_len", T)
     setattr(batched_graphs, "seq_batch_size", B)
@@ -284,18 +284,26 @@ class WindowedGraphDataset(Dataset):
         self.valid_start = max(start_idx, lookback + horizon - 1)
         self.end_idx = end_idx
 
+        # Lazy cache to utilize CPU RAM efficiently.
+        # Batches are collated on-demand and cached for subsequent epochs,
+        # ensuring each DDP rank only caches the subset of windows it processes.
+        self.cached_windows = [None] * max(0, self.end_idx - self.valid_start)
+
     def __len__(self) -> int:
-        return max(0, self.end_idx - self.valid_start)
+        return len(self.cached_windows)
 
     def __getitem__(self, i: int):
-        t = self.valid_start + i
-        input_end = t - self.horizon + 1
-        window = self.all_graphs[input_end - self.lookback : input_end]
-        assert len(window) == self.lookback, (
-            f"Window length {len(window)} != lookback {self.lookback} "
-            f"(t={t}, input_end={input_end})"
-        )
-        return window, self.all_targets[t], self.all_masks[t]
+        if self.cached_windows[i] is None:
+            t = self.valid_start + i
+            input_end = t - self.horizon + 1
+            window = self.all_graphs[input_end - self.lookback : input_end]
+            assert len(window) == self.lookback, (
+                f"Window length {len(window)} != lookback {self.lookback} (t={t})"
+            )
+            from torch_geometric.data import Batch
+            self.cached_windows[i] = Batch.from_data_list(window)
+
+        return self.cached_windows[i], self.all_targets[self.valid_start + i], self.all_masks[self.valid_start + i]
 
 class SectorPoolingHead(nn.Module):
     """Memory-efficient sector context injection using linear gates only.
