@@ -234,7 +234,7 @@ export default function RiskPage() {
                   <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-2">7-Day Trailing Price Variance</p>
                 </div>
                 <div className="h-[300px] w-full">
-                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={{ width: 100, height: 100 }}>
                     <BarChart data={topMoversData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="transparent" vertical={false} />
                       <XAxis dataKey="name" stroke={palette.muted} fontSize={10} fontFamily="monospace" tickLine={false} axisLine={false} tickMargin={10} />
@@ -272,7 +272,7 @@ export default function RiskPage() {
                                 </div>
                             </div>
                         </div>
-                        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={{ width: 100, height: 100 }}>
                         <PieChart>
                             <Pie 
                                 data={predDist} 
@@ -469,7 +469,7 @@ export default function RiskPage() {
                     <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-2">60-Day Historic VIX Window</p>
                   </div>
                   <div className="h-[320px] w-full">
-                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={{ width: 100, height: 100 }}>
                       <ComposedChart data={macro.history} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="transparent" vertical={false} />
                         <XAxis dataKey="date" stroke={palette.muted} fontSize={10} fontFamily="monospace" tickLine={false} axisLine={false} minTickGap={30} />

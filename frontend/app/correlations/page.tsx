@@ -428,7 +428,7 @@ export default function CorrelationsPage() {
             </div>
             
             <div className="h-[350px] w-full p-8 pb-0">
-              <ResponsiveContainer width="100%" height={350} minWidth={0} minHeight={0}>
+              <ResponsiveContainer width="100%" height={350} minWidth={0} minHeight={0} initialDimension={{ width: 100, height: 100 }}>
                 <BarChart data={sectorBars} layout="vertical" margin={{ left: 20 }}>
                   <XAxis type="number" domain={[0, 1]} stroke={palette.muted} fontSize={10} fontFamily="monospace" tickLine={false} axisLine={false} />
                   <YAxis dataKey="name" type="category" stroke={palette.text} fontSize={10} fontFamily="monospace" tickLine={false} axisLine={false} tickFormatter={(val) => typeof val === 'string' ? val.toUpperCase() : val} />

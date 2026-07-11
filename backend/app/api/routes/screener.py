@@ -211,11 +211,15 @@ def refresh_live_technicals(db: Session = Depends(get_db)):
     if not assets:
         return {"status": "error", "message": "No assets found"}
         
-    exchange = ccxt.binance({'enableRateLimit': False})
+    exchange = ccxt.binance({
+        'enableRateLimit': True,
+        'timeout': 5000,
+        'options': {'defaultType': 'spot'}
+    })
     
     def fetch_ohlcv(sym):
         try:
-            data = exchange.fetch_ohlcv(f"{sym}/USDT", "1h", limit=1500)
+            data = exchange.fetch_ohlcv(f"{sym}/USDT", "1h", limit=250)
             if not data or len(data) < 24: return sym, None
             df = pd.DataFrame(data, columns=["timestamp", "open", "high", "low", "close", "volume"])
             return sym, df

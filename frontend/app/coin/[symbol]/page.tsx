@@ -641,7 +641,7 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
               <GlassCard tier={2} shape="none" className="rounded-xl p-6 overflow-hidden">
                 <h3 className="text-[10px] font-mono font-black uppercase tracking-widest text-text-muted mb-4">Relative Strength Index History (14)</h3>
                 <div className="h-48">
-                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={{ width: 100, height: 100 }}>
                     <AreaChart data={ohlcv.map((d:any, i:number) => ({ time: d.time, rsi: calculateRSI(ohlcv.map((x:any)=>x.close).slice(0, i+1), 14) }))}>
                       <XAxis dataKey="time" hide />
                       <YAxis domain={[0, 100]} hide />

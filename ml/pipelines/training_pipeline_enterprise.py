@@ -2446,8 +2446,8 @@ def main():
 
             try:
                 # /app is present in /backend
-                from backend.app.db.database import SessionLocal, Base, engine
-                from backend.app.db.models import ModelRegistry
+                from app.db.database import SessionLocal, Base, engine
+                from app.db.models import ModelRegistry
 
                 Base.metadata.create_all(bind=engine)
                 db = SessionLocal()

@@ -45,7 +45,7 @@ async def get_data_status(db: Session = Depends(get_db)):
 from fastapi import APIRouter, Depends, BackgroundTasks
 
 @router.post("/refresh-all")
-async def trigger_refresh_all(background_tasks: BackgroundTasks, db: Session = Depends(get_db), api_key: str = Depends(get_api_key)):
+def trigger_refresh_all(background_tasks: BackgroundTasks, db: Session = Depends(get_db), api_key: str = Depends(get_api_key)):
     """
     Manually triggers a full data refresh cycle:
     1. Refreshes live technicals (RSI, MACD, returns) from Binance via CCXT
@@ -70,6 +70,14 @@ async def trigger_refresh_all(background_tasks: BackgroundTasks, db: Session = D
         results["cache"] = f"cleared {cache_count} entries"
     except Exception as e:
         results["cache"] = f"error: {e}"
+
+    # 2b. Pre-compute heavy correlation matrices
+    try:
+        from app.api.routes.correlations import precompute_correlations_sync
+        precompute_correlations_sync(db)
+        results["correlations"] = "pre-computed correlations matrices"
+    except Exception as e:
+        results["correlations"] = f"error: {e}"
 
     # 3. Trigger prediction inference pipeline in background to prevent event loop deadlock
     try:

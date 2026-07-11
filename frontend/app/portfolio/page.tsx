@@ -271,7 +271,7 @@ export default function PortfolioPage() {
            </div>
         </div>
         <div className="h-[400px] w-full mt-4">
-           <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+           <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={{ width: 100, height: 100 }}>
              <ComposedChart data={portfolio.equity_curve.map(pt => ({
                 ...pt, 
                 date: new Date(pt.timestamp).toLocaleDateString(),

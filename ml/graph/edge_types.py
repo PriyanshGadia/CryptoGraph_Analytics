@@ -1,13 +1,36 @@
 SECTORS = {
-    "layer1": ["BTC", "ETH", "SOL", "ADA", "AVAX", "DOT", "NEAR", "FTM"],
-    "defi": ["UNI", "AAVE", "MKR", "COMP", "CRV", "SUSHI", "BAL", "YFI", "SNX"],
-    "exchange": ["BNB", "ZRX", "LRC"],
-    "payment": ["XRP", "XLM", "LTC", "BCH", "DASH", "XMR"],
-    "gaming": ["SAND", "MANA", "AXS", "THETA"],
-    "privacy": ["XMR", "ZEC", "DASH"],
-    "storage": ["FIL", "IOTA"],
-    "other": ["DOGE", "LINK", "DOT", "ATOM", "VET", "TRX", "ALGO", "NEAR",
-              "EOS", "WAVES", "ICX", "QTUM", "ONT", "ZIL", "DGB", "1INCH", "BAT", "REN"]
+    "layer1": [
+        "BTC", "ETH", "SOL", "BNB", "ADA", "AVAX", "DOT", "TRX", "TON",
+        "NEAR", "ATOM", "APT", "SUI", "HBAR", "ICP", "ALGO", "SEI", "TIA",
+        "EGLD", "FLOW", "FTM", "KAS", "XTZ", "EOS", "QTUM", "MINA", "STX",
+        "ETC", "INJ", "VET"
+    ],
+    "defi": [
+        "UNI", "AAVE", "MKR", "LDO", "CRV", "SNX", "KAVA", "SUSHI", "ZRX",
+        "BAL", "YFI", "KNC", "ENS", "DYDX", "JUP", "RAY", "FXS", "CAKE",
+        "ONDO", "RSR", "RUNE"
+    ],
+    "exchange": [
+        "BNB", "CRO", "OKB", "LEO"
+    ],
+    "payment": [
+        "XRP", "XLM", "LTC", "BCH", "DASH", "CORE", "ORDI", "USDT", "USDC", "DAI"
+    ],
+    "gaming": [
+        "SAND", "MANA", "AXS", "THETA", "GALA", "CHZ", "FLOW"
+    ],
+    "privacy": [
+        "XMR", "ZEC", "DASH"
+    ],
+    "storage": [
+        "FIL", "AR", "STORJ", "IOTA"
+    ],
+    "other": [
+        "ARB", "OP", "POL", "MATIC", "LRC", "LSK", "OMG", "ONT", "SKL",
+        "LINK", "PYTH", "BAND", "QNT", "GRT", "ANKR", "FET", "RENDER",
+        "AKT", "HNT", "CELR", "NMR", "DOGE", "SHIB", "WIF", "BONK", "BAT",
+        "OCEAN", "WAVES", "ZIL", "REN", "TAO"
+    ]
 }
 
 EDGE_TYPE_CORRELATION = "correlation"

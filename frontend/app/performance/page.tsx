@@ -188,7 +188,7 @@ export default function PerformancePage() {
         <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mb-8">Baseline 50% = Random Walk · Values above indicate predictive skill</p>
         
         <div className="h-[320px]">
-          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={{ width: 100, height: 100 }}>
             <ComposedChart data={data.rolling_accuracy} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
               <XAxis dataKey="date" stroke="rgba(255,255,255,0.1)" tick={{fill: palette.text, fontSize: 10, fontFamily: 'monospace'}} tickMargin={10} />
               <YAxis domain={[0, 100]} stroke="rgba(255,255,255,0.1)" tick={{fill: palette.text, fontSize: 10, fontFamily: 'monospace'}} />
@@ -269,7 +269,7 @@ export default function PerformancePage() {
           <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mb-8">Expected vs Actual Precision per Decile</p>
           
           <div className="h-[260px]">
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={{ width: 100, height: 100 }}>
               <ComposedChart data={data.confidence_calibration.map((d: any) => {
                   const upper = parseInt(d.confidence_range.split('-')[1]);
                   return { ...d, ideal: isNaN(upper) ? d.actual_accuracy : upper };

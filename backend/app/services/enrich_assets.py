@@ -13,8 +13,10 @@ def fetch_asset_info(yf_symbol: str) -> dict:
     return ticker.info
 
 def enrich_assets():
-    print("Connecting to database...")
-    conn = sqlite3.connect('cryptograph.db')
+    from pathlib import Path
+    db_path = Path(__file__).resolve().parents[2] / 'cryptograph.db'
+    print(f"Connecting to database at {db_path}...")
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     
     cursor.execute("SELECT id, symbol FROM assets")
@@ -35,26 +37,28 @@ def enrich_assets():
                 price = info.get("previousClose", 0.0)
                 mcap = circ_supply * price
                 
-            # Sector for crypto is usually missing or "Cryptocurrency". 
-            # We can map some known ones or use what Yahoo provides.
+            # Map sectors using our canonical SECTORS dictionary from edge_types.py
             sector = info.get("sector", None)
-            
-            # Map sectors logically if missing
             if not sector or sector == 'Cryptocurrency':
-                if symbol in ['BTC', 'ETH', 'SOL', 'ADA', 'AVAX', 'DOT', 'NEAR', 'APT', 'SUI', 'SEI', 'ICP', 'EGLD', 'ALGO', 'MINA', 'INJ', 'FTM']:
-                    sector = 'Layer 1'
-                elif symbol in ['OP', 'ARB', 'MATIC', 'IMX', 'MNT']:
-                    sector = 'Layer 2'
-                elif symbol in ['UNI', 'AAVE', 'MKR', 'SNX', 'CRV', 'DYDX', 'RUNE', 'LDO']:
-                    sector = 'DeFi'
-                elif symbol in ['AXS', 'SAND', 'MANA', 'GALA', 'ILV']:
-                    sector = 'Gaming'
-                elif symbol in ['LINK', 'GRT', 'PYTH', 'QNT']:
-                    sector = 'Infrastructure'
-                elif symbol in ['DOGE', 'SHIB', 'PEPE', 'WIF', 'BONK']:
-                    sector = 'Meme'
-                else:
-                    sector = 'Other'
+                found_sector = None
+                try:
+                    import sys
+                    from pathlib import Path
+                    root_dir = str(Path(__file__).resolve().parents[3])
+                    if root_dir not in sys.path:
+                        sys.path.append(root_dir)
+                    from ml.graph.edge_types import SECTORS
+                    for sec, symbols_list in SECTORS.items():
+                        if symbol in symbols_list:
+                            found_sector = sec
+                            break
+                except Exception as import_err:
+                    print(f"  -> Warning: failed to load SECTORS from edge_types: {import_err}")
+                
+                sector = found_sector if found_sector else 'other'
+            
+            if sector:
+                sector = sector.lower().strip().replace(" ", "")
             
             cursor.execute(
                 "UPDATE assets SET market_cap_usd = ?, sector = ? WHERE id = ?",

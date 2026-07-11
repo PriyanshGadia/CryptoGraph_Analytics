@@ -48,8 +48,8 @@ def main() -> None:
 
     exchange = ccxt.binance(exchange_args)
 
-    # 2020-01-01 00:00:00 UTC in milliseconds
-    initial_since_ms = int(datetime(2020, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
+    # 2024-01-01 00:00:00 UTC in milliseconds
+    initial_since_ms = int(datetime(2024, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
     
     total_rows = 0
     assets_processed = 0
@@ -84,7 +84,19 @@ def main() -> None:
             )
             conn.commit()
 
-        current_since = initial_since_ms
+        # Query max timestamp in ohlcv for this asset to fetch incrementally
+        cursor.execute("SELECT MAX(timestamp) FROM ohlcv WHERE asset_id = ?", (asset_id,))
+        max_ts_row = cursor.fetchone()
+        if max_ts_row and max_ts_row[0]:
+            try:
+                import pandas as pd
+                dt = pd.to_datetime(max_ts_row[0])
+                current_since = int(dt.timestamp() * 1000) - 2 * 24 * 60 * 60 * 1000
+            except Exception:
+                current_since = initial_since_ms
+        else:
+            current_since = initial_since_ms
+
         symbol_rows = 0
         ohlcv_data = []
         

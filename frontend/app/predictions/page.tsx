@@ -460,7 +460,7 @@ function PredictionStudio() {
                     </div>
                     
                     <div className="flex-1 w-full relative p-6">
-                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={{ width: 100, height: 100 }}>
                         <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
                         <defs>
                             <linearGradient id="colorArea" x1="0" y1="0" x2="0" y2="1">
@@ -538,7 +538,7 @@ function PredictionStudio() {
                     
                     {tShapChartData.length > 0 ? (
                     <div className="h-[280px] w-full">
-                        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={{ width: 100, height: 100 }}>
                         <BarChart layout="vertical" data={tShapChartData} margin={{ top: 0, right: 20, left: 40, bottom: 0 }}>
                             <XAxis type="number" tick={{fill: "var(--text-muted)", fontSize: 10, fontFamily: "var(--font-mono)", fontWeight: "bold"}} axisLine={false} tickLine={false} />
                             <YAxis dataKey="name" type="category" tick={{fill: "var(--text)", fontSize: 10, fontFamily: "var(--font-mono)", fontWeight: "bold"}} axisLine={false} tickLine={false} width={150} />

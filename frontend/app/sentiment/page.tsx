@@ -199,7 +199,7 @@ export default function SentimentPage() {
             </div>
             
             <div className="h-[280px] w-full">
-              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={{ width: 100, height: 100 }}>
                 <AreaChart data={fgHistory} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="colorFG" x1="0" y1="0" x2="0" y2="1">
@@ -264,7 +264,7 @@ export default function SentimentPage() {
           </div>
           
           <div className="p-8 h-[400px] w-full">
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={{ width: 100, height: 100 }}>
               <ComposedChart data={btcHistory} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="transparent" vertical={false} />
                 <XAxis dataKey="date" stroke={palette.muted} tick={{fill: palette.text, fontSize: 10, fontFamily: 'monospace'}} minTickGap={30} tickLine={false} axisLine={false} />
@@ -294,7 +294,7 @@ export default function SentimentPage() {
             </div>
             
             <div className="h-[320px] w-full">
-              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={{ width: 100, height: 100 }}>
                 <BarChart data={sectorSent} layout="vertical" margin={{ top: 5, right: 30, left: 10, bottom: 5 }}>
                   <XAxis type="number" domain={[-1, 1]} stroke={palette.muted} tick={{fill: palette.text, fontSize: 10, fontFamily: 'monospace'}} tickLine={false} axisLine={false} />
                   <YAxis dataKey="sector" type="category" stroke={palette.muted} tick={{fill: palette.text, fontSize: 10, fontFamily: 'monospace', fontWeight: 'bold'}} tickFormatter={(val) => typeof val === 'string' ? val.toUpperCase() : val} tickLine={false} axisLine={false} width={80} />
