@@ -35,8 +35,19 @@ class SpatioTemporalGAT(nn.Module):
     def __init__(self, hidden_dim: int = 128, heads_1: int = 4, heads_2: int = 2, dropout: float = 0.1):
         super().__init__()
         self.hidden_dim = hidden_dim
-        self.rgat1 = AdaptiveRelationalGNN(hidden_dim=hidden_dim, num_relations=3, heads=heads_1, dropout=dropout)
-        self.rgat2 = AdaptiveRelationalGNN(hidden_dim=hidden_dim, num_relations=3, heads=heads_2, dropout=dropout)
+        # rgat1: standard RGATConv with temporal chunking (chunk=8 snapshots at a time)
+        # to cap peak edge count to 8*N edges instead of B*T*N edges.
+        self.rgat1 = AdaptiveRelationalGNN(
+            hidden_dim=hidden_dim, num_relations=3, heads=heads_1,
+            dropout=dropout, rgat_chunk=8,
+        )
+        # rgat2: switched to GATv2Conv (use_gatv2=True) — eliminates the per-edge
+        # weight matrix (w shape: E × heads × d × d) that caused the 2.94 GiB OOM.
+        # GATv2 is strictly more expressive than GATv1 at ~32x lower VRAM cost.
+        self.rgat2 = AdaptiveRelationalGNN(
+            hidden_dim=hidden_dim, num_relations=3, heads=heads_2,
+            dropout=dropout, use_gatv2=True, rgat_chunk=8,
+        )
 
     @staticmethod
     def _ensure_edge_type(graph):

@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
-from torch_geometric.nn import RGATConv
+from torch_geometric.nn import RGATConv, GATv2Conv
 
 class AdaptiveAdjacencyGenerator(nn.Module):
     """
@@ -37,21 +37,44 @@ class AdaptiveRelationalGNN(nn.Module):
     new peak = 4M floats (16MB) at chunk=32.
     """
     def __init__(self, hidden_dim: int = 128, num_relations: int = 3,
-                 heads: int = 4, dropout: float = 0.1, adaptive_chunk: int = 32):
+                 heads: int = 4, dropout: float = 0.1, adaptive_chunk: int = 32,
+                 use_gatv2: bool = False, rgat_chunk: int = 0):
+        """
+        use_gatv2: if True, use a memory-efficient GATv2Conv instead of RGATConv.
+                   GATv2 has no per-edge weight matrix (O(E*heads*d) vs O(E*heads*d^2)),
+                   making it ~32x cheaper in VRAM for hidden_dim=64.
+        rgat_chunk: if > 0, process the RGAT pass in temporal chunks of this many
+                    snapshots to cap peak edge count. 0 = no chunking (full batch at once).
+        """
         super().__init__()
         self.hidden_dim = hidden_dim
         self.adaptive_chunk = adaptive_chunk
+        self.rgat_chunk = rgat_chunk
+        self.use_gatv2 = use_gatv2
 
-        # 1. Physical Graph Relational Conv
-        self.rgat = RGATConv(
-            in_channels=hidden_dim,
-            out_channels=hidden_dim // heads,
-            num_relations=num_relations,
-            heads=heads,
-            concat=True,
-            dropout=dropout,
-            edge_dim=1
-        )
+        # 1. Physical Graph Relational/Attention Conv
+        if use_gatv2:
+            # GATv2Conv: no per-edge weight matrix → ~32× less VRAM on the bmm step
+            # edge_dim accepted by GATv2Conv as a linear fill on edge features
+            self.rgat = GATv2Conv(
+                in_channels=hidden_dim,
+                out_channels=hidden_dim // heads,
+                heads=heads,
+                concat=True,
+                dropout=dropout,
+                edge_dim=1,
+                add_self_loops=False,
+            )
+        else:
+            self.rgat = RGATConv(
+                in_channels=hidden_dim,
+                out_channels=hidden_dim // heads,
+                num_relations=num_relations,
+                heads=heads,
+                concat=True,
+                dropout=dropout,
+                edge_dim=1,
+            )
 
         # 2. Adaptive Graph Layer
         self.adaptive_generator = AdaptiveAdjacencyGenerator(hidden_dim)
@@ -92,6 +115,46 @@ class AdaptiveRelationalGNN(nn.Module):
         h_adaptive = torch.cat(chunks, dim=0)                 # (T, N, hidden)
         return h_adaptive.view(N * T, -1)                     # (N*T, hidden)
 
+    def _rgat_pass(self, x: Tensor, edge_index: Tensor, edge_type: Tensor,
+                   edge_attr: Tensor, T: int, N: int) -> Tensor:
+        """
+        Run the RGAT/GATv2 conv, optionally in temporal chunks to cap peak VRAM.
+
+        With rgat_chunk=0 (default) the full (T*N, hidden) tensor is processed
+        at once — same behaviour as before.
+        With rgat_chunk=C, we split the T snapshots into blocks of C, build a
+        sub-batch for each block, run conv, then cat the outputs. This reduces
+        peak edge-count from E_total to E_chunk ≈ E_total * C / T.
+        """
+        if self.rgat_chunk <= 0 or T <= self.rgat_chunk:
+            # No chunking — single forward pass
+            if self.use_gatv2:
+                return self.rgat(x, edge_index, edge_attr=edge_attr)
+            return self.rgat(x, edge_index, edge_type, edge_attr=edge_attr)
+
+        # Chunked path: split on the temporal axis
+        # edge_index/edge_type/edge_attr are block-diagonal across T snapshots.
+        # Each snapshot contributes edges for node range [t*N, (t+1)*N).
+        chunks_out = []
+        for t_start in range(0, T, self.rgat_chunk):
+            t_end = min(t_start + self.rgat_chunk, T)
+            # Node indices in this chunk
+            n_start = t_start * N
+            n_end   = t_end   * N
+            # Mask edges belonging to this snapshot range
+            src = edge_index[0]
+            mask = (src >= n_start) & (src < n_end)
+            ei_chunk  = edge_index[:, mask] - n_start  # re-zero indices
+            ea_chunk  = edge_attr[mask] if edge_attr is not None else None
+            et_chunk  = edge_type[mask] if (edge_type is not None and not self.use_gatv2) else None
+            x_chunk   = x[n_start:n_end]
+            if self.use_gatv2:
+                h_chunk = self.rgat(x_chunk, ei_chunk, edge_attr=ea_chunk)
+            else:
+                h_chunk = self.rgat(x_chunk, ei_chunk, et_chunk, edge_attr=ea_chunk)
+            chunks_out.append(h_chunk)
+        return torch.cat(chunks_out, dim=0)
+
     def forward(self, x: Tensor, edge_index: Tensor, edge_type: Tensor,
                 edge_attr: Tensor, T: int = 1, N: int = None) -> Tensor:
         """
@@ -102,8 +165,8 @@ class AdaptiveRelationalGNN(nn.Module):
         T: number of graph snapshots in the sequence
         N: number of nodes per snapshot
         """
-        # Step 1: Relational Graph Attention over the physical multi-relation graph
-        h_physical = self.rgat(x, edge_index, edge_type, edge_attr=edge_attr)  # (N * T, hidden_dim)
+        # Step 1: Relational/Attention Graph Conv over the physical multi-relation graph
+        h_physical = self._rgat_pass(x, edge_index, edge_type, edge_attr, T, N or 1)
         h_physical = self.elu(h_physical)
 
         # Step 2: Dense message passing over the learned adaptive graph

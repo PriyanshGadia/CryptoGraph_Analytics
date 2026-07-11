@@ -122,7 +122,7 @@ class TrainingConfig:
     forecast_horizon: int = 5
     feature_dim: int = 24
     target_col: str = "returns_5d"
-    gradient_accumulation_steps: int = 1
+    gradient_accumulation_steps: int = 2  # effective batch = batch_size*2 = 16 (same as before)
     history_days: int = 3650
     max_missing_frac: float = 0.95
     use_cache: bool = True
@@ -136,7 +136,7 @@ class TrainingConfig:
     dropout: float = 0.40
     use_tcn: bool = True
 
-    batch_size: int = 16
+    batch_size: int = 8                    # halved from 16 — gradient_accumulation_steps=2 preserves effective batch
     max_epochs: int = 300
     learning_rate: float = 1e-4
     weight_decay: float = 5e-2
