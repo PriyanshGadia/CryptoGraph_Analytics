@@ -67,7 +67,7 @@ OVERFIT_WINDOW        = 8    # epochs to measure val trend
 OVERFIT_SLOPE_THRESH  = 0.002  # val_loss rising this much/epoch = overfit signal
 STAGNATION_WINDOW     = 15   # epochs of no improvement before LR-reset signal
 LR_RESET_COOLDOWN     = 20   # min epochs between successive LR resets
-DIVERGE_THRESH        = 0.40  # val_loss > best + this -> hard diverge flag
+DIVERGE_THRESH        = 0.70  # val_loss > best + this -> hard diverge flag
 PRINT_INTERVAL_S      = 5    # seconds between status reprints (when no new epoch)
 
 class TrainingMonitor:

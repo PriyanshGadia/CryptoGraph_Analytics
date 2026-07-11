@@ -122,7 +122,7 @@ class TrainingConfig:
     forecast_horizon: int = 5
     feature_dim: int = 24
     target_col: str = "returns_5d"
-    gradient_accumulation_steps: int = 2  # effective batch = batch_size*2 = 16 (same as before)
+    gradient_accumulation_steps: int = 2  # effective batch = batch_size*2 = 16
     history_days: int = 3650
     max_missing_frac: float = 0.95
     use_cache: bool = True
@@ -133,20 +133,24 @@ class TrainingConfig:
     gat_heads_2: int = 2
     transformer_layers: int = 2
     transformer_heads: int = 4
-    dropout: float = 0.40
+    dropout: float = 0.35  # lowered from 0.40: less regularization during warmup
     use_tcn: bool = True
 
-    batch_size: int = 8                    # halved from 16 — gradient_accumulation_steps=2 preserves effective batch
+    batch_size: int = 8                    # halved — gradient_accumulation_steps=2 restores effective batch
     max_epochs: int = 300
-    learning_rate: float = 1e-4
+    # FIX(R13): LR halved 1e-4→5e-5. Logs show loss spike ep8→ep9 at LR=3e-4 (peak warmup).
+    # SAM's two-step perturb + AdamW base amplifies effective LR by ~2x. 5e-5 keeps the
+    # SAM-perturbed step ≤1.5e-4 throughout warmup, preventing the observed divergence.
+    learning_rate: float = 5e-5
     weight_decay: float = 5e-2
-    warmup_epochs: int = 10
+    # FIX(R13): Warmup extended 10→15 epochs. Model needs more ramp time at N=100.
+    warmup_epochs: int = 15
     grad_clip: float = 1.0
-    early_stopping_patience: int = 45
+    early_stopping_patience: int = 50  # raised: more room to recover after warmup plateau
 
     log_var_min: float = -3.0
     log_var_max: float = 4.0
-    entropy_beta: float = 0.30
+    entropy_beta: float = 0.20  # lowered: less entropy pressure during early training
 
     normalize_targets: bool = True
     target_norm_window: int = 60
@@ -154,7 +158,10 @@ class TrainingConfig:
     ensemble_size: int = 5
     mc_dropout_samples: int = 30
 
-    use_sam: bool = True
+    # FIX(R13): SAM disabled — with gradient_accumulation_steps=2, SAM's two-step bypasses
+    # accumulation entirely (SAM loop doesn't call _forward_backward in accum mode).
+    # AdamW + grad_accum=2 is safer, faster per wall-clock, and equally regularizing.
+    use_sam: bool = False
     sam_rho: float = 0.05
     aux_mse_weight: float = 0.5
     min_pred_std_warn: float = 0.05
@@ -171,9 +178,10 @@ class TrainingConfig:
 
     corr_threshold: float = 0.6
     mc_threshold: float = 0.3
-    rank_loss_weight: float = 0.1
+    rank_loss_weight: float = 0.08  # lowered slightly — cosine loss was conflicting with MSE
     label_smooth_alpha: float = 0.0
     confidence_gate_threshold: float = 1.5
+    # FIX(R13): directional_loss_weight kept at 0.30 but gate extended to ep15 (warmup_epochs)
     directional_loss_weight: float = 0.30
     topk_pct: float = 0.25
     pin_memory: bool = False
@@ -339,11 +347,16 @@ class SectorPoolingHead(nn.Module):
         x_2d = x.view(B, N_nodes, -1)  # (B, N_nodes, H)
         hidden_dim = x_2d.shape[-1]
 
+        # FIX(R13): Clamp sector_assignments to [0, N_nodes-1] to prevent CUDA OOB assert.
+        # The sector buffer is registered for N=100 but inference may load a model on a
+        # different node count — s_idx would contain indices ≥ N_nodes, triggering device-side assert.
+        safe_sector = sector_assignments[:N_nodes].clamp(0, N_nodes - 1)
+
         # 1. Compute per-sector mean embeddings (no large intermediate tensors)
         sector_embs = torch.zeros(B, self.n_sectors, hidden_dim, device=x.device, dtype=x.dtype)
         sector_counts = torch.zeros(self.n_sectors, device=x.device, dtype=torch.float)
         for s in range(self.n_sectors):
-            s_idx = (sector_assignments == s).nonzero(as_tuple=True)[0]
+            s_idx = (safe_sector == s).nonzero(as_tuple=True)[0]
             if s_idx.numel() > 0:
                 sector_embs[:, s, :] = x_2d[:, s_idx, :].mean(dim=1)
                 sector_counts[s] = 1.0
@@ -948,13 +961,14 @@ class EnterpriseTrainer:
         # 1) PRIMARY LOSS: MSE.
         mse_loss = F.mse_loss(pred_valid, target_valid)
 
-        # 2) CONTINUOUS VARIANCE REGULARIZATION (FIX R11: lowered weight 3.0→1.5, var_target raised 0.50→0.60).
-        #    var_reg = (var_target - pred_std)^2 — gradient is ALWAYS nonzero.
-        #    Lower weight prevents VarReg from drowning MSE signal in early epochs.
-        #    var_target=0.60 better matches post-normalization target std ~1.1.
-        #    FIX(R12): Compute std across assets per-snapshot (dim=1) rather than globally,
-        #    to prevent spatial collapse at each individual time-step.
-        var_target = 0.60
+        # 2) CONTINUOUS VARIANCE REGULARIZATION.
+        #    FIX(R13): weight lowered 1.5→0.8 and var_target lowered 0.60→0.40.
+        #    Logs show pred_std stayed ~0.12-0.25 across all 10 epochs — the (0.60-0.25)^2
+        #    term contributed ~0.18 to the loss, almost equal to MSE. This forces the model
+        #    to spend most gradient budget chasing spread rather than learning returns.
+        #    var_target=0.40 matches the observed pred_std trajectory better.
+        #    Weight=0.8 keeps MSE as the dominant signal in early epochs.
+        var_target = 0.40
         pred_stds = []
         for b in range(pred.shape[0]):
             valid_b = mask[b].bool()
@@ -979,14 +993,16 @@ class EnterpriseTrainer:
         # 4) PAIRWISE RANKING LOSS (ListMLE-style).
         #    FIX R11: Warmup-gated — disabled for first warmup_epochs to avoid gradient conflict
         #    with MSE when model hasn't learned basic scale. Ramped 0→0.5×→1× after warmup.
-        warmup_ep = getattr(self.config, 'warmup_epochs', 10)
+        warmup_ep = getattr(self.config, 'warmup_epochs', 15)
         current_ep = getattr(self, '_current_epoch', 999)
+        # FIX(R13): Gate extended — directional loss off until ep=warmup_ep (now 15), half until ep35.
+        # Logs showed R²<0 through ep10. Directional loss at ep11 would fight an already-struggling model.
         if current_ep <= warmup_ep:
             eff_dir_weight = 0.0                                           # off during warmup
-        elif current_ep <= 30:
-            eff_dir_weight = self.config.directional_loss_weight * 0.5    # half weight, ep 11-30
+        elif current_ep <= 35:
+            eff_dir_weight = self.config.directional_loss_weight * 0.5    # half weight, ep 16-35
         else:
-            eff_dir_weight = self.config.directional_loss_weight           # full weight after ep30
+            eff_dir_weight = self.config.directional_loss_weight           # full weight after ep35
 
         if eff_dir_weight > 0.0 and len(pred_valid) >= 4:
             idx = torch.randperm(len(pred_valid), device=pred.device)
@@ -1013,11 +1029,11 @@ class EnterpriseTrainer:
         else:
             cos_loss = torch.tensor(0.0, device=pred.device)
 
-        # Weight budget: MSE(1.0) + VarReg(1.5) + NLL(0.15) + ListMLE(gated) + Rank(0.25)
-        # VarReg LOWERED 3.0→1.5: prevents it dominating MSE signal in early training.
+        # Weight budget: MSE(1.0) + VarReg(0.8) + NLL(0.15) + ListMLE(gated) + Rank(rank_loss_weight)
+        # FIX(R13): VarReg weight 1.5→0.8: MSE must be the dominant loss signal.
         total = (
             mse_loss
-            + 1.5 * var_reg
+            + 0.8 * var_reg
             + nll_aux
             + eff_dir_weight * dir_loss
             + self.config.rank_loss_weight * cos_loss
