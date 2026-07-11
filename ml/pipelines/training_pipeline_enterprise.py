@@ -241,6 +241,20 @@ def graph_collate_fn(batch):
         T = sequences[0].num_graphs
         B = len(sequences)
         batched_graphs = Batch.from_data_list(sequences)
+        
+        # Correct graph mapping and count for concatenated Batch objects
+        device = sequences[0].batch.device
+        batch_list = [sequences[b].batch + b * T for b in range(B)]
+        batched_graphs.batch = torch.cat(batch_list, dim=0)
+        batched_graphs.num_graphs = T * B
+        
+        # Correct ptr offsets
+        n_nodes_per_seq = sequences[0].x.shape[0]
+        ptr_list = []
+        for b in range(B):
+            ptr_list.append(sequences[b].ptr[:-1] + b * n_nodes_per_seq)
+        ptr_list.append(torch.tensor([B * n_nodes_per_seq], dtype=torch.long, device=device))
+        batched_graphs.ptr = torch.cat(ptr_list, dim=0)
     else:
         # verify sequence lengths are consistent and capture T, B
         seq_lens = [len(seq) for seq in sequences]
