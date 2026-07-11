@@ -2107,10 +2107,13 @@ def main():
         config.cudnn_benchmark = True
         config.use_sam = False              # DISABLED: was causing 47s/ep; target <18s
         config.use_amp = True               # Re-enabled: safe without SAM
-        # FIX(R11-SPEED): MHA SectorPoolingHead is gone → OOM risk eliminated → restore batch_size=16.
-        # Effective batch = 16 × 2 GPUs × 2 accum = 64. Batches/rank = 2192÷16÷2 = 68 (was 137).
-        config.batch_size = 16
-        config.gradient_accumulation_steps = 2
+        # FIX(R11-SPEED): MHA SectorPoolingHead is gone.
+        # FIX(R12-OOM): 100 assets causes 16x edges -> OOM with batch_size=16. 
+        # Reduce batch_size to 4 and scale gradient_accumulation_steps to 8.
+        # This keeps the effective batch size at 64 (4 * 8 = 32 per GPU, 64 total across 2 GPUs)
+        # while cutting GPU activation memory usage by 4x.
+        config.batch_size = 4
+        config.gradient_accumulation_steps = 8
         config.num_workers = 4              # More workers to saturate 30GB RAM bus
         config.target_col = "returns_5d"
         config.forecast_horizon = 5
