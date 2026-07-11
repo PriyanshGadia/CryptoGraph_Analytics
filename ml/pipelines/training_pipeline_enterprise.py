@@ -246,7 +246,7 @@ def graph_collate_fn(batch):
         device = sequences[0].batch.device
         batch_list = [sequences[b].batch + b * T for b in range(B)]
         batched_graphs.batch = torch.cat(batch_list, dim=0)
-        batched_graphs.num_graphs = T * B
+        batched_graphs._num_graphs = T * B
         
         # Correct ptr offsets
         n_nodes_per_seq = sequences[0].x.shape[0]
