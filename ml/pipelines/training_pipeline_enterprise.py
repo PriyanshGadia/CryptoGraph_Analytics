@@ -353,8 +353,16 @@ class SectorPoolingHead(nn.Module):
         x_2d = x.view(B, N_nodes, -1)          # (B, N_nodes, H)
         hidden_dim = x_2d.shape[-1]
 
-        # Safety: clamp index to valid node range (guards against N mismatch at inference time).
-        safe_sector = sector_assignments[:N_nodes].clamp(0, self.n_sectors - 1)  # (N_nodes,)
+        # Ensure safe_sector has exactly N_nodes elements by slicing or padding.
+        # This handles dynamic sub-graphs (e.g. N_nodes < 100) and expanded graphs (e.g. N_nodes > 100) robustly.
+        n_assign = sector_assignments.shape[0]
+        if n_assign >= N_nodes:
+            safe_sector = sector_assignments[:N_nodes]
+        else:
+            padding = torch.full((N_nodes - n_assign,), 8, dtype=torch.long, device=sector_assignments.device)
+            safe_sector = torch.cat([sector_assignments, padding], dim=0)
+
+        safe_sector = safe_sector.clamp(0, self.n_sectors - 1)  # (N_nodes,)
 
         # ── Vectorized sector mean pooling — NO Python loop ──────────────────────
         # Build (B, n_sectors, H) sector embeddings using one-hot scatter (pure torch).
