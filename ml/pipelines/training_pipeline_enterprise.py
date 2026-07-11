@@ -298,25 +298,23 @@ class WindowedGraphDataset(Dataset):
         self.valid_start = max(start_idx, lookback + horizon - 1)
         self.end_idx = end_idx
 
-        # Lazy cache to utilize CPU RAM efficiently.
-        # Batches are collated on-demand and cached for subsequent epochs,
-        # ensuring each DDP rank only caches the subset of windows it processes.
-        self.cached_windows = [None] * max(0, self.end_idx - self.valid_start)
+        # Pre-collate all windows in the parent process to utilize CPU RAM
+        # and share memory with dataloader workers via Copy-on-Write.
+        self.cached_windows = []
+        n_samples = max(0, self.end_idx - self.valid_start)
+        if n_samples > 0:
+            log(f"Pre-collating dataset ({n_samples} samples)...")
+            from torch_geometric.data import Batch
+            for i in range(n_samples):
+                t = self.valid_start + i
+                input_end = t - self.horizon + 1
+                window = self.all_graphs[input_end - self.lookback : input_end]
+                self.cached_windows.append(Batch.from_data_list(window))
 
     def __len__(self) -> int:
         return len(self.cached_windows)
 
     def __getitem__(self, i: int):
-        if self.cached_windows[i] is None:
-            t = self.valid_start + i
-            input_end = t - self.horizon + 1
-            window = self.all_graphs[input_end - self.lookback : input_end]
-            assert len(window) == self.lookback, (
-                f"Window length {len(window)} != lookback {self.lookback} (t={t})"
-            )
-            from torch_geometric.data import Batch
-            self.cached_windows[i] = Batch.from_data_list(window)
-
         return self.cached_windows[i], self.all_targets[self.valid_start + i], self.all_masks[self.valid_start + i]
 
 class SectorPoolingHead(nn.Module):
@@ -782,11 +780,35 @@ class EnterpriseTrainer:
         if lr_reset_flag.exists():
             reason = lr_reset_flag.read_text().strip()
             lr_reset_flag.unlink(missing_ok=True)  # consume the signal
-            # Reset LR to peak and clear patience counter
+            
+            # Reload best model weights if available
+            best_model_path = self.run_dir / "best_model.pt"
+            if best_model_path.exists():
+                try:
+                    checkpoint = torch.load(best_model_path, map_location=self.device, weights_only=False)
+                    if "model_state_dict" in checkpoint:
+                        self.raw_model.load_state_dict(checkpoint["model_state_dict"])
+                        log(f"[monitor] LR_RESET: reloaded best model weights from {best_model_path.name}")
+                except Exception as e:
+                    log(f"[monitor] LR_RESET: failed to reload best model (non-fatal): {e}")
+
+            # Decay LR by 0.5 to prevent divergence and allow finer convergence
+            current_lr = self.optimizer.param_groups[0]["lr"]
+            new_lr = max(current_lr * 0.5, 1e-5)
+            
             for pg in self.optimizer.param_groups:
-                pg["lr"] = self.config.learning_rate
-            self.patience_counter = max(0, self.patience_counter - 10)  # partial credit
-            log(f"[monitor] LR_RESET at epoch {epoch}: lr→{self.config.learning_rate:.2e} | {reason}")
+                pg["lr"] = new_lr
+            
+            # Update scheduler base_lrs so the scheduler scales correctly from the new base
+            if hasattr(self.scheduler, "base_lrs"):
+                self.scheduler.base_lrs = [new_lr] * len(self.scheduler.base_lrs)
+            if hasattr(self.scheduler, "_schedulers"):
+                for s in self.scheduler._schedulers:
+                    if hasattr(s, "base_lrs"):
+                        s.base_lrs = [new_lr] * len(s.base_lrs)
+
+            self.patience_counter = 0  # reset patience to 0 to start fresh
+            log(f"[monitor] LR_RESET at epoch {epoch}: lr decayed {current_lr:.2e} → {new_lr:.2e} | {reason}")
             return "LR_RESET"
 
         return ""
@@ -851,10 +873,17 @@ class EnterpriseTrainer:
                 continue
             p = pred[b][valid]
             t = target[b][valid]
-            p_norm = p.norm()
-            t_norm = t.norm()
+            
+            # Center the vectors to make it equivalent to Pearson correlation
+            p_mean = p.mean()
+            t_mean = t.mean()
+            p_centered = p - p_mean
+            t_centered = t - t_mean
+            
+            p_norm = p_centered.norm()
+            t_norm = t_centered.norm()
             if p_norm > 1e-8 and t_norm > 1e-8:
-                sim = (p * t).sum() / (p_norm * t_norm)
+                sim = (p_centered * t_centered).sum() / (p_norm * t_norm)
                 cos_sims.append(sim)
         if cos_sims:
             return 1.0 - torch.stack(cos_sims).mean()
@@ -897,9 +926,19 @@ class EnterpriseTrainer:
         #    var_reg = (var_target - pred_std)^2 — gradient is ALWAYS nonzero.
         #    Lower weight prevents VarReg from drowning MSE signal in early epochs.
         #    var_target=0.60 better matches post-normalization target std ~1.1.
+        #    FIX(R12): Compute std across assets per-snapshot (dim=1) rather than globally,
+        #    to prevent spatial collapse at each individual time-step.
         var_target = 0.60
-        pred_std = pred_valid.std().clamp(min=1e-8)
-        var_reg = (var_target - pred_std) ** 2
+        pred_stds = []
+        for b in range(pred.shape[0]):
+            valid_b = mask[b].bool()
+            if valid_b.sum() >= 2:
+                pred_stds.append(pred[b][valid_b].std())
+        if pred_stds:
+            mean_pred_std = torch.stack(pred_stds).mean().clamp(min=1e-8)
+        else:
+            mean_pred_std = pred_valid.std().clamp(min=1e-8)
+        var_reg = (var_target - mean_pred_std) ** 2
 
         # 3) AUXILIARY NLL: uncertainty head only. Gradient does NOT flow to pred.
         log_var_c = torch.clamp(log_var, min=self.config.log_var_min, max=self.config.log_var_max)
@@ -930,7 +969,13 @@ class EnterpriseTrainer:
             t_sort_idx = torch.argsort(t, descending=True)
             p_sorted = p[t_sort_idx]
             max_val = p_sorted.detach().max()
-            log_cumsum = torch.logcumsumexp(p_sorted - max_val, dim=0) + max_val
+            
+            # Correct ListMLE cumulative log-sum-exp: sum elements from i to n-1 (remaining items).
+            # Flip the sorted tensor, apply logcumsumexp, and flip back.
+            p_flipped = torch.flip(p_sorted - max_val, dims=[0])
+            log_cumsum_flipped = torch.logcumsumexp(p_flipped, dim=0)
+            log_cumsum = torch.flip(log_cumsum_flipped, dims=[0]) + max_val
+            
             rank_loss = -(p_sorted - log_cumsum).mean()
             dir_loss = rank_loss.clamp(max=5.0)
         else:
@@ -1409,27 +1454,21 @@ def compute_permutation_importance(
                 break
             if masks.sum() == 0:
                 continue
-            from torch_geometric.data import Batch
-            if isinstance(sequences, Batch):
-                flat_list = sequences.to_data_list()
-                T = model.config.lookback_days
-                B = len(flat_list) // T
-                sequences_list = [flat_list[b * T : (b + 1) * T] for b in range(B)]
-            else:
-                sequences_list = sequences
 
-            seq_dev = []
-            for seq in sequences_list:
-                s = []
-                for g in seq:
-                    g = g.to(device)
-                    if perturb_col is not None:
-                        g = g.clone()
-                        idx = torch.randperm(g.x.shape[0], device=g.x.device)
-                        g.x[:, perturb_col] = g.x[idx, perturb_col]
-                    s.append(g)
-                seq_dev.append(s)
-            pred = model(seq_dev)
+            sequences = sequences.to(device)
+
+            if perturb_col is not None:
+                sequences = sequences.clone()
+                num_graphs = sequences.num_graphs
+                nodes_per_graph = sequences.num_nodes // num_graphs
+                x_reshaped = sequences.x.view(num_graphs, nodes_per_graph, -1)
+                for g_idx in range(num_graphs):
+                    idx = torch.randperm(nodes_per_graph, device=device)
+                    x_reshaped[g_idx, :, perturb_col] = x_reshaped[g_idx, idx, perturb_col]
+
+            with torch.no_grad():
+                pred = model(sequences)
+
             valid = masks.to(device).bool()
             if valid.any():
                 se = ((pred[valid] - targets.to(device)[valid]) ** 2).sum().item()
@@ -1480,23 +1519,19 @@ def compute_trading_signal_metrics(
     spread_gate_thresh = getattr(model.config, "spread_gate_threshold", 0.15)
 
     for sequences, targets, masks in test_loader:
-        from torch_geometric.data import Batch
-        if isinstance(sequences, Batch):
-            flat_list = sequences.to_data_list()
-            T = model.config.lookback_days
-            B = len(flat_list) // T
-            sequences_list = [flat_list[b * T : (b + 1) * T] for b in range(B)]
-        else:
-            sequences_list = sequences
+        sequences = sequences.to(device)
+        with torch.no_grad():
+            pred_raw, log_var_raw = model(sequences, return_uncertainty=True)
+        pred_raw = pred_raw.cpu()
+        log_var_raw = log_var_raw.cpu()
 
-        for b in range(len(sequences_list)):
+        B_batch = pred_raw.shape[0]
+        for b in range(B_batch):
             mask_b = masks[b]
             if mask_b.sum() == 0:
                 continue
-            seq_dev = [[g.to(device) for g in sequences_list[b]]]
-            pred_raw, log_var_raw = model(seq_dev, return_uncertainty=True)
-            pred = pred_raw.cpu()[0]
-            log_var = log_var_raw.cpu()[0]
+            pred = pred_raw[b]
+            log_var = log_var_raw[b]
             pred_std_day = float(torch.exp(0.5 * log_var.clamp(max=4.0))[mask_b.bool()].mean().item())
             valid = mask_b.bool()
             if valid.sum() == 0:
