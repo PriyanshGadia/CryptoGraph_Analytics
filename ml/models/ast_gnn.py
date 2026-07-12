@@ -89,7 +89,7 @@ class AdaptiveRelationalGNN(nn.Module):
         self.elu     = nn.ELU()
 
     def forward(self, x: Tensor, edge_index: Tensor, edge_type: Tensor,
-                edge_attr: Tensor, T: int = 1, N: int = None) -> Tensor:
+                edge_attr: Tensor, T: int = 1, N: int = None, max_chunk_T: int = 30) -> Tensor:
         """
         x:          (T*N, hidden_dim)  — T_total snapshots × N nodes, flattened
         edge_index: (2, E_physical)    — block-diagonal, no cross-snapshot edges
@@ -102,31 +102,73 @@ class AdaptiveRelationalGNN(nn.Module):
         """
         N = N or 1
 
-        # ── Step 1: Physical graph conv (one CUDA kernel call) ──────────────────
-        if self.use_gatv2:
-            h_physical = self.rgat(x, edge_index, edge_attr=edge_attr)
+        if T <= max_chunk_T:
+            # ── Step 1: Physical graph conv (one CUDA kernel call) ──────────────────
+            if self.use_gatv2:
+                h_physical = self.rgat(x, edge_index, edge_attr=edge_attr)
+            else:
+                h_physical = self.rgat(x, edge_index, edge_type, edge_attr=edge_attr)
+            h_physical = self.elu(h_physical)  # (T*N, hidden_dim)
+
+            # ── Step 2: Dynamic adaptive graph — fully batched einsum ───────────────
+            if T > 1:
+                x_3d = x.view(T, N, -1)                          # (T, N, H)
+                q = self.query_projection(x_3d)                  # (T, N, d)
+                k = self.key_projection(x_3d)                    # (T, N, d)
+                attn = torch.bmm(q, k.transpose(1, 2)) / self.scale  # (T, N, N) — one bmm
+                A = F.softmax(F.relu(attn), dim=-1)              # (T, N, N)
+                h_adaptive = torch.bmm(A, x_3d)                  # (T, N, H) — one bmm
+                h_adaptive = h_adaptive.view(T * N, -1)
+            else:
+                q = self.query_projection(x)                     # (N, d)
+                k = self.key_projection(x)                       # (N, d)
+                A = F.softmax(F.relu(torch.mm(q, k.t()) / self.scale), dim=-1)  # (N, N)
+                h_adaptive = torch.mm(A, x)                      # (N, H)
+
+            h_adaptive = self.elu(self.adaptive_weight(h_adaptive))
+
+            # ── Step 3: Residual fusion + LayerNorm ─────────────────────────────────
+            return self.norm(x + self.dropout(h_physical + h_adaptive))
         else:
-            h_physical = self.rgat(x, edge_index, edge_type, edge_attr=edge_attr)
-        h_physical = self.elu(h_physical)  # (T*N, hidden_dim)
+            chunks_h = []
+            for start_g in range(0, T, max_chunk_T):
+                end_g = min(start_g + max_chunk_T, T)
+                chunk_T = end_g - start_g
+                start_node = start_g * N
+                end_node = end_g * N
 
-        # ── Step 2: Dynamic adaptive graph — fully batched einsum ───────────────
-        # At N=100: adjacency tensor is (T, N, N) = T×40KB — trivially fits in VRAM.
-        # No Python loop needed. Single batched matmul.
-        if T > 1:
-            x_3d = x.view(T, N, -1)                          # (T, N, H)
-            q = self.query_projection(x_3d)                  # (T, N, d)
-            k = self.key_projection(x_3d)                    # (T, N, d)
-            attn = torch.bmm(q, k.transpose(1, 2)) / self.scale  # (T, N, N) — one bmm
-            A = F.softmax(F.relu(attn), dim=-1)              # (T, N, N)
-            h_adaptive = torch.bmm(A, x_3d)                  # (T, N, H) — one bmm
-            h_adaptive = h_adaptive.view(T * N, -1)
-        else:
-            q = self.query_projection(x)                     # (N, d)
-            k = self.key_projection(x)                       # (N, d)
-            A = F.softmax(F.relu(torch.mm(q, k.t()) / self.scale), dim=-1)  # (N, N)
-            h_adaptive = torch.mm(A, x)                      # (N, H)
-
-        h_adaptive = self.elu(self.adaptive_weight(h_adaptive))
-
-        # ── Step 3: Residual fusion + LayerNorm ─────────────────────────────────
-        return self.norm(x + self.dropout(h_physical + h_adaptive))
+                x_chunk = x[start_node:end_node]
+                
+                # Get edge mask for edges in this snapshot chunk
+                # Since edge_index is block-diagonal, any edge starting within [start_node, end_node) belongs here
+                edge_mask = (edge_index[0] >= start_node) & (edge_index[0] < end_node)
+                
+                edge_index_chunk = edge_index[:, edge_mask] - start_node
+                edge_type_chunk = edge_type[edge_mask] if edge_type is not None else None
+                edge_attr_chunk = edge_attr[edge_mask] if edge_attr is not None else None
+                
+                if self.use_gatv2:
+                    h_phys_chunk = self.rgat(x_chunk, edge_index_chunk, edge_attr=edge_attr_chunk)
+                else:
+                    h_phys_chunk = self.rgat(x_chunk, edge_index_chunk, edge_type_chunk, edge_attr=edge_attr_chunk)
+                h_phys_chunk = self.elu(h_phys_chunk)
+                
+                if chunk_T > 1:
+                    x_3d = x_chunk.view(chunk_T, N, -1)
+                    q = self.query_projection(x_3d)
+                    k = self.key_projection(x_3d)
+                    attn = torch.bmm(q, k.transpose(1, 2)) / self.scale
+                    A = F.softmax(F.relu(attn), dim=-1)
+                    h_adap_chunk = torch.bmm(A, x_3d)
+                    h_adap_chunk = h_adap_chunk.view(chunk_T * N, -1)
+                else:
+                    q = self.query_projection(x_chunk)
+                    k = self.key_projection(x_chunk)
+                    A = F.softmax(F.relu(torch.mm(q, k.t()) / self.scale), dim=-1)
+                    h_adap_chunk = torch.mm(A, x_chunk)
+                
+                h_adap_chunk = self.elu(self.adaptive_weight(h_adap_chunk))
+                out_chunk = self.norm(x_chunk + self.dropout(h_phys_chunk + h_adap_chunk))
+                chunks_h.append(out_chunk)
+            
+            return torch.cat(chunks_h, dim=0)

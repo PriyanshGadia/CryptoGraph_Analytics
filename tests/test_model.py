@@ -125,3 +125,54 @@ def test_enterprise_model_batched_forward_pass():
     print("EnterpriseSTGCNModel batched forward pass unit test passed successfully!")
 
 
+def test_adaptive_gnn_chunking_equivalence():
+    from ml.models.ast_gnn import AdaptiveRelationalGNN
+    
+    hidden_dim = 16
+    num_nodes = 5
+    T = 8
+    
+    model = AdaptiveRelationalGNN(
+        hidden_dim=hidden_dim,
+        num_relations=3,
+        heads=2,
+        dropout=0.0,
+        use_gatv2=False
+    )
+    model.eval()
+    
+    # Create input: T=8 snapshots of 5 nodes
+    x = torch.randn(T * num_nodes, hidden_dim)
+    
+    # We construct a block-diagonal edge_index
+    # and random edge types / attributes.
+    edges_list = []
+    edge_types_list = []
+    edge_attrs_list = []
+    
+    for t in range(T):
+        offset = t * num_nodes
+        # Generate some physical connections within each snapshot
+        edges_t = torch.tensor([[0, 1, 2, 3], [1, 2, 3, 0]], dtype=torch.long) + offset
+        edges_list.append(edges_t)
+        edge_types_list.append(torch.tensor([0, 1, 2, 0], dtype=torch.long))
+        edge_attrs_list.append(torch.randn((4, 1), dtype=torch.float32))
+        
+    edge_index = torch.cat(edges_list, dim=1)
+    edge_type = torch.cat(edge_types_list, dim=0)
+    edge_attr = torch.cat(edge_attrs_list, dim=0)
+    
+    with torch.no_grad():
+        # 1. Forward with max_chunk_T = 3 (this triggers chunked execution with chunks: 3, 3, 2)
+        out_chunked = model(x, edge_index, edge_type, edge_attr, T=T, N=num_nodes, max_chunk_T=3)
+        
+        # 2. Forward with max_chunk_T = 10 (this triggers standard non-chunked execution)
+        out_non_chunked = model(x, edge_index, edge_type, edge_attr, T=T, N=num_nodes, max_chunk_T=10)
+        
+    # Verify outputs are mathematically identical
+    assert torch.allclose(out_chunked, out_non_chunked, atol=1e-5), (
+        f"Chunked and non-chunked forward passes differed! max diff: {(out_chunked - out_non_chunked).abs().max()}"
+    )
+    print("AdaptiveRelationalGNN chunking equivalence unit test passed successfully!")
+
+
