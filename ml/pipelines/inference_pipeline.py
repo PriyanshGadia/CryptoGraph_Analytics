@@ -265,6 +265,28 @@ def run_inference() -> dict:
     attester = InferenceAttester()
 
     # ── 5. Decode predictions & Generate XAI / Inference Attestations ────────
+    scale_map = {}
+    mean_map = {}
+    
+    scale_path = MODEL_PATH.parent / "target_scale_map.json"
+    mean_path = MODEL_PATH.parent / "target_mean_map.json"
+    
+    if scale_path.exists():
+        try:
+            with open(scale_path, "r") as f:
+                scale_map = json.load(f)
+            print(f"Loaded target scale map from {scale_path}")
+        except Exception as e:
+            print(f"Error loading target scale map: {e}")
+            
+    if mean_path.exists():
+        try:
+            with open(mean_path, "r") as f:
+                mean_map = json.load(f)
+            print(f"Loaded target mean map from {mean_path}")
+        except Exception as e:
+            print(f"Error loading target mean map: {e}")
+
     predictions = []
     timestamp_now = now.isoformat()
 
@@ -272,7 +294,43 @@ def run_inference() -> dict:
         latest_features = features[symbol].iloc[-1] if symbol in features else None
         
         # Decode direction and confidence from the model's calibrated forward pass
-        if gate_passed and dir_probs is not None and vol_probs is not None:
+        if gate_passed and is_enterprise and pred_np is not None and log_var_np is not None:
+            import math
+            scale = scale_map.get(symbol, 1.0)
+            mean = mean_map.get(symbol, 0.0)
+            
+            pred_raw = pred_np[idx]
+            log_var_raw = log_var_np[idx]
+            
+            pred_return = pred_raw * scale + mean
+            
+            if pred_return > 0.001:
+                direction = "up"
+            elif pred_return < -0.001:
+                direction = "down"
+            else:
+                direction = "neutral"
+                
+            std = math.exp(0.5 * log_var_raw) * scale
+            z = abs(pred_return) / (std + 1e-8)
+            prob = 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
+            
+            confidence = round(min(98.5, 33.33 + (prob - 0.5) * 130.34), 2)
+            if not (0 <= confidence <= 100):
+                raise ValueError(f"Confidence score {confidence} is out of bounds [0, 100]")
+                
+            if direction == "up" and confidence >= 68.0:
+                direction = "strong_up"
+            elif direction == "down" and confidence >= 68.0:
+                direction = "strong_down"
+                
+            vol_regime = "medium"
+            if std > 0.03:
+                vol_regime = "high"
+            elif std < 0.01:
+                vol_regime = "low"
+                
+        elif gate_passed and dir_probs is not None and vol_probs is not None:
             dir_idx = int(dir_probs[idx].argmax().item())
             prob = float(dir_probs[idx][dir_idx].item())  # Calibrated softmax probability in range [0.3333, 1.0]
 

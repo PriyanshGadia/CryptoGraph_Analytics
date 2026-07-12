@@ -53,85 +53,50 @@ class SpatioTemporalGAT(nn.Module):
                 device=graph.edge_index.device,
             )
 
-    def forward(self, graph_sequence: Union[List[Data], Batch],
+    def forward(self, graph_sequence: Union[List[Data], Batch, List[Batch]],
                 T: Optional[int] = None, B: int = 1) -> Tensor:
+        from torch_geometric.data import Batch
+
         if isinstance(graph_sequence, list):
-            if B != 1:
-                raise ValueError(
-                    "B>1 requested but graph_sequence is a flat list (single sequence). "
-                    "Pass a pre-built Batch with explicit T and B for multi-sequence input."
-                )
-            T_seq = len(graph_sequence)
-            if T_seq == 0:
+            if len(graph_sequence) == 0:
                 return torch.empty((0, 0, self.hidden_dim))
-            N = graph_sequence[0].num_nodes
-            for g in graph_sequence:
-                self._ensure_edge_type(g)
+            
             batched_graph = Batch.from_data_list(graph_sequence)
-            T_total, B_actual = T_seq, 1
+            self._ensure_edge_type(batched_graph)
+            
+            if isinstance(graph_sequence[0], Batch):
+                B_actual = len(graph_sequence)
+                T_per_sample = graph_sequence[0].num_graphs
+                T_total = B_actual * T_per_sample
+            else:
+                B_actual = 1
+                T_per_sample = len(graph_sequence)
+                T_total = T_per_sample
         else:
             batched_graph = graph_sequence
+            self._ensure_edge_type(batched_graph)
             if B > 1 and T is None:
                 raise ValueError("T (graphs per sample) must be provided when B > 1.")
             if T is None:
-                T_total, T, B_actual = batched_graph.num_graphs, batched_graph.num_graphs, 1
+                T_total = batched_graph.num_graphs
+                T_per_sample = T_total
+                B_actual = 1
             else:
                 B_actual = B
-                T_total = T * B_actual
-                if T_total != batched_graph.num_graphs:
-                    raise ValueError(
-                        f"T*B ({T_total}) does not match batched_graph.num_graphs "
-                        f"({batched_graph.num_graphs})."
-                    )
-            N = batched_graph.x.shape[0] // T_total
-            if N * T_total != batched_graph.x.shape[0]:
-                raise ValueError(
-                    f"batched_graph has {batched_graph.x.shape[0]} total nodes, not evenly "
-                    f"divisible by T_total={T_total}."
-                )
+                T_per_sample = T
+                T_total = T_per_sample * B_actual
 
-        h = batched_graph.x
-        edge_index = batched_graph.edge_index
-        edge_type = batched_graph.edge_type
-        edge_attr = batched_graph.edge_attr
+        N = batched_graph.x.shape[0] // T_total
 
-        # To prevent OutOfMemoryError in RGATConv on large batch sequences (e.g. B*T = 240 graphs),
-        # we process the GNN passes sample-by-sample (or chunk-by-chunk) if B_actual > 1.
-        # This is mathematically identical since the physical graphs are disjoint.
-        if B_actual > 1:
-            h_out_list = []
-            T_per_sample = T  # number of graphs per sample
-            for b in range(B_actual):
-                start_node = b * T_per_sample * N
-                end_node = (b + 1) * T_per_sample * N
-                
-                # Slice node features
-                x_b = h[start_node:end_node]
-                
-                # Slice and shift edge indices
-                mask = (edge_index[0] >= start_node) & (edge_index[0] < end_node)
-                edge_index_b = edge_index[:, mask] - start_node
-                edge_type_b = edge_type[mask] if edge_type is not None else None
-                edge_attr_b = edge_attr[mask] if edge_attr is not None else None
-                
-                # Forward through rgat1 and rgat2 for this sample
-                h_b = self.rgat1(x_b, edge_index_b, edge_type_b,
-                                 edge_attr=edge_attr_b, T=T_per_sample, N=N)
-                h_b = self.rgat2(h_b, edge_index_b, edge_type_b,
-                                 edge_attr=edge_attr_b, T=T_per_sample, N=N)
-                h_out_list.append(h_b)
-            h = torch.cat(h_out_list, dim=0)
-        else:
-            # Single sample/sequence path (B=1)
-            h = self.rgat1(h, edge_index, edge_type,
-                           edge_attr=edge_attr, T=T_total, N=N)
-            h = self.rgat2(h, edge_index, edge_type,
-                           edge_attr=edge_attr, T=T_total, N=N)
+        # Single vectorized GNN forward pass (no python loops)
+        h = self.rgat1(batched_graph.x, batched_graph.edge_index, batched_graph.edge_type,
+                       edge_attr=batched_graph.edge_attr, T=T_total, N=N)
+        h = self.rgat2(h, batched_graph.edge_index, batched_graph.edge_type,
+                       edge_attr=batched_graph.edge_attr, T=T_total, N=N)
 
         if B_actual == 1:
             return h.view(T_total, N, -1).transpose(0, 1)
 
-        T_per_sample = T_total // B_actual
         h = h.view(B_actual, T_per_sample, N, -1)
         h = h.permute(0, 2, 1, 3).contiguous()
         return h.view(B_actual * N, T_per_sample, -1)

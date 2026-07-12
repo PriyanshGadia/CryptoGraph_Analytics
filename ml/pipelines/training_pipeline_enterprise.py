@@ -249,46 +249,20 @@ class SAM(torch.optim.Optimizer):
 
 def graph_collate_fn(batch):
     from torch_geometric.data import Batch
-    sequences = [item[0] for item in batch]
-    
-    if isinstance(sequences[0], Batch):
-        T = sequences[0].num_graphs
-        B = len(sequences)
-        batched_graphs = Batch.from_data_list(sequences)
-        
-        # Correct graph mapping and count for concatenated Batch objects
-        device = sequences[0].batch.device
-        batch_list = [sequences[b].batch + b * T for b in range(B)]
-        batched_graphs.batch = torch.cat(batch_list, dim=0)
-        batched_graphs._num_graphs = T * B
-        
-        # Correct ptr offsets
-        n_nodes_per_seq = sequences[0].x.shape[0]
-        ptr_list = []
-        for b in range(B):
-            ptr_list.append(sequences[b].ptr[:-1] + b * n_nodes_per_seq)
-        ptr_list.append(torch.tensor([B * n_nodes_per_seq], dtype=torch.long, device=device))
-        batched_graphs.ptr = torch.cat(ptr_list, dim=0)
-    else:
-        # verify sequence lengths are consistent and capture T, B
-        seq_lens = [len(seq) for seq in sequences]
-        if len(set(seq_lens)) != 1:
-            # helpful diagnostic for ragged batches
-            raise ValueError(f"Ragged sequences in collate_fn: lengths={seq_lens}")
-        T = seq_lens[0]
-        B = len(sequences)
-        flat_graphs = []
-        for seq in sequences:
-            flat_graphs.extend(seq)
-        batched_graphs = Batch.from_data_list(flat_graphs)
-
-    # annotate metadata so downstream code can trust T/B
-    setattr(batched_graphs, "seq_len", T)
-    setattr(batched_graphs, "seq_batch_size", B)
-
+    list_of_batches = []
+    for item in batch:
+        seq = item[0]
+        if isinstance(seq, list):
+            list_of_batches.append(Batch.from_data_list(seq))
+        else:
+            list_of_batches.append(seq)
+    combined_seq = Batch.from_data_list(list_of_batches)
+    setattr(combined_seq, "seq_len", list_of_batches[0].num_graphs)
+    setattr(combined_seq, "seq_batch_size", len(batch))
     targets = torch.stack([item[1] for item in batch], dim=0)
     masks = torch.stack([item[2] for item in batch], dim=0)
-    return batched_graphs, targets, masks
+    return combined_seq, targets, masks
+
 
 class WindowedGraphDataset(Dataset):
     def __init__(
@@ -487,7 +461,7 @@ class EnterpriseSTGCNModel(nn.Module):
         from torch_geometric.data import Batch
 
         if isinstance(batch_sequences, Batch):
-            batched = batch_sequences
+            batched = batch_sequences.clone()
             # prefer explicit metadata attached by collate_fn
             if hasattr(batched, "seq_len") and hasattr(batched, "seq_batch_size"):
                 T = int(getattr(batched, "seq_len"))
@@ -505,55 +479,49 @@ class EnterpriseSTGCNModel(nn.Module):
                         f"batched.num_graphs={batched.num_graphs}. Possible divisors: {divisors}."
                     )
                 B = batched.num_graphs // T
-            N_nodes = batched.num_nodes // batched.num_graphs
+            N_nodes = batched.num_nodes // (B * T)
+
+            x_proj = F.relu(self.projection(batched.x))
+            x_proj = self.proj_norm(x_proj)
+            x_proj = self.proj_dropout(x_proj)
+            batched.x = x_proj
+
+            x = self.spatial_gat(batched, T=T, B=B)
         else:
             B = len(batch_sequences)
             if B == 0:
                 raise ValueError("Empty batch passed to forward()")
-            T = len(batch_sequences[0])
-            if T == 0:
-                raise ValueError("Empty graph sequence in batch (T=0)")
+            
+            first_seq = batch_sequences[0]
+            if isinstance(first_seq, Batch):
+                T = first_seq.num_graphs
+                N_nodes = first_seq.x.shape[0] // T
+            else:
+                T = len(first_seq)
+                if T == 0:
+                    raise ValueError("Empty graph sequence in batch (T=0)")
+                N_nodes = first_seq[0].num_nodes
 
-            for b, seq in enumerate(batch_sequences):
-                if len(seq) != T:
-                    raise ValueError(
-                        f"Ragged batch: sequence {b} has length {len(seq)}, expected {T}."
-                    )
-
-            flat = []
+            projected_sequences = []
             for seq in batch_sequences:
-                for g in seq:
-                    if not hasattr(g, "x") or g.x is None:
-                        raise ValueError("Graph missing node feature matrix 'x'")
-                    if g.x.shape[1] != self.config.feature_dim:
-                        raise ValueError(
-                            f"Graph has {g.x.shape[1]} node features, "
-                            f"expected {self.config.feature_dim}"
-                        )
-                    if not hasattr(g, "edge_type") or g.edge_type is None:
-                        g.edge_type = torch.zeros(
-                            g.edge_index.shape[1],
-                            dtype=torch.long,
-                            device=g.edge_index.device,
-                        )
-                    flat.append(g)
+                if not isinstance(seq, Batch):
+                    seq = Batch.from_data_list(seq)
+                if not hasattr(seq, "edge_type") or seq.edge_type is None:
+                    seq.edge_type = torch.zeros(
+                        seq.edge_index.shape[1],
+                        dtype=torch.long,
+                        device=seq.edge_index.device,
+                    )
+                x_proj = F.relu(self.projection(seq.x))
+                x_proj = self.proj_norm(x_proj)
+                x_proj = self.proj_dropout(x_proj)
+                
+                seq_cloned = seq.clone()
+                seq_cloned.x = x_proj
+                projected_sequences.append(seq_cloned)
 
-            node_counts = {g.num_nodes for g in flat}
-            if len(node_counts) > 1:
-                raise ValueError(
-                    f"Inconsistent node counts across minibatch: {node_counts}."
-                )
+            x = self.spatial_gat(projected_sequences, T=T, B=B)
 
-            N_nodes = flat[0].num_nodes
-            batched = Batch.from_data_list(flat)
-
-        batched = batched.clone()
-        x = F.relu(self.projection(batched.x))
-        x = self.proj_norm(x)
-        x = self.proj_dropout(x)
-        batched.x = x
-
-        x = self.spatial_gat(batched, T=T, B=B)
         x = self.temporal_encoder(x)
 
         if x.dim() != 2 or x.shape[0] != B * N_nodes:
@@ -1039,11 +1007,11 @@ class EnterpriseTrainer:
         else:
             cos_loss = torch.tensor(0.0, device=pred.device)
 
-        # Weight budget: MSE(1.0) + VarReg(0.8) + NLL(0.15) + ListMLE(gated) + Rank(rank_loss_weight)
-        # FIX(R13): VarReg weight 1.5→0.8: MSE must be the dominant loss signal.
+        # Weight budget: MSE(1.0) + VarReg(3.5) + NLL(0.15) + ListMLE(gated) + Rank(rank_loss_weight)
+        # FIX(R14): VarReg weight 0.8 -> 3.5 to mathematically eliminate the zero-variance MSE collapse shortcut.
         total = (
             mse_loss
-            + 0.8 * var_reg
+            + 3.5 * var_reg
             + nll_aux
             + eff_dir_weight * dir_loss
             + self.config.rank_loss_weight * cos_loss
@@ -1052,10 +1020,12 @@ class EnterpriseTrainer:
 
     def _forward_backward(self, sequences, targets, masks) -> Tuple[float, float]:
         if isinstance(sequences, list):
-            sequences_dev = [
-                [g.to(self.device, non_blocking=True) for g in seq]
-                for seq in sequences
-            ]
+            sequences_dev = []
+            for seq in sequences:
+                if isinstance(seq, list):
+                    sequences_dev.append([g.to(self.device, non_blocking=True) for g in seq])
+                else:
+                    sequences_dev.append(seq.to(self.device, non_blocking=True))
         else:
             sequences_dev = sequences.to(self.device, non_blocking=True)
         targets_dev = targets.to(self.device, non_blocking=True)
@@ -1096,7 +1066,12 @@ class EnterpriseTrainer:
                 if i >= 5:
                     break
                 if isinstance(sequences, list):
-                    seq_dev = [[g.to(self.device) for g in seq] for seq in sequences]
+                    seq_dev = []
+                    for seq in sequences:
+                        if isinstance(seq, list):
+                            seq_dev.append([g.to(self.device) for g in seq])
+                        else:
+                            seq_dev.append(seq.to(self.device))
                 else:
                     seq_dev = sequences.to(self.device)
                 pred, log_var = self.raw_model(seq_dev, return_uncertainty=True)
@@ -1197,7 +1172,12 @@ class EnterpriseTrainer:
                 continue
 
             if isinstance(sequences, list):
-                sequences_dev = [[g.to(self.device) for g in seq] for seq in sequences]
+                sequences_dev = []
+                for seq in sequences:
+                    if isinstance(seq, list):
+                        sequences_dev.append([g.to(self.device) for g in seq])
+                    else:
+                        sequences_dev.append(seq.to(self.device))
             else:
                 sequences_dev = sequences.to(self.device)
             targets_dev = targets.to(self.device)
@@ -1383,7 +1363,12 @@ class EnterpriseTrainer:
             if masks.sum() == 0:
                 continue
             if isinstance(sequences, list):
-                seq_dev = [[g.to(self.device) for g in seq] for seq in sequences]
+                seq_dev = []
+                for seq in sequences:
+                    if isinstance(seq, list):
+                        seq_dev.append([g.to(self.device) for g in seq])
+                    else:
+                        seq_dev.append(seq.to(self.device))
             else:
                 seq_dev = sequences.to(self.device)
             pred, log_var = self.raw_model(seq_dev, return_uncertainty=True)
@@ -1445,7 +1430,12 @@ class EnterpriseTrainer:
             if masks.sum() == 0:
                 continue
             if isinstance(sequences, list):
-                seq_dev = [[g.to(self.device) for g in seq] for seq in sequences]
+                seq_dev = []
+                for seq in sequences:
+                    if isinstance(seq, list):
+                        seq_dev.append([g.to(self.device) for g in seq])
+                    else:
+                        seq_dev.append(seq.to(self.device))
             else:
                 seq_dev = sequences.to(self.device)
 
@@ -1537,12 +1527,12 @@ def compute_permutation_importance(
         log(f"  feature[{col:02d}] importance: {score - baseline:+.6f}")
     return {"baseline_mse": baseline, "importance_by_feature_index": importances}
 
-@torch.no_grad()
 def compute_trading_signal_metrics(
     model: EnterpriseSTGCNModel,
     test_loader: DataLoader,
     device: torch.device,
     scale_map: Optional[Dict[str, float]] = None,
+    mean_map: Optional[Dict[str, float]] = None,
     available_symbols: Optional[List[str]] = None,
     confidence_gate_threshold: float = 1.5,
 ) -> Dict[str, float]:
@@ -1562,6 +1552,14 @@ def compute_trading_signal_metrics(
         )
     else:
         scales = None
+
+    if mean_map and available_symbols:
+        means = torch.tensor(
+            [mean_map.get(sym, 0.0) for sym in available_symbols],
+            dtype=torch.float32,
+        )
+    else:
+        means = None
 
     daily_returns = []
     daily_returns_raw = []
@@ -1591,11 +1589,17 @@ def compute_trading_signal_metrics(
 
             targets_b = targets[b]
             if scales is not None and len(scales) == len(targets_b):
-                raw_targets = targets_b * scales
+                if means is not None:
+                    raw_targets = targets_b * scales + means
+                    raw_pred = pred * scales + means
+                else:
+                    raw_targets = targets_b * scales
+                    raw_pred = pred * scales
             else:
                 raw_targets = targets_b
+                raw_pred = pred
 
-            valid_pred = pred[valid]
+            valid_pred = raw_pred[valid]
             valid_ret  = raw_targets[valid]
             n_valid = int(valid.sum().item())
             k = max(1, int(round(n_valid * topk_pct)))
@@ -1739,19 +1743,21 @@ def _normalize_targets(
     masks: List[torch.Tensor],
     available_symbols: List[str],
     config: "TrainingConfig",
-) -> Tuple[List[torch.Tensor], Dict[str, float]]:
+) -> Tuple[List[torch.Tensor], Dict[str, float], Dict[str, float]]:
     W = config.target_norm_window
     N = len(available_symbols)
     T = len(raw_targets)
 
     if T == 0 or N == 0:
-        return raw_targets, {}
+        return raw_targets, {}, {}
 
     stacked = torch.stack(raw_targets).numpy()
     stacked_masks = torch.stack(masks).numpy()
 
     scale_map: Dict[str, float] = {}
+    mean_map: Dict[str, float] = {}
     per_sample_scales = np.ones((T, N), dtype=np.float64)
+    asset_means = np.zeros(N, dtype=np.float64)
 
     for j, sym in enumerate(available_symbols):
         series = stacked[:, j].copy().astype(np.float64)
@@ -1768,14 +1774,16 @@ def _normalize_targets(
             for t in range(T):
                 masks[t][j] = 0.0
             scale_map[sym] = 1.0
+            mean_map[sym] = 0.0
             per_sample_scales[:, j] = 1.0
+            asset_means[j] = 0.0
             continue
 
-        # FIX(R11): Compute and subtract per-asset mean (valid samples only) before std-scaling.
-        # Logs showed many assets with mean ≠ 0 post-normalization (e.g. BTC=+0.10, TRX=+0.15).
-        # Centering forces the model to learn the signal shape, not the long-run drift bias.
+        # Compute and subtract per-asset mean (valid samples only) before std-scaling.
         valid_vals = series[~np.isnan(series)]
         asset_mean = float(np.mean(valid_vals)) if len(valid_vals) > 0 else 0.0
+        mean_map[sym] = asset_mean
+        asset_means[j] = asset_mean
         series = series - asset_mean  # mean-center BEFORE rolling std
 
         s = pd.Series(series)
@@ -1822,11 +1830,12 @@ def _normalize_targets(
         per_sample_scales[:, j] = filled_stds
 
     normalized: List[torch.Tensor] = []
+    asset_means_t = torch.tensor(asset_means, dtype=torch.float32)
     for t in range(T):
-        row = raw_targets[t] / torch.tensor(per_sample_scales[t], dtype=torch.float32)
+        row = (raw_targets[t] - asset_means_t) / torch.tensor(per_sample_scales[t], dtype=torch.float32)
         normalized.append(row)
 
-    return normalized, scale_map
+    return normalized, scale_map, mean_map
 
 
 def _verify_normalization(
@@ -2074,9 +2083,10 @@ def _build_dataset_from_scratch(config: TrainingConfig, symbols: List[str]) -> T
     )
 
     scale_map: Dict[str, float] = {}
+    mean_map: Dict[str, float] = {}
     if config.normalize_targets:
         log("Computing normalization scales:")
-        target_returns, scale_map = _normalize_targets(
+        target_returns, scale_map, mean_map = _normalize_targets(
             target_returns, target_masks, available_symbols, config
         )
         log(f"Target normalization scales (median daily return std): {scale_map}")
@@ -2090,6 +2100,7 @@ def _build_dataset_from_scratch(config: TrainingConfig, symbols: List[str]) -> T
         surviving_dates,
         available_symbols,
         scale_map,
+        mean_map,
     )
 
 def load_data(
@@ -2295,12 +2306,18 @@ def main():
             graph_dates,
             available_symbols,
             scale_map,
+            mean_map,
         ) = load_data(config, symbols, rank, is_distributed)
 
-        if rank == 0 and scale_map:
-            with open(run_dir / "target_scale_map.json", "w") as f:
-                json.dump(scale_map, f, indent=2)
-            log("Target scale map saved.")
+        if rank == 0:
+            if scale_map:
+                with open(run_dir / "target_scale_map.json", "w") as f:
+                    json.dump(scale_map, f, indent=2)
+                log("Target scale map saved.")
+            if mean_map:
+                with open(run_dir / "target_mean_map.json", "w") as f:
+                    json.dump(mean_map, f, indent=2)
+                log("Target mean map saved.")
 
         min_required = config.lookback_days + config.forecast_horizon + 10
         if len(all_graphs) < min_required:
@@ -2438,6 +2455,7 @@ def main():
                 trading_metrics = compute_trading_signal_metrics(
                     trainer.raw_model, test_loader, device,
                     scale_map=scale_map,
+                    mean_map=mean_map,
                     available_symbols=available_symbols,
                     confidence_gate_threshold=config.confidence_gate_threshold,
                 )
