@@ -308,7 +308,6 @@ def get_latest_synthesis(db: Session = Depends(get_db)):
         # Generate rich dynamic sentiment synthesis based on actual database variables
         btc = db.query(Asset).filter(Asset.symbol == "BTC").first()
         rsi = 50.0
-        returns_7d = 0.0
         vix = 18.0
         
         if btc:
@@ -316,7 +315,6 @@ def get_latest_synthesis(db: Session = Depends(get_db)):
             tf = db.query(TechnicalFeature).filter(TechnicalFeature.asset_id == btc.id).order_by(desc(TechnicalFeature.timestamp)).first()
             if tf:
                 rsi = tf.rsi_14 or 50.0
-                returns_7d = tf.returns_7d or 0.0
                 
             from app.db.models import AppSetting
             vix_setting = db.query(AppSetting).filter(AppSetting.setting_key == "vix").first()
