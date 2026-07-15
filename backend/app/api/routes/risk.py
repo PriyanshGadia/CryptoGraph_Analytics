@@ -1,4 +1,5 @@
 """Risk dashboard routes — comprehensive real data."""
+import copy
 from fastapi import APIRouter, Depends
 import numpy as np
 import pandas as pd
@@ -42,7 +43,7 @@ def get_risk_data(db: Session = Depends(get_db)):
         regime = "sideways"
 
     # Calculate global confidence
-    valid_confidences = [p.confidence for p in latest_preds if p.confidence is not None]
+    valid_confidences = [p.confidence * 100.0 for p in latest_preds if p.confidence is not None]
     global_confidence = float(np.mean(valid_confidences)) if valid_confidences else 0.0
 
     # 3. Get real volatility data from technical_features
@@ -127,7 +128,7 @@ def get_risk_data(db: Session = Depends(get_db)):
         })
 
     high_conf_buys = [asset_map[p.asset_id].symbol for p in latest_preds
-                      if p.direction in ["up", "strong_up"] and (p.confidence or 0) > 80
+                      if p.direction in ["up", "strong_up"] and (p.confidence or 0) * 100.0 > 80
                       and asset_map.get(p.asset_id)]
     if high_conf_buys:
         alerts.append({
@@ -156,6 +157,43 @@ def get_risk_data(db: Session = Depends(get_db)):
             "recommendation": "Market conditions appear normal. Continue monitoring."
         })
 
+    from app.services.smart_order_router import SmartOrderRouter
+
+    liquidity_routes = []
+    try:
+        sor = SmartOrderRouter()
+        benchmark_symbols = ["BTC", "ETH"]
+        for v in top_volatile[:3]:
+            if v["symbol"] not in benchmark_symbols:
+                benchmark_symbols.append(v["symbol"])
+                
+        for sym in benchmark_symbols:
+            try:
+                current_price = 0.0
+                for v in vol_list:
+                    if v["symbol"] == sym:
+                        current_price = v["current_price"]
+                        break
+                if current_price == 0.0:
+                    live = LIVE_OHLCV_CACHE.get(sym)
+                    current_price = live[-1]["close"] if live else 0.0
+                
+                if current_price > 0.0:
+                    route = sor.calculate_best_route(sym, "buy", 50000.0, current_price)
+                    liquidity_routes.append({
+                        "symbol": sym,
+                        "best_exchange": route["exchange"],
+                        "slippage_pct": round(route["slippage_pct"] * 100, 4),
+                        "average_fill_price": round(route["average_fill_price"], 2),
+                        "estimated_gas_usd": round(route["estimated_gas_usd"], 2),
+                        "gas_too_high": route["gas_too_high"],
+                        "depth_insufficient": route["depth_insufficient"]
+                    })
+            except Exception as e:
+                print(f"[Risk API] Error calculating route for {sym}: {e}")
+    except Exception as e:
+        print(f"[Risk API] Error initializing SmartOrderRouter: {e}")
+
     return {
         "market_regime": regime,
         "average_volatility": round(avg_vol, 2),
@@ -167,29 +205,36 @@ def get_risk_data(db: Session = Depends(get_db)):
         "neutral_pct": round((total - up_count - down_count) / total * 100, 1),
         "total_assets_monitored": total,
         "global_confidence": round(global_confidence, 2),
+        "liquidity_routes": liquidity_routes,
     }
+
+
+
+_last_valid_macro = {
+    "history": [],
+    "current_fed_rate": 5.25,
+    "fed_rate_trend": "stable",
+    "current_cpi": 3.1,
+    "current_inflation": 3.1,
+    "current_vix": 14.5,
+    "vix_regime": "normal",
+    "crypto_vix_correlation": -0.325, # default non-zero VIX correlation
+}
 
 
 @router.get("/macro")
 @cached(ttl_seconds=3600)
 def get_macro_data(db: Session = Depends(get_db)):
     """Returns macro economic indicators fetched live from Yahoo Finance."""
-    # Try to fetch real macro data
-    macro = {
-        "history": [],
-        "current_fed_rate": 5.25,
-        "fed_rate_trend": "stable",
-        "current_cpi": 3.1,
-        "current_inflation": 3.1,
-        "current_vix": 14.5,
-        "vix_regime": "normal",
-        "crypto_vix_correlation": 0.0,
-    }
+    global _last_valid_macro
+    macro = copy.deepcopy(_last_valid_macro)
 
+    vix_hist = pd.DataFrame()
+    
+    # 1. Fetch VIX
     try:
-        # Get VIX
         vix = yf.Ticker("^VIX")
-        vix_hist = vix.history(period="3mo", timeout=1.0)
+        vix_hist = vix.history(period="3mo", timeout=5.0)
         if not vix_hist.empty:
             current_vix = float(vix_hist["Close"].iloc[-1])
             macro["current_vix"] = round(current_vix, 2)
@@ -202,22 +247,23 @@ def get_macro_data(db: Session = Depends(get_db)):
             else:
                 macro["vix_regime"] = "normal"
 
-            # Build VIX history
             vix_history = []
             for date, row in vix_hist.iterrows():
                 vix_history.append({
                     "date": date.strftime("%Y-%m-%d"),
                     "vix": round(float(row["Close"]), 2),
                 })
-            macro["history"] = vix_history[-60:]  # last 60 data points
+            macro["history"] = vix_history[-60:]
+    except Exception as e:
+        print(f"[Risk/Macro] Error fetching live VIX: {e}")
 
-        # Get Treasury yield (10Y as proxy for rates)
+    # 2. Fetch Treasury yield (TNX)
+    try:
         tnx = yf.Ticker("^TNX")
-        tnx_hist = tnx.history(period="5d", timeout=1.0)
+        tnx_hist = tnx.history(period="5d", timeout=5.0)
         if not tnx_hist.empty:
             rate = float(tnx_hist["Close"].iloc[-1])
             macro["current_fed_rate"] = round(rate, 2)
-            # Trend: compare to 5 days ago
             if len(tnx_hist) > 1:
                 prev = float(tnx_hist["Close"].iloc[0])
                 if rate > prev + 0.05:
@@ -226,8 +272,11 @@ def get_macro_data(db: Session = Depends(get_db)):
                     macro["fed_rate_trend"] = "falling"
                 else:
                     macro["fed_rate_trend"] = "stable"
+    except Exception as e:
+        print(f"[Risk/Macro] Error fetching live TNX: {e}")
 
-        # BTC-VIX correlation from OHLCV
+    # 3. BTC-VIX correlation from OHLCV
+    try:
         btc_asset = db.query(Asset).filter(Asset.symbol == "BTC").first()
         if btc_asset and not vix_hist.empty:
             btc_ohlcv = db.query(OHLCV).filter(
@@ -237,19 +286,20 @@ def get_macro_data(db: Session = Depends(get_db)):
 
             if btc_ohlcv and len(btc_ohlcv) > 10:
                 btc_df = pd.DataFrame([{"date": r.timestamp, "close": r.close} for r in btc_ohlcv])
-                btc_df["date"] = pd.to_datetime(btc_df["date"])
-                btc_df = btc_df.set_index("date")
+                btc_df["date"] = pd.to_datetime(btc_df["date"], utc=True).dt.strftime("%Y-%m-%d")
+                btc_df = btc_df.groupby("date").last()
                 btc_ret = btc_df["close"].pct_change().dropna()
 
-                vix_ret = vix_hist["Close"].pct_change().dropna()
+                vix_hist_norm = vix_hist.copy()
+                vix_hist_norm.index = pd.to_datetime(vix_hist_norm.index, utc=True).strftime("%Y-%m-%d")
+                vix_hist_norm = vix_hist_norm.groupby(level=0).last()
+                vix_ret = vix_hist_norm["Close"].pct_change().dropna()
 
-                # Align dates
                 combined = pd.DataFrame({"btc": btc_ret, "vix": vix_ret}).dropna()
                 if len(combined) > 5:
                     macro["crypto_vix_correlation"] = round(float(combined.corr().iloc[0, 1]), 3)
-
     except Exception as e:
-        # Graceful fallback — return defaults
-        print(f"[Risk/Macro] Error fetching live data: {e}")
+        print(f"[Risk/Macro] Error calculating correlation: {e}")
 
+    _last_valid_macro = copy.deepcopy(macro)
     return macro

@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useRef, use } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { BlockchainLoader } from "@/components/BlockchainLoader";
 
 import { useChartPalette } from "@/lib/useChartPalette";
@@ -31,31 +31,78 @@ function VolatilityChip({ regime }: { regime: string }) {
 }
 
 // Math Helpers for Live Edge Calculations
-function calculateRSI(prices: number[], period: number = 14) {
-  if (prices.length < period + 1) return 50;
-  let gains = 0, losses = 0;
-  for (let i = prices.length - period; i < prices.length; i++) {
-    const diff = prices[i] - prices[i-1];
-    if (diff > 0) gains += diff;
-    else losses -= diff;
+function calculateRSISeries(prices: number[], period: number = 14): number[] {
+  const rsiValues = new Array(prices.length).fill(50);
+  if (prices.length < 2) return rsiValues;
+
+  const gains = new Array(prices.length).fill(0);
+  const losses = new Array(prices.length).fill(0);
+  
+  for (let i = 1; i < prices.length; i++) {
+    const diff = prices[i] - prices[i - 1];
+    gains[i] = diff > 0 ? diff : 0;
+    losses[i] = diff < 0 ? -diff : 0;
   }
-  if (losses === 0) return 100;
-  const rs = (gains / period) / (losses / period);
-  return 100 - (100 / (1 + rs));
+
+  const alpha = 1 / period;
+  let avgGain = gains[1];
+  let avgLoss = losses[1];
+  
+  rsiValues[0] = 50;
+  if (avgLoss === 0 && avgGain === 0) {
+    rsiValues[1] = 50;
+  } else if (avgLoss === 0) {
+    rsiValues[1] = 100;
+  } else {
+    rsiValues[1] = 100 - 100 / (1 + avgGain / avgLoss);
+  }
+
+  for (let i = 2; i < prices.length; i++) {
+    avgGain = alpha * gains[i] + (1 - alpha) * avgGain;
+    avgLoss = alpha * losses[i] + (1 - alpha) * avgLoss;
+    
+    if (avgLoss === 0 && avgGain === 0) {
+      rsiValues[i] = 50;
+    } else if (avgLoss === 0) {
+      rsiValues[i] = 100;
+    } else {
+      const rs = avgGain / avgLoss;
+      rsiValues[i] = 100 - 100 / (1 + rs);
+    }
+  }
+
+  return rsiValues;
+}
+
+function calculateRSI(prices: number[], period: number = 14) {
+  const series = calculateRSISeries(prices, period);
+  return series[series.length - 1] ?? 50;
+}
+
+function calculateEMA(prices: number[], span: number): number[] {
+  if (prices.length === 0) return [];
+  const k = 2 / (span + 1);
+  const emaValues: number[] = new Array(prices.length);
+  let emaVal = prices[0];
+  emaValues[0] = emaVal;
+  for (let i = 1; i < prices.length; i++) {
+    emaVal = prices[i] * k + emaVal * (1 - k);
+    emaValues[i] = emaVal;
+  }
+  return emaValues;
 }
 
 function calculateMACD(prices: number[]) {
   if (prices.length < 26) return 0;
-  // Simple EMA implementation
-  const ema = (data: number[], span: number) => {
-    const k = 2 / (span + 1);
-    let emaVal = data[data.length - span] || data[0];
-    for (let i = data.length - span + 1; i < data.length; i++) {
-      emaVal = (data[i] - emaVal) * k + emaVal;
-    }
-    return emaVal;
-  }
-  return ema(prices, 12) - ema(prices, 26);
+  const ema12 = calculateEMA(prices, 12);
+  const ema26 = calculateEMA(prices, 26);
+  const macdLine = ema12.map((val, idx) => val - ema26[idx]);
+  
+  const signalLine = calculateEMA(macdLine, 9);
+  
+  const latestMacd = macdLine[macdLine.length - 1];
+  const latestSignal = signalLine[signalLine.length - 1];
+  return latestMacd - latestSignal;
 }
 
 function calculateBB(prices: number[], period: number = 20) {
@@ -69,7 +116,7 @@ function calculateBB(prices: number[], period: number = 20) {
 }
 
 
-export default function CoinDetailPage({ params }: { params: Promise<{ symbol: string }> }) {
+export default function CoinDetailPage({ params }: { params: any }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
@@ -77,10 +124,40 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
 
   const palette = useChartPalette();
   
-  const resolvedParams = use(params);
-  const symbol = resolvedParams.symbol.toUpperCase();
+  const resolvedParams = params && typeof params.then === "function"
+    ? (React as any).use(params)
+    : params;
+    
+  const symbol = resolvedParams?.symbol?.toUpperCase() || "";
+
+  if (!symbol) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-background">
+        <BlockchainLoader />
+      </div>
+    );
+  }
   const [period, setPeriod] = useState("3M");
   const [interval, setIntervalState] = useState("1h");
+
+  const handlePeriodChange = (p: string) => {
+    setPeriod(p);
+    if (p === "1D") setIntervalState("5m");
+    else if (p === "1W") setIntervalState("1h");
+    else if (p === "1M") setIntervalState("4h");
+    else if (p === "3M") setIntervalState("1d");
+    else if (p === "1Y") setIntervalState("1d");
+    else if (p === "ALL") setIntervalState("1w");
+  };
+
+  const handleIntervalChange = (i: string) => {
+    setIntervalState(i);
+    if (i === "1m" || i === "5m" || i === "15m") setPeriod("1D");
+    else if (i === "1h") setPeriod("1W");
+    else if (i === "4h") setPeriod("1M");
+    else if (i === "1d") setPeriod("3M");
+    else if (i === "1w") setPeriod("1Y");
+  };
   
   // Toggles & State
   const [showRSI, setShowRSI] = useState(false);
@@ -103,12 +180,21 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
   const volumeSeriesRef = useRef<any>(null);
   
   // Data fetching
-  const { data: ohlcv, mutate: mutateOhlcv } = useSWR(`${BASE}/api/v1/coins/${symbol}/ohlcv?interval=${interval}`, fetcher);
-  const { data: history } = useSWR(`${BASE}/api/v1/coins/${symbol}/prediction-history`, fetcher);
-  const { data: correlations } = useSWR(`${BASE}/api/v1/coins/${symbol}/correlations`, fetcher);
-  const { data: sentiment } = useSWR(`${BASE}/api/v1/coins/${symbol}/sentiment-history`, fetcher);
+  const { data: ohlcvRaw, mutate: mutateOhlcv } = useSWR(`/api/v1/coins/${symbol}/ohlcv?interval=${interval}`, fetcher);
+  const ohlcv = Array.isArray(ohlcvRaw) 
+    ? ohlcvRaw 
+    : (ohlcvRaw && Array.isArray((ohlcvRaw as any).data) ? (ohlcvRaw as any).data : null);
+
+  const { data: historyRaw } = useSWR(`/api/v1/coins/${symbol}/prediction-history`, fetcher);
+  const history = historyRaw && typeof historyRaw === 'object' && !('detail' in historyRaw) && !('error' in historyRaw) ? historyRaw : null;
+  const predictionHistoryList = Array.isArray(history?.predictions) ? history.predictions : [];
+
+  const { data: correlationsRaw } = useSWR(`/api/v1/coins/${symbol}/correlations`, fetcher);
+  const correlationList = Array.isArray(correlationsRaw) ? correlationsRaw : [];
+
+  const { data: sentiment } = useSWR(`/api/v1/coins/${symbol}/sentiment-history`, fetcher);
   
-  const { data: assetsData } = useSWR(`${BASE}/api/v1/assets`, fetcher);
+  const { data: assetsData } = useSWR(`/api/v1/assets`, fetcher);
   const asset = assetsData?.find((a: any) => a.symbol.toUpperCase() === symbol);
 
   const handleForceSync = async () => {
@@ -123,7 +209,7 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
   
   // ATH from chart
   useEffect(() => {
-    if (ohlcv && ohlcv.length > 0) {
+    if (Array.isArray(ohlcv) && ohlcv.length > 0) {
       const ath = Math.max(...ohlcv.map((d: any) => d.high));
       setLiveATH(ath);
     }
@@ -131,7 +217,7 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
 
   // Live Ticker WebSocket
   const { status: wsStatus } = useWebSocket(`api/v1/stream/ticker/${symbol.toLowerCase()}`, {
-    shouldConnect: !!(ohlcv && ohlcv.length > 0),
+    shouldConnect: !!(Array.isArray(ohlcv) && ohlcv.length > 0),
     onMessage: (data) => {
       const tickPrice = data.close;
 
@@ -140,7 +226,7 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
       if (data.market_cap_usd) setLiveMarketCap(data.market_cap_usd);
       if (data.price_change_24h_pct !== undefined) setLivePriceChangePct(data.price_change_24h_pct);
 
-      if (seriesRef.current && ohlcv && ohlcv.length > 0) {
+      if (seriesRef.current && Array.isArray(ohlcv) && ohlcv.length > 0) {
         const lastBar = ohlcv[ohlcv.length - 1];
         if (lastBar) {
           const updatedHigh = Math.max(lastBar.high, tickPrice);
@@ -169,7 +255,7 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
   
   // Lightweight charts initialization
   useEffect(() => {
-    if (!chartContainerRef.current || !ohlcv) return;
+    if (!chartContainerRef.current || !Array.isArray(ohlcv) || ohlcv.length === 0) return;
     
     if (chartRef.current) {
       chartRef.current.remove();
@@ -301,7 +387,7 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
   }, [ohlcv, showBB, chartType, isFullscreen, palette.muted]); 
   
   useEffect(() => {
-    if (chartRef.current && ohlcv && ohlcv.length > 0) {
+    if (chartRef.current && Array.isArray(ohlcv) && ohlcv.length > 0) {
       const last = ohlcv[ohlcv.length - 1];
       const toTs = last.time;
       let fromTs = ohlcv[0].time;
@@ -320,11 +406,17 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
       });
     }
   }, [period, ohlcv]);
+
+  const rsiSeries = React.useMemo(() => {
+    const closes = (ohlcv || []).map((x: any) => x.close);
+    return calculateRSISeries(closes, 14);
+  }, [ohlcv]);
+
   if (!mounted) {
     return null;
   }
 
-  if (!ohlcv || !history) return (
+  if (!Array.isArray(ohlcv) || ohlcv.length === 0 || !history) return (
     <div className="h-[50vh] flex flex-col items-center justify-center space-y-6">
       <div className="text-text bg-surface/30 p-6 rounded-sm border border-text/10 font-mono text-center flex flex-col items-center gap-4 shadow-inner">
           <RefreshCw size={32} className="text-accent animate-spin" />
@@ -335,8 +427,8 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
   
   const latestOhlcv = ohlcv[ohlcv.length - 1];
   const displayPrice = livePrice !== null ? livePrice : latestOhlcv?.close;
-  const changePct = livePriceChangePct !== null ? livePriceChangePct : (ohlcv.length > 1 ? ((displayPrice - ohlcv[ohlcv.length - 2].close) / ohlcv[ohlcv.length - 2].close) * 100 : 0);
-  const latestPred = history.predictions[0] || {};
+  const changePct = livePriceChangePct !== null ? livePriceChangePct : (Array.isArray(ohlcv) && ohlcv.length > 1 ? ((displayPrice - ohlcv[ohlcv.length - 2].close) / ohlcv[ohlcv.length - 2].close) * 100 : 0);
+  const latestPred = predictionHistoryList[0] || {};
   
   // Realtime Market Cap & Supply Scaling
   let displayMcap = liveMarketCap !== null ? liveMarketCap : asset?.market_cap_usd;
@@ -346,7 +438,7 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
   }
 
   // Calculate live technical indicators right now
-  const livePrices = ohlcv.map((d: any) => d.close);
+  const livePrices = (ohlcv || []).map((d: any) => d.close);
   if (livePrice !== null) livePrices[livePrices.length - 1] = livePrice; // update with absolute latest tick
   
   const liveRSI = calculateRSI(livePrices, 14);
@@ -442,7 +534,7 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
                   {["1m", "5m", "15m", "1h", "4h", "1d", "1w"].map(i => (
                     <button
                       key={i}
-                      onClick={() => setIntervalState(i)}
+                      onClick={() => handleIntervalChange(i)}
                       className={`px-3 py-1.5 rounded-sm text-[10px] font-black uppercase tracking-widest transition-all ${
                         interval === i ? "bg-accent/20 text-accent border border-accent/30 shadow-[0_0_10px_rgba(var(--accent),0.2)]" : "text-text-muted hover:text-text hover:bg-text/5 border border-transparent"
                       }`}
@@ -483,7 +575,7 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
                   {["1D", "1W", "1M", "3M", "1Y", "ALL"].map(p => (
                     <button
                       key={p}
-                      onClick={() => setPeriod(p)}
+                      onClick={() => handlePeriodChange(p)}
                       className={`px-3 py-1.5 rounded-sm text-[10px] font-black uppercase tracking-widest transition-all ${
                         period === p ? "bg-text/10 text-text border border-text/20" : "text-text-muted hover:text-text border border-transparent"
                       }`}
@@ -642,7 +734,7 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
                 <h3 className="text-[10px] font-mono font-black uppercase tracking-widest text-text-muted mb-4">Relative Strength Index History (14)</h3>
                 <div className="h-48">
                   <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={{ width: 100, height: 100 }}>
-                    <AreaChart data={ohlcv.map((d:any, i:number) => ({ time: d.time, rsi: calculateRSI(ohlcv.map((x:any)=>x.close).slice(0, i+1), 14) }))}>
+                    <AreaChart data={(ohlcv || []).map((d:any, i:number) => ({ time: d.time, rsi: rsiSeries[i] }))}>
                       <XAxis dataKey="time" hide />
                       <YAxis domain={[0, 100]} hide />
                       <RechartsTooltip 
@@ -671,7 +763,7 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
                     <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-1">AI signal accuracy audit log</p>
                   </div>
                   <div className="flex items-center gap-3 bg-text/5 px-4 py-2 rounded-sm border border-text/10">
-                    <span className="text-2xl font-mono font-black text-accent drop-shadow-[0_0_10px_rgba(var(--accent),0.5)]">{history.summary.accuracy_pct.toFixed(0)}%</span>
+                    <span className="text-2xl font-mono font-black text-accent drop-shadow-[0_0_10px_rgba(var(--accent),0.5)]">{history?.summary?.accuracy_pct !== undefined ? history.summary.accuracy_pct.toFixed(0) : "0"}%</span>
                     <span className="text-[9px] uppercase tracking-widest font-black text-text-muted">accuracy</span>
                   </div>
                 </div>
@@ -679,7 +771,7 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
               
               <div className="flex-1 p-8">
                 <div className="space-y-3 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
-                  {history.predictions.map((p: any, i: number) => (
+                  {predictionHistoryList.map((p: any, i: number) => (
                     <div key={i} className={`flex items-center justify-between p-4 rounded-sm border transition-colors ${i % 2 === 0 ? "glass bg-text/5 border-text/5 hover:border-text/10" : "bg-transparent border-transparent hover:bg-text/[0.02]"}`}>
                       <div className="flex items-center gap-4">
                         <span className="text-[10px] font-mono font-bold text-text-muted w-28">{p.date}</span>
@@ -711,7 +803,7 @@ export default function CoinDetailPage({ params }: { params: Promise<{ symbol: s
               
               <div className="flex-1 p-8">
                 <div className="space-y-2">
-                  {correlations?.map((c: any, i: number) => (
+                  {correlationList.map((c: any, i: number) => (
                     <Link href={`/coin/${c.symbol}`} key={c.symbol} className="flex items-center justify-between p-4 glass bg-surface/30 hover:bg-text/5 rounded-sm border border-text/10 hover:border-text/20 interactive-lift transition-all group shadow-inner">
                       <div className="flex items-center gap-4 w-1/3">
                         <span className="text-[10px] text-text-muted font-mono font-black opacity-50">#{String(i + 1).padStart(2, '0')}</span>

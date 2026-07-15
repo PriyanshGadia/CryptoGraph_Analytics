@@ -34,6 +34,7 @@ class STGCNModel(nn.Module):
         num_direction_classes: int = 3,
         num_volatility_classes: int = 4,
         use_tcn: bool = True,
+        use_gatv2: bool = True,
         **kwargs
     ):
         super().__init__()
@@ -49,10 +50,11 @@ class STGCNModel(nn.Module):
             "num_direction_classes": num_direction_classes,
             "num_volatility_classes": num_volatility_classes,
             "use_tcn": use_tcn,
+            "use_gatv2": use_gatv2,
             **kwargs
         }
         self.projection = nn.Linear(in_features, hidden_dim)
-        self.spatial_gat = SpatioTemporalGAT(hidden_dim, gat_heads_1, gat_heads_2, dropout)
+        self.spatial_gat = SpatioTemporalGAT(hidden_dim, gat_heads_1, gat_heads_2, dropout, use_gatv2=use_gatv2)
         
         # Select temporal encoder
         if use_tcn:
@@ -111,6 +113,12 @@ class STGCNModel(nn.Module):
     def load(cls, path: str, map_location: str = "cpu") -> "STGCNModel":
         """Load model from saved checkpoint."""
         checkpoint = torch.load(path, map_location=map_location, weights_only=False)
-        model = cls(**checkpoint["config"])
-        model.load_state_dict(checkpoint["model_state_dict"])
+        sd = checkpoint["model_state_dict"]
+        has_gatv2 = any("spatial_gat.rgat2.rgat.lin_l" in k for k in sd.keys())
+        
+        cfg = dict(checkpoint["config"])
+        cfg["use_gatv2"] = has_gatv2
+        
+        model = cls(**cfg)
+        model.load_state_dict(sd, strict=False)
         return model

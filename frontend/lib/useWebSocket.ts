@@ -15,12 +15,15 @@ interface WebSocketOptions {
 }
 
 export function useWebSocket(endpointPath: string, options: WebSocketOptions = {}) {
-  const { onMessage, onOpen, onClose, onError, shouldConnect = true } = options;
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectCountRef = useRef(0);
   const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [localStatus, setLocalStatus] = useState<"connecting" | "connected" | "disconnected">("disconnected");
   
+  // Store options in a ref to avoid reconnecting when callbacks change
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
+
   // Connect Zustand status updater
   const updateStoreStatus = useAppStore((state) => state.updateWsStatus);
 
@@ -36,6 +39,10 @@ export function useWebSocket(endpointPath: string, options: WebSocketOptions = {
     }
 
     if (wsRef.current) {
+      // If the websocket is already connecting or connected, don't restart it
+      if (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING) {
+        return;
+      }
       wsRef.current.close();
     }
 
@@ -53,14 +60,16 @@ export function useWebSocket(endpointPath: string, options: WebSocketOptions = {
     ws.onopen = () => {
       reconnectCountRef.current = 0; // reset backoff
       setStatus("connected");
-      if (onOpen) onOpen();
+      if (optionsRef.current.onOpen) {
+        optionsRef.current.onOpen();
+      }
     };
 
     ws.onmessage = (event) => {
       try {
         const parsed = JSON.parse(event.data);
-        if (onMessage) {
-          onMessage(parsed);
+        if (optionsRef.current.onMessage) {
+          optionsRef.current.onMessage(parsed);
         }
       } catch (err) {
         console.error("WebSocket message parsing error:", err);
@@ -69,9 +78,12 @@ export function useWebSocket(endpointPath: string, options: WebSocketOptions = {
 
     ws.onclose = (event) => {
       setStatus("disconnected");
-      if (onClose) onClose();
+      if (optionsRef.current.onClose) {
+        optionsRef.current.onClose();
+      }
 
-      // Only reconnect if not closed intentionally (wasn't garbage collected / unmounted)
+      // Only reconnect if we still want to be connected and it's the current socket
+      const shouldConnect = optionsRef.current.shouldConnect !== false;
       if (shouldConnect && wsRef.current === ws) {
         const backoffDelay = Math.min(1000 * Math.pow(2, reconnectCountRef.current), 30000);
         reconnectCountRef.current += 1;
@@ -83,10 +95,12 @@ export function useWebSocket(endpointPath: string, options: WebSocketOptions = {
     };
 
     ws.onerror = (err) => {
-      if (onError) onError(err);
+      if (optionsRef.current.onError) {
+        optionsRef.current.onError(err);
+      }
       ws.close();
     };
-  }, [endpointPath, shouldConnect, setStatus, onOpen, onMessage, onClose, onError]);
+  }, [endpointPath, setStatus]);
 
   const disconnect = useCallback(() => {
     if (reconnectTimerRef.current) {
@@ -108,6 +122,8 @@ export function useWebSocket(endpointPath: string, options: WebSocketOptions = {
       console.warn("WebSocket is not connected. Message not sent.");
     }
   }, []);
+
+  const shouldConnect = options.shouldConnect !== false;
 
   useEffect(() => {
     if (shouldConnect) {

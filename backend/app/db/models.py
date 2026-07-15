@@ -119,6 +119,28 @@ class Prediction(Base):
             raise ValueError(f"Confidence value {value} out of valid probability range [0.0, 1.0]")
         return round(val, 4)
 
+    @validates("confidence_interval_lower")
+    def validate_confidence_interval_lower(self, key, value):
+        if value is None:
+            return None
+        val = float(value)
+        if val > 1.0 and val <= 100.0:
+            val = val / 100.0
+        if not (0.0 <= val <= 1.0):
+            raise ValueError(f"confidence_interval_lower value {value} out of valid probability range [0.0, 1.0]")
+        return round(val, 4)
+
+    @validates("confidence_interval_upper")
+    def validate_confidence_interval_upper(self, key, value):
+        if value is None:
+            return None
+        val = float(value)
+        if val > 1.0 and val <= 100.0:
+            val = val / 100.0
+        if not (0.0 <= val <= 1.0):
+            raise ValueError(f"confidence_interval_upper value {value} out of valid probability range [0.0, 1.0]")
+        return round(val, 4)
+
 class PortfolioState(Base):
     __tablename__ = "portfolio_state"
 

@@ -36,10 +36,25 @@ if is_sqlite:
         "timeout": 30.0  # 30 seconds busy timeout for massive concurrent writes
     }
 
+def custom_json_serializer(obj):
+    import json
+    def default(o):
+        try:
+            import numpy as np
+            if isinstance(o, (np.integer, np.floating)):
+                return o.item()
+            if isinstance(o, np.ndarray):
+                return o.tolist()
+        except ImportError:
+            pass
+        raise TypeError(f"Object of type {type(o).__name__} is not JSON serializable")
+    return json.dumps(obj, default=default)
+
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL, 
     connect_args=connect_args,
-    poolclass=NullPool
+    poolclass=NullPool,
+    json_serializer=custom_json_serializer
 )
 
 if is_sqlite:

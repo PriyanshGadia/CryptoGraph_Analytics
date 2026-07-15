@@ -60,8 +60,8 @@ async def get_batch_predictions(
             results.append(Prediction(
                 asset_symbol=asset.symbol,
                 direction=pred.direction,
-                confidence=round(pred.confidence, 2) if pred.confidence else 0.0,
-                confidence_interval=[pred.confidence_interval_lower, pred.confidence_interval_upper] if pred.confidence_interval_lower else None,
+                confidence=round(pred.confidence * 100.0, 2) if pred.confidence is not None else 0.0,
+                confidence_interval=[pred.confidence_interval_lower * 100.0, pred.confidence_interval_upper * 100.0] if pred.confidence_interval_lower is not None and pred.confidence_interval_upper is not None else None,
                 volatility_regime=pred.volatility_regime or "medium",
                 predicted_at=pred.predicted_at.isoformat() if hasattr(pred.predicted_at, 'isoformat') else str(pred.predicted_at),
                 shap_values=sv,
@@ -154,12 +154,12 @@ async def get_predictions(
         predictions.append(Prediction(
             asset_symbol=asset.symbol,
             direction=pred.direction or "neutral",
-            confidence=pred.confidence or 0.0,
+            confidence=(pred.confidence * 100.0) if pred.confidence is not None else 0.0,
             volatility_regime=pred.volatility_regime or "medium",
             predicted_at=str(pred.predicted_at or ""),
             model_version=pred.model_version or "v1.0",
             shap_values=sv,
-            confidence_interval=[pred.confidence_interval_lower, pred.confidence_interval_upper] if pred.confidence_interval_lower is not None and pred.confidence_interval_upper is not None else None
+            confidence_interval=[pred.confidence_interval_lower * 100.0, pred.confidence_interval_upper * 100.0] if pred.confidence_interval_lower is not None and pred.confidence_interval_upper is not None else None
         ))
         
         if len(predictions) >= limit:
@@ -195,12 +195,12 @@ async def get_prediction_history(symbol: str, db: Session = Depends(get_db)):
         preds.append(Prediction(
             asset_symbol=symbol,
             direction=row.direction or "neutral",
-            confidence=row.confidence or 0.0,
+            confidence=(row.confidence * 100.0) if row.confidence is not None else 0.0,
             volatility_regime=row.volatility_regime or "medium",
             predicted_at=str(row.predicted_at or ""),
             model_version=row.model_version or "v1.0",
             shap_values=sv,
-            confidence_interval=[row.confidence_interval_lower, row.confidence_interval_upper] if row.confidence_interval_lower is not None and row.confidence_interval_upper is not None else None
+            confidence_interval=[row.confidence_interval_lower * 100.0, row.confidence_interval_upper * 100.0] if row.confidence_interval_lower is not None and row.confidence_interval_upper is not None else None
         ))
         
     return PredictionHistory(symbol=symbol, predictions=preds)

@@ -95,8 +95,8 @@ def populate_static_features(db: Session, symbols: List[str]):
             "returns_7d": static_dict["returns_7d"],
             "volatility_7d": static_dict["volatility_7d"],
             "predicted_direction": pred.direction if pred else "neutral",
-            "confidence": pred.confidence if pred else 0.0,
-            "confidence_interval": [pred.confidence_interval_lower, pred.confidence_interval_upper] if pred and pred.confidence_interval_lower is not None else None,
+            "confidence": (pred.confidence * 100.0) if pred and pred.confidence is not None else 0.0,
+            "confidence_interval": [pred.confidence_interval_lower * 100.0, pred.confidence_interval_upper * 100.0] if pred and pred.confidence_interval_lower is not None and pred.confidence_interval_upper is not None else None,
         }
     try:
         from app.core.cache import redis_set
@@ -132,10 +132,10 @@ def refresh_predictions_in_ssot(db: Session):
         ).order_by(desc(Prediction.predicted_at)).first()
         if pred:
             GLOBAL_MARKET_STATE[asset.symbol]["predicted_direction"] = pred.direction or "neutral"
-            GLOBAL_MARKET_STATE[asset.symbol]["confidence"] = pred.confidence if pred.confidence is not None else 0.0
+            GLOBAL_MARKET_STATE[asset.symbol]["confidence"] = (pred.confidence * 100.0) if pred.confidence is not None else 0.0
             GLOBAL_MARKET_STATE[asset.symbol]["confidence_interval"] = (
-                [pred.confidence_interval_lower, pred.confidence_interval_upper]
-                if pred.confidence_interval_lower is not None else None
+                [pred.confidence_interval_lower * 100.0, pred.confidence_interval_upper * 100.0]
+                if pred.confidence_interval_lower is not None and pred.confidence_interval_upper is not None else None
             )
     try:
         redis_set("cryptograph:live:market_state", dict(GLOBAL_MARKET_STATE))

@@ -50,7 +50,15 @@ async def get_coin_ohlcv(
         }
     except Exception as e:
         import logging
-        logging.getLogger(__name__).error(f"Error fetching OHLCV from Binance for {symbol}: {e}", exc_info=True)
+        if isinstance(e, ccxt.NetworkError):
+            logging.getLogger(__name__).warning(
+                f"Binance network/DNS unavailable for {symbol} ({e}). Falling back to SQLite cache."
+            )
+        else:
+            logging.getLogger(__name__).error(
+                f"Unexpected error fetching OHLCV from Binance for {symbol}: {e}", 
+                exc_info=True
+            )
         # Fallback to SQLite if Binance API fails
         from app.db.models import OHLCV
         from sqlalchemy import desc
@@ -65,11 +73,16 @@ async def get_coin_ohlcv(
         data = []
         latest_timestamp = None
         for row in db_ohlcv:
-            ts_sec = row.timestamp.timestamp() if hasattr(row.timestamp, "timestamp") else datetime.fromisoformat(str(row.timestamp)).timestamp()
+            if hasattr(row.timestamp, "timestamp"):
+                dt = row.timestamp
+            else:
+                dt = datetime.fromisoformat(str(row.timestamp))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            ts_sec = dt.timestamp()
             latest_timestamp = ts_sec
-            ts_ms = int(ts_sec * 1000)
             data.append({
-                "time": ts_ms,
+                "time": int(ts_sec),
                 "open": float(row.open),
                 "high": float(row.high),
                 "low": float(row.low),
@@ -105,9 +118,17 @@ def get_coin_indicators(
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
     
-    # Always fetch 1 Year minimum to allow charting engines to pan backwards indefinitely
-    since = datetime.now(timezone.utc) - timedelta(days=365)
-    since_str = since.isoformat()
+    period_days = {
+        "1D": 1,
+        "1W": 7,
+        "1M": 30,
+        "3M": 90,
+        "1Y": 365,
+        "ALL": 3650
+    }
+    days = period_days.get(period.upper(), 90)
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    since_str = since.strftime("%Y-%m-%dT%H:%M:%S+00:00")
     
     res = db.execute(text("""
         SELECT 
@@ -227,7 +248,7 @@ def get_coin_prediction_history(symbol: str, db: Session = Depends(get_db)):
             if was_correct:
                 correct_count += 1
                 
-        conf = p[2] or 0.0
+        conf = (p[2] or 0.0) * 100.0
         conf_sum += conf
                 
         results.append({
@@ -288,7 +309,7 @@ def get_coin_correlations(symbol: str, db: Session = Depends(get_db)):
     if target_asset_id not in pivot.columns:
         return []
         
-    corr = pivot.corr(method='pearson')
+    corr = pivot.corr(method='spearman')
     target_corr = corr[target_asset_id].dropna()
     
     sorted_corr = target_corr.abs().sort_values(ascending=False)

@@ -14,12 +14,25 @@ def migrate():
     
     with engine.begin() as conn:
         # Check current count of problematic rows
-        result = conn.execute(text("SELECT COUNT(*) FROM predictions WHERE confidence > 1.0;")).scalar()
-        print(f"Found {result} predictions with confidence > 1.0")
+        result = conn.execute(text("""
+            SELECT COUNT(*) FROM predictions 
+            WHERE confidence > 1.0 
+               OR confidence_interval_lower > 1.0 
+               OR confidence_interval_upper > 1.0;
+        """)).scalar()
+        print(f"Found {result} predictions with confidence or intervals > 1.0")
         
         if result > 0:
             # Execute migration
-            conn.execute(text("UPDATE predictions SET confidence = confidence / 100.0 WHERE confidence > 1.0;"))
+            conn.execute(text("""
+                UPDATE predictions 
+                SET confidence = CASE WHEN confidence > 1.0 THEN confidence / 100.0 ELSE confidence END,
+                    confidence_interval_lower = CASE WHEN confidence_interval_lower > 1.0 THEN confidence_interval_lower / 100.0 ELSE confidence_interval_lower END,
+                    confidence_interval_upper = CASE WHEN confidence_interval_upper > 1.0 THEN confidence_interval_upper / 100.0 ELSE confidence_interval_upper END
+                WHERE confidence > 1.0 
+                   OR confidence_interval_lower > 1.0 
+                   OR confidence_interval_upper > 1.0;
+            """))
             print(f"Successfully migrated {result} rows to [0.0, 1.0] scale.")
         else:
             print("No rows need migration.")

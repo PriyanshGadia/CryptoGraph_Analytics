@@ -18,7 +18,7 @@ from app.core.cache import cached
 def _compute_correlation_graph(db: Session, top_n_edges: int = 100, mode: str = "live"):
     """
     Builds a correlation-based graph from local OHLCV, technical_features, or forecasts tables.
-    Nodes = assets, Edges = top Pearson correlations between daily returns.
+    Nodes = assets, Edges = top Spearman correlations between daily returns.
     Supports mode="live" (last 30 days), mode="historical" (last 90 days),
     mode="historical_30" (last 30 days historical), mode="projected" (30 day forecast),
     mode="projected_15" (15 day forecast).
@@ -58,7 +58,7 @@ def _compute_correlation_graph(db: Session, top_n_edges: int = 100, mode: str = 
     if pivot_live.shape[1] < 2:
         return [], []
 
-    live_corr = pivot_live.corr(method="pearson").fillna(0.0)
+    live_corr = pivot_live.corr(method="spearman").fillna(0.0)
 
     # Build upper triangle of live correlations efficiently (vectorized)
     mask = np.triu(np.ones_like(live_corr, dtype=bool), k=1)
@@ -123,7 +123,7 @@ def _compute_correlation_graph(db: Session, top_n_edges: int = 100, mode: str = 
             p_h = df_h.pivot_table(index="date", columns="asset_id", values="returns_1d")
             p_h = p_h.dropna(axis=1, thresh=max(1, len(p_h) // 2))
             if p_h.shape[1] >= 2:
-                target_corr = p_h.corr(method="pearson").fillna(0.0)
+                target_corr = p_h.corr(method="spearman").fillna(0.0)
 
     elif mode.startswith("projected"):
         import json
@@ -145,7 +145,7 @@ def _compute_correlation_graph(db: Session, top_n_edges: int = 100, mode: str = 
                 df_proj = pd.DataFrame(proj_data)
                 df_returns = df_proj.pct_change().dropna()
                 if len(df_returns) >= 2:
-                    p_proj_corr = df_returns.corr(method="pearson")
+                    p_proj_corr = df_returns.corr(method="spearman")
                     for col in target_corr.columns:
                         for row_idx in target_corr.index:
                             if col in p_proj_corr.columns and row_idx in p_proj_corr.index:

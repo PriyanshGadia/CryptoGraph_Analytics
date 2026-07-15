@@ -11,7 +11,7 @@ from typing import List, Dict
 import re
 from sqlalchemy.orm import Session
 from backend.app.db.database import SessionLocal
-from backend.app.db.models_sqla import Asset, AssetNews
+from backend.app.db.models import Asset, AssetNews
 from backend.app.core.data_sanitizer import sanitize_news_records
 
 def fetch_crypto_news_rss(symbol: str, asset_name: str, limit: int = 3) -> List[Dict[str, str]]:

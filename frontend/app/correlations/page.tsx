@@ -101,9 +101,9 @@ export default function CorrelationsPage() {
   // Hover state
   const [hoveredCell, setHoveredCell] = useState<{i: number, j: number, val: number, symA: string, symB: string} | null>(null);
 
-  const { data: matrixData, isLoading: matrixLoading } = useSWR(`${BASE}/api/v1/correlations/matrix?days=${days}&basis=${basis}`, fetcher, { refreshInterval: 300000 });
-  const { data: sectorData, isLoading: sectorLoading } = useSWR(`${BASE}/api/v1/correlations/sector-average?days=${days}&basis=${basis}`, fetcher, { refreshInterval: 300000 });
-  const { data: assetsData } = useSWR(`${BASE}/api/v1/assets`, fetcher, { refreshInterval: 300000 });
+  const { data: matrixData, isLoading: matrixLoading } = useSWR(`/api/v1/correlations/matrix?days=${days}&basis=${basis}`, fetcher, { refreshInterval: 300000 });
+  const { data: sectorData, isLoading: sectorLoading } = useSWR(`/api/v1/correlations/sector-average?days=${days}&basis=${basis}`, fetcher, { refreshInterval: 300000 });
+  const { data: assetsData } = useSWR(`/api/v1/assets`, fetcher, { refreshInterval: 300000 });
   
   const assetMap = useMemo(() => {
     if (!assetsData) return {};
@@ -239,10 +239,10 @@ export default function CorrelationsPage() {
             </div>
             <div>
               <div className="text-2xl font-black font-mono text-success tracking-tight group-hover:scale-105 transition-transform origin-left drop-shadow-[0_0_10px_rgba(34,197,94,0.3)] truncate max-w-[200px]">
-                {top_pairs[0]?.symbol_a}<span className="text-text-muted/50 font-sans mx-1">/</span>{top_pairs[0]?.symbol_b}
+                {top_pairs?.[0]?.symbol_a || "N/A"}<span className="text-text-muted/50 font-sans mx-1">/</span>{top_pairs?.[0]?.symbol_b || "N/A"}
               </div>
               <div className="text-[10px] uppercase tracking-widest font-bold text-text-muted mt-1 flex items-center gap-2">
-                  Highest Isomorphism <span className="text-success font-mono bg-success/10 px-2 py-0.5 shape-tag border border-success/20">+{top_pairs[0]?.correlation.toFixed(3)}</span>
+                  Highest Isomorphism <span className="text-success font-mono bg-success/10 px-2 py-0.5 shape-tag border border-success/20">+{top_pairs?.[0]?.correlation != null ? top_pairs[0].correlation.toFixed(3) : "0.000"}</span>
               </div>
             </div>
           </GlassCard>
@@ -281,7 +281,7 @@ export default function CorrelationsPage() {
                   {(hoveredCell.val || 0) > 0 ? "+" : ""}{(hoveredCell.val || 0).toFixed(4)}
                 </div>
                 <div className="text-[10px] uppercase tracking-widest font-bold text-text-muted mt-2 border-t border-text/10 pt-2 w-full text-center">
-                    Pearson Co-eff
+                    Spearman Co-eff
                 </div>
               </div>
             )}

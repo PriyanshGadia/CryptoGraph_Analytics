@@ -114,11 +114,11 @@ const FearGreedGauge = ({ value }: { value: number }) => {
 export default function SentimentPage() {
   const [mounted, setMounted] = useState(false);
   const palette = useChartPalette();
-  const { data: fgHistory } = useSWR(`${BASE}/api/v1/sentiment-data/fear-greed-history?days=365`, fetcher, { refreshInterval: 120000 });
-  const { data: btcHistory } = useSWR(`${BASE}/api/v1/sentiment-data/fear-greed-vs-btc?days=365`, fetcher, { refreshInterval: 120000 });
-  const { data: sectorSent } = useSWR(`${BASE}/api/v1/sentiment-data/sector-sentiment`, fetcher, { refreshInterval: 120000 });
+  const { data: fgHistory } = useSWR(`/api/v1/sentiment-data/fear-greed-history?days=365`, fetcher, { refreshInterval: 120000 });
+  const { data: btcHistory } = useSWR(`/api/v1/sentiment-data/fear-greed-vs-btc?days=365`, fetcher, { refreshInterval: 120000 });
+  const { data: sectorSent } = useSWR(`/api/v1/sentiment-data/sector-sentiment`, fetcher, { refreshInterval: 120000 });
   const [synthesis, setSynthesis] = useState<any>(null);
-  const { data: trending } = useSWR(`${BASE}/api/v1/sentiment-data/trending`, fetcher, { refreshInterval: 120000 });
+  const { data: trending } = useSWR(`/api/v1/sentiment-data/trending`, fetcher, { refreshInterval: 120000 });
 
   useEffect(() => setMounted(true), []);
   useEffect(() => { apiService.getLatestSynthesis().then(setSynthesis).catch(console.error); }, []);
@@ -260,7 +260,9 @@ export default function SentimentPage() {
         <GlassCard tier={2} shape="none" className="rounded-xl p-0 overflow-hidden">
           <div className="p-8 border-b border-white/5 bg-surface/30">
             <h3 className="text-xl font-black text-text tracking-tight">Psychology vs. Price Action</h3>
-            <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-1">Cross-referencing network sentiment against BTC valuations</p>
+            <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-1">
+              Cross-referencing network sentiment against BTC valuations (Source: Alternative.me F&G index & proprietary multi-signal technical/news fallback models)
+            </p>
           </div>
           
           <div className="p-8 h-[400px] w-full">

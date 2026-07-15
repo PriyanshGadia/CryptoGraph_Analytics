@@ -25,7 +25,11 @@ import {
   MessageSquare,
   Zap,
   ShieldCheck,
-  RotateCcw
+  RotateCcw,
+  CheckCircle2,
+  XCircle,
+  Info as InfoIcon,
+  X
 } from "lucide-react";
 
 export default function PortfolioPage() {
@@ -54,17 +58,42 @@ export default function PortfolioPage() {
   const [submittingGrade, setSubmittingGrade] = useState(false);
   const [signingTradeId, setSigningTradeId] = useState<number | null>(null);
 
+  // Dynamic feedback/notification toast state
+  const [toast, setToast] = useState<{
+    message: string;
+    type: "success" | "error" | "info";
+    visible: boolean;
+  } | null>(null);
+
+  const showToast = (message: string, type: "success" | "error" | "info") => {
+    setToast({ message, type, visible: true });
+  };
+
+  useEffect(() => {
+    if (toast && toast.visible && toast.type !== "info") {
+      const timer = setTimeout(() => {
+        setToast(prev => prev ? { ...prev, visible: false } : null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
+
   if (!mounted) return <div className="h-screen w-full flex items-center justify-center text-text-muted font-mono bg-background">Loading chart components...</div>;
 
   const handleManualExecute = async () => {
     if (executing || resetting) return;
     setExecuting(true);
+    showToast("Triggering autonomous agent execution...", "info");
     try {
-      await apiService.triggerExecution();
+      const res = await apiService.triggerExecution();
       await mutatePortfolio();
       await mutateTrades();
-    } catch (e) {
+      const msg = res?.message || "Agent execution completed successfully!";
+      showToast(msg, "success");
+    } catch (e: any) {
       console.error("Failed to execute agent", e);
+      const errMsg = e.response?.data?.detail || e.message || "Failed to execute agent strategy.";
+      showToast(errMsg, "error");
     } finally {
       setExecuting(false);
     }
@@ -74,12 +103,17 @@ export default function PortfolioPage() {
     if (resetting || executing) return;
     if (!confirm("Are you sure you want to reset paper trading portfolio to $100,000 initial capital?")) return;
     setResetting(true);
+    showToast("Resetting portfolio...", "info");
     try {
-      await apiService.resetPortfolio();
+      const res = await apiService.resetPortfolio();
       await mutatePortfolio();
       await mutateTrades();
-    } catch (e) {
+      const msg = res?.message || "Portfolio reset to $100,000 initial capital.";
+      showToast(msg, "success");
+    } catch (e: any) {
       console.error("Failed to reset portfolio", e);
+      const errMsg = e.response?.data?.detail || e.message || "Failed to reset portfolio.";
+      showToast(errMsg, "error");
     } finally {
       setResetting(false);
     }
@@ -102,8 +136,10 @@ export default function PortfolioPage() {
       await apiService.gradeTrade(tradeId, grade, notes);
       await mutateTrades();
       setExpandedTradeId(null);
-    } catch (e) {
+      showToast("Trade grade submitted successfully.", "success");
+    } catch (e: any) {
       console.error("Failed to submit grade", e);
+      showToast("Failed to submit trade grade.", "error");
     } finally {
       setSubmittingGrade(false);
     }
@@ -111,6 +147,7 @@ export default function PortfolioPage() {
 
   const handleWeb3Sign = async (trade: TradeRecord) => {
     setSigningTradeId(trade.id);
+    showToast("Signing trade logging transaction...", "info");
     try {
       console.log("Logging Simulated Paper Trade for:", {
         asset: trade.symbol,
@@ -125,8 +162,10 @@ export default function PortfolioPage() {
       await apiService.confirmWeb3Trade(trade.id, simulatedTxId);
       await mutateTrades();
       await mutatePortfolio();
-    } catch (e) {
+      showToast(`Logged successfully. Tx: ${simulatedTxId.slice(0, 16)}...`, "success");
+    } catch (e: any) {
       console.error("Failed to log paper trade", e);
+      showToast("Failed to log paper trade transaction.", "error");
     } finally {
       setSigningTradeId(null);
     }
@@ -558,6 +597,35 @@ export default function PortfolioPage() {
           </div>
         </GlassCard>
       </div>
+
+      {/* Premium Glassmorphic Toast Notification */}
+      {toast && toast.visible && (
+        <div 
+          className={`fixed top-6 right-6 z-[9999] flex items-center gap-3 px-5 py-4 rounded-xl shadow-2xl backdrop-blur-xl border transition-all duration-300 transform translate-y-0 opacity-100 ${
+            toast.type === "success" 
+              ? "bg-success/15 border-success/30 text-success shadow-success/10" 
+              : toast.type === "error" 
+              ? "bg-danger/15 border-danger/30 text-danger shadow-danger/10" 
+              : "bg-accent/15 border-accent/30 text-accent shadow-accent/10"
+          }`}
+          role="alert"
+        >
+          {toast.type === "success" && <CheckCircle2 className="w-5 h-5 shrink-0" />}
+          {toast.type === "error" && <XCircle className="w-5 h-5 shrink-0" />}
+          {toast.type === "info" && <InfoIcon className="w-5 h-5 shrink-0 animate-pulse" />}
+          
+          <div className="flex-1 text-sm font-mono font-medium tracking-wide">
+            {toast.message}
+          </div>
+          
+          <button 
+            onClick={() => setToast(prev => prev ? { ...prev, visible: false } : null)}
+            className="text-text-muted hover:text-text hover:bg-text/5 p-1 rounded transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

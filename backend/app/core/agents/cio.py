@@ -26,6 +26,9 @@ class ChiefInvestmentOfficerAgent(BaseAgent):
         """
         direction = stgcn_prediction.get("direction", "unknown")
         confidence = stgcn_prediction.get("confidence", 0.0)
+        # Handle [0.0, 1.0] scale by scaling up to [0.0, 100.0]
+        if confidence is not None and confidence <= 1.0:
+            confidence = confidence * 100.0
         
         # Fetch few-shot RLHF examples
         bad_trades = self.db.query(TradeHistory).filter(TradeHistory.overseer_grade == 1).order_by(desc(TradeHistory.timestamp)).limit(5).all()

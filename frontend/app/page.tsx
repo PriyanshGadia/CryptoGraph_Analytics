@@ -19,7 +19,7 @@ export default function Dashboard() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  const topAssets = assets?.filter((a: any) => a.confidence).sort((a: any, b: any) => b.confidence - a.confidence).slice(0, 4) || [];
+  const topAssets = assets?.filter((a: any) => a.confidence && a.predicted_direction !== "neutral" && a.predicted_direction !== "recalibrating").sort((a: any, b: any) => b.confidence - a.confidence).slice(0, 4) || [];
 
   if (!mounted) {
     return null;
@@ -71,11 +71,6 @@ export default function Dashboard() {
                     <Activity size={20} className="text-accent-2" />
                     <span className="text-2xl font-mono font-bold text-text">{graphData?.nodes?.length || 0}</span>
                     <span className="text-[9px] uppercase tracking-widest font-mono text-text-muted">Nodes</span>
-                </div>
-                <div className="w-28 h-28 rounded-full glass-3 border border-success/40 shadow-[0_0_30px_rgba(var(--success),0.15)] flex flex-col items-center justify-center gap-1 mt-12 animate-[float_5s_ease-in-out_infinite_reverse]">
-                    <Network size={18} className="text-success" />
-                    <span className="text-xl font-mono font-bold text-text">{graphData?.edges?.length || 0}</span>
-                    <span className="text-[8px] uppercase tracking-widest font-mono text-text-muted">Edges</span>
                 </div>
                 <div className="w-24 h-24 rounded-full glass-3 border border-warning/40 shadow-[0_0_20px_rgba(var(--warning),0.15)] flex flex-col items-center justify-center gap-1 mt-4 animate-[float_3s_ease-in-out_infinite_0.5s]">
                     <TrendingUp size={16} className="text-warning" />

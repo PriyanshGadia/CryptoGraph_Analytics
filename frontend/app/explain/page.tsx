@@ -133,19 +133,76 @@ export default function ExplainPage() {
                     height={256}
                     graphData={{
                         nodes: [
-                            { id: explanation.symbol, name: explanation.symbol, val: 20, color: 'rgba(var(--accent), 1)' },
-                            ...Object.entries(explanation.top_features).map(([k, v]) => ({ id: k, name: k, val: Math.max(2, v * 30), color: 'rgba(100, 116, 139, 0.8)' }))
+                            { 
+                              id: explanation.symbol, 
+                              name: explanation.symbol, 
+                              val: 12, 
+                              color: resolvedTheme === 'dark' ? '#38bdf8' : '#0284c7',
+                              isAsset: true
+                            },
+                            ...Object.entries(explanation.top_features).slice(0, 8).map(([k, v]) => {
+                              const absVal = Math.abs(v);
+                              const sign = v >= 0 ? '+' : '-';
+                              return {
+                                id: k,
+                                name: `${k} (${sign}${absVal.toFixed(4)})`,
+                                val: Math.max(5, Math.min(10, absVal * 40)),
+                                color: v >= 0 
+                                  ? (resolvedTheme === 'dark' ? '#34d399' : '#059669') 
+                                  : (resolvedTheme === 'dark' ? '#f87171' : '#dc2626'),
+                                isAsset: false
+                              };
+                            })
                         ],
-                        links: Object.entries(explanation.top_features).map(([k, v]) => ({ source: k, target: explanation.symbol, value: v }))
+                        links: Object.entries(explanation.top_features).slice(0, 8).map(([k, v]) => ({ 
+                          source: k, 
+                          target: explanation.symbol, 
+                          value: Math.abs(v) 
+                        }))
                     }}
                     nodeLabel="name"
                     nodeColor="color"
                     nodeRelSize={6}
-                    linkColor={() => resolvedTheme === 'dark' ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)'}
-                    linkWidth={(link) => link.value * 5}
-                    linkDirectionalParticles={3}
-                    linkDirectionalParticleWidth={(link) => link.value * 3}
-                    linkDirectionalParticleSpeed={(link) => link.value * 0.05}
+                    nodeCanvasObject={(node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
+                      const label = node.name;
+                      const size = node.val || 6;
+                      
+                      // Draw node circle
+                      ctx.beginPath();
+                      ctx.arc(node.x, node.y, size, 0, 2 * Math.PI, false);
+                      ctx.fillStyle = node.color;
+                      ctx.fill();
+                      
+                      // Glow outline for asset node
+                      if (node.isAsset) {
+                        ctx.beginPath();
+                        ctx.arc(node.x, node.y, size + 2, 0, 2 * Math.PI, false);
+                        ctx.strokeStyle = resolvedTheme === 'dark' ? 'rgba(56, 189, 248, 0.4)' : 'rgba(2, 132, 199, 0.4)';
+                        ctx.lineWidth = 2 / globalScale;
+                        ctx.stroke();
+                      }
+                      
+                      // Text label
+                      const fontSize = node.isAsset ? 11 / globalScale : 8.5 / globalScale;
+                      ctx.font = `bold ${fontSize}px font-mono, monospace`;
+                      ctx.textAlign = 'center';
+                      ctx.textBaseline = 'top';
+                      
+                      // Label background box to ensure legibility over links
+                      const textWidth = ctx.measureText(label).width;
+                      ctx.fillStyle = resolvedTheme === 'dark' ? 'rgba(15, 23, 42, 0.85)' : 'rgba(248, 250, 252, 0.85)';
+                      ctx.fillRect(node.x - textWidth / 2 - 2, node.y + size + 2, textWidth + 4, fontSize + 2);
+                      
+                      ctx.fillStyle = node.isAsset 
+                        ? (resolvedTheme === 'dark' ? '#38bdf8' : '#0284c7')
+                        : (resolvedTheme === 'dark' ? '#e2e8f0' : '#1e293b');
+                      ctx.fillText(label, node.x, node.y + size + 3);
+                    }}
+                    linkColor={() => resolvedTheme === 'dark' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)'}
+                    linkWidth={(link) => Math.max(1, link.value * 10)}
+                    linkDirectionalParticles={2}
+                    linkDirectionalParticleWidth={(link) => Math.max(1.5, link.value * 5)}
+                    linkDirectionalParticleSpeed={(link) => Math.max(0.01, link.value * 0.08)}
                     d3AlphaDecay={0.02}
                     d3VelocityDecay={0.3}
                     cooldownTicks={100}

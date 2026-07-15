@@ -3,14 +3,15 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { Menu, BarChart2, Network, TrendingUp, Shield, Wallet } from "lucide-react";
-import { StatusIndicator } from "@/components/StatusIndicator";
+import { Menu, BarChart2, Network, TrendingUp, Shield, Wallet, Home, RefreshCw } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Directory, type DirectorySection } from "@/components/Directory";
+import { api } from "@/lib/api";
+import { useSWRConfig } from "swr";
 
 export const NAV_GROUPS: DirectorySection[] = [
   { title: "Discover", items: [{ name: "Search Asset", action: () => window.dispatchEvent(new Event("open-global-search")) }] },
-  { title: "Markets", items: [{ name: "Market Data", href: "/market" }, { name: "Screener", href: "/screener" }] },
+  { title: "Markets", items: [{ name: "Market Data", href: "/market" }, { name: "Market Screener", href: "/screener" }] },
   { title: "Analysis", items: [
       { name: "Network Graph", href: "/graph" },
       { name: "Correlations", href: "/correlations" },
@@ -36,7 +37,23 @@ const QUICK_ITEMS = [
 
 export function Console() {
   const [directoryOpen, setDirectoryOpen] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const pathname = usePathname();
+  const { mutate } = useSWRConfig();
+
+  const handleLiveSync = async () => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    try {
+      await api.post("/api/v1/status/refresh-all");
+      // Revalidate all active SWR cache entries
+      mutate(() => true);
+    } catch (err) {
+      console.error("Live sync failed:", err);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   return (
     <>
@@ -54,6 +71,18 @@ export function Console() {
           >
             <Menu size={18} />
           </button>
+          
+          {/* Homepage Button */}
+          <Link
+            href="/"
+            title="Home"
+            className={`relative w-10 h-10 shape-facet-sm flex items-center justify-center transition-all duration-[var(--dur-hover)] ease-glide ${
+              pathname === "/" ? "text-accent shadow-[0_0_15px_rgba(var(--accent),0.2)]" : "text-text-muted hover:text-text hover:scale-110"
+            }`}
+          >
+            <Home size={18} />
+          </Link>
+          
           {QUICK_ITEMS.map((item) => {
             const isActive = pathname === item.href;
             return (
@@ -71,7 +100,18 @@ export function Console() {
           })}
         </div>
         <div className="flex md:flex-col items-center gap-3">
-          <StatusIndicator compact />
+          {/* Live Sync Action Button */}
+          <button
+            onClick={handleLiveSync}
+            disabled={isSyncing}
+            title="Live Sync System"
+            className={`relative w-10 h-10 shape-facet-sm flex items-center justify-center transition-all duration-[var(--dur-hover)] ease-glide text-text-muted hover:text-accent ${
+              isSyncing ? "animate-spin text-accent" : "hover:scale-110"
+            }`}
+            aria-label="Live sync system"
+          >
+            <RefreshCw size={18} />
+          </button>
           <ThemeToggle />
         </div>
       </nav>

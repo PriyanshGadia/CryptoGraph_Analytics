@@ -79,6 +79,14 @@ def trigger_refresh_all(background_tasks: BackgroundTasks, db: Session = Depends
     except Exception as e:
         results["correlations"] = f"error: {e}"
 
+    # 2c. Trigger news collection in background
+    try:
+        from ml.data.ingestion.news_collector import collect_news_for_all_assets
+        background_tasks.add_task(collect_news_for_all_assets)
+        results["news"] = "news collection queued in background"
+    except Exception as e:
+        results["news"] = f"error: {e}"
+
     # 3. Trigger prediction inference pipeline in background to prevent event loop deadlock
     try:
         def run_inference_bg():

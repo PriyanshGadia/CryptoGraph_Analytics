@@ -192,15 +192,25 @@ async def get_correlation_matrix(
     basis: str = "Price Correlation",
     db: Session = Depends(get_db)
 ):
-    """Returns pre-computed correlation matrix, bypassing heavy on-the-fly Pandas operations."""
+    """Returns pre-computed correlation matrix, calculating it dynamically on a cache miss."""
     cache_key = f"/correlations/matrix_cache_{days}_{basis}"
     data = _cache.get(cache_key)
     
     if data:
         return data
         
-    # If cache is entirely empty (e.g. startup), return a safe empty struct
-    # We do NOT run the Pandas code here to avoid thread starvation.
+    import asyncio
+    try:
+        loop = asyncio.get_event_loop()
+        res = await loop.run_in_executor(None, precompute_correlations_sync, db, days, basis)
+        if res:
+            matrix_data, _ = res
+            if matrix_data:
+                return matrix_data
+    except Exception as e:
+        import logging
+        logging.getLogger("cryptograph.correlations").error(f"Error computing matrix on-the-fly: {e}")
+        
     return {"symbols": [], "matrix": [], "top_pairs": [], "period_days": days}
 
 
@@ -210,11 +220,23 @@ async def get_sector_correlations(
     basis: str = "Price Correlation",
     db: Session = Depends(get_db)
 ):
-    """Returns pre-computed sector correlations, bypassing heavy on-the-fly Pandas operations."""
+    """Returns pre-computed sector correlations, calculating them dynamically on a cache miss."""
     cache_key = f"/correlations/sector_cache_{days}_{basis}"
     data = _cache.get(cache_key)
     
     if data:
         return data
+        
+    import asyncio
+    try:
+        loop = asyncio.get_event_loop()
+        res = await loop.run_in_executor(None, precompute_correlations_sync, db, days, basis)
+        if res:
+            _, sector_data = res
+            if sector_data:
+                return sector_data
+    except Exception as e:
+        import logging
+        logging.getLogger("cryptograph.correlations").error(f"Error computing sector correlations on-the-fly: {e}")
         
     return {"sectors": [], "matrix": [], "intra_sector": {}}

@@ -111,8 +111,8 @@ class SmartOrderRouter:
             for attempt in range(2):  # Up to 2 retries per pair
                 try:
                     book = client.fetch_order_book(pair, limit=10)
-                    bids = [[float(p), float(v)] for p, v in book.get("bids", [])]
-                    asks = [[float(p), float(v)] for p, v in book.get("asks", [])]
+                    bids = [[float(item[0]), float(item[1])] for item in book.get("bids", []) if len(item) >= 2]
+                    asks = [[float(item[0]), float(item[1])] for item in book.get("asks", []) if len(item) >= 2]
                     if bids and asks:
                         return {"bids": bids, "asks": asks}
                 except Exception as e:

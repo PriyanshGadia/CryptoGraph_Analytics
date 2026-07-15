@@ -11,7 +11,7 @@ import {
   Shield, Activity, BarChart3, PieChart as PieIcon, CheckCircle,
   ShieldAlert, Info, Zap
 } from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, ScatterChart, Scatter, ZAxis, Area, AreaChart, BarChart, CartesianGrid, Bar, PieChart, Pie, Cell, Legend, ComposedChart } from "recharts";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, ScatterChart, Scatter, ZAxis, Area, AreaChart, BarChart, CartesianGrid, Bar, PieChart, Pie, Cell, Legend, ComposedChart, Label } from "recharts";
 import { ScrollToTop } from "@/components/ScrollToTop";
 
 interface PredictionRow {
@@ -136,7 +136,7 @@ export default function RiskPage() {
             <div className="p-3 glass bg-danger/10 rounded-sm shadow-inner shadow-danger/20">
                 <ShieldAlert className="text-danger" size={32} />
             </div>
-            Risk Matrix
+            Risk Dashboard
           </h1>
           <p className="text-text-muted mt-3 font-light tracking-wide max-w-xl">
             Real-time market regime, volatility clustering, and neural correlation analysis.
@@ -261,19 +261,12 @@ export default function RiskPage() {
                   </h3>
                   <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-2">Aggregate Model Bias across all analyzed assets</p>
                 </div>
-                <div className="h-[300px] w-full relative">
+                <div className="w-full relative">
                   {predDist.length > 0 ? (
                     <>
-                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                            <div className="w-32 h-32 rounded-full border border-white/5 flex items-center justify-center bg-surface/50 backdrop-blur-sm z-10 shadow-inner">
-                                <div className="text-center">
-                                    <div className="text-2xl font-black text-text">{preds?.length}</div>
-                                    <div className="text-[8px] uppercase tracking-widest font-bold text-text-muted">Total Nodes</div>
-                                </div>
-                            </div>
-                        </div>
+                      <div className="h-[260px] w-full relative">
                         <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={{ width: 100, height: 100 }}>
-                        <PieChart>
+                          <PieChart>
                             <Pie 
                                 data={predDist} 
                                 cx="50%" 
@@ -285,18 +278,47 @@ export default function RiskPage() {
                                 stroke="rgba(10, 10, 15, 0.8)"
                                 strokeWidth={2}
                             >
-                            {predDist.map((d, i) => <Cell key={i} fill={d.color} />)}
+                              <Label 
+                                content={({ viewBox }) => {
+                                  const { cx, cy } = viewBox as any;
+                                  return (
+                                    <g>
+                                      {/* Inner circle background */}
+                                      <circle cx={cx} cy={cy} r={68} fill="rgba(255,255,255,0.02)" stroke="rgba(255,255,255,0.05)" strokeWidth={1} />
+                                      {/* Text details */}
+                                      <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central">
+                                        <tspan x={cx} dy="-8" className="fill-text font-sans font-black text-2xl">
+                                          {data?.total_assets_monitored || preds?.length || 0}
+                                        </tspan>
+                                        <tspan x={cx} dy="20" className="fill-text-muted font-sans font-bold text-[8px] tracking-widest uppercase">
+                                          Total Nodes
+                                        </tspan>
+                                      </text>
+                                    </g>
+                                  );
+                                }}
+                              />
+                              {predDist.map((d, i) => <Cell key={i} fill={d.color} />)}
                             </Pie>
                             <Tooltip 
                                 contentStyle={{ backgroundColor: "rgba(var(--background), 0.9)", borderColor: "rgba(var(--text), 0.1)", borderRadius: "12px", backdropFilter: "blur(10px)", color: palette.text, fontWeight: "bold" }} 
                                 itemStyle={{ fontFamily: 'monospace' }}
                             />
-                            <Legend wrapperStyle={{ fontSize: 10, fontFamily: 'monospace', fontWeight: 'bold', color: palette.muted, paddingTop: "20px" }} iconType="circle" />
-                        </PieChart>
+                          </PieChart>
                         </ResponsiveContainer>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 mt-6">
+                        {predDist.map((item, idx) => (
+                          <div key={idx} className="flex flex-col items-center justify-center p-3 rounded-lg border border-white/5 bg-white/[0.01] hover:bg-white/[0.03] transition-colors text-center font-mono">
+                            <span className="w-2.5 h-2.5 rounded-full mb-1.5 animate-pulse" style={{ backgroundColor: item.color }} />
+                            <span className="text-[10px] font-semibold text-text-muted">{item.name}</span>
+                            <span className="text-base font-black text-text mt-1">{item.value}</span>
+                          </div>
+                        ))}
+                      </div>
                     </>
                   ) : (
-                    <div className="flex items-center justify-center h-full text-text-muted font-mono border border-white/5 rounded-sm bg-surface/30">Awaiting tensor computation...</div>
+                    <div className="flex items-center justify-center h-[300px] text-text-muted font-mono border border-white/5 rounded-sm bg-surface/30">Awaiting tensor computation...</div>
                   )}
                 </div>
             </GlassCard>
@@ -336,6 +358,84 @@ export default function RiskPage() {
                         </span>
                     </div>
                 )}
+              </div>
+            </GlassCard>
+          )}
+
+          {/* Smart Order Router - Slippage & Routing Telemetry */}
+          {data.liquidity_routes && data.liquidity_routes.length > 0 && (
+            <GlassCard tier={2} shape="none" className="rounded-xl p-0 overflow-hidden border border-white/10 relative">
+              <div className="absolute top-0 right-0 w-full h-1 bg-gradient-to-r from-transparent via-accent/30 to-transparent opacity-50" />
+              <div className="p-8 border-b border-white/5 bg-surface/30 flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-black text-text tracking-tight flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full glass bg-accent/10 border border-accent/20 flex items-center justify-center">
+                      <Zap className="text-accent" size={16} />
+                    </div>
+                    Smart Execution & Liquidity Spreads
+                  </h3>
+                  <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-1">Multi-Exchange L2 Order Book Depth Routing & Slippage for $50,000 orders</p>
+                </div>
+              </div>
+              <div className="p-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  {data.liquidity_routes.map((route, idx) => {
+                    const slippage = route.slippage_pct;
+                    const isOptimal = slippage < 0.1;
+                    const isModerate = slippage >= 0.1 && slippage <= 0.5;
+                    const slippageColor = isOptimal ? "text-success border-success/30 bg-success/5" : isModerate ? "text-warning border-warning/30 bg-warning/5" : "text-danger border-danger/30 bg-danger/5";
+                    
+                    return (
+                      <div key={idx} className="interactive-lift p-5 glass bg-surface/50 rounded-sm border border-white/10 hover:border-accent/30 transition-colors group hover:shadow-[0_0_20px_rgba(var(--accent),0.1)] relative overflow-hidden">
+                        <div className="flex items-center justify-between mb-4">
+                          <span className="font-mono text-lg font-black text-text group-hover:text-accent transition-colors">{route.symbol}</span>
+                          <span className="px-2.5 py-1 bg-accent/10 text-accent shape-tag text-[9px] font-black tracking-widest border border-accent/20 shadow-inner">
+                            {route.best_exchange.toUpperCase()}
+                          </span>
+                        </div>
+                        
+                        <div className="space-y-3 font-mono text-xs">
+                          <div className="flex justify-between items-center py-1.5 border-b border-white/5">
+                            <span className="text-text-muted">Est. Slippage:</span>
+                            <span className={`px-2 py-0.5 rounded-sm border font-bold ${slippageColor}`}>
+                              {slippage === 0 ? "0.0000%" : `${slippage.toFixed(4)}%`}
+                            </span>
+                          </div>
+                          
+                          <div className="flex justify-between items-center py-1.5 border-b border-white/5">
+                            <span className="text-text-muted">Fill Price:</span>
+                            <span className="text-text font-semibold">
+                              ${route.average_fill_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                          
+                          <div className="flex justify-between items-center py-1.5 border-b border-white/5">
+                            <span className="text-text-muted">Gas Estimate:</span>
+                            <span className="text-text">
+                              ${route.estimated_gas_usd.toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Special Warnings */}
+                        {(route.depth_insufficient || route.gas_too_high) && (
+                          <div className="mt-4 flex flex-col gap-1.5">
+                            {route.depth_insufficient && (
+                              <span className="px-2 py-1 text-[8px] bg-danger/10 text-danger border border-danger/20 rounded-sm font-bold uppercase tracking-wider text-center animate-pulse">
+                                Depth Insufficient
+                              </span>
+                            )}
+                            {route.gas_too_high && (
+                              <span className="px-2 py-1 text-[8px] bg-warning/10 text-warning border border-warning/20 rounded-sm font-bold uppercase tracking-wider text-center">
+                                High Gas Impact
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </GlassCard>
           )}

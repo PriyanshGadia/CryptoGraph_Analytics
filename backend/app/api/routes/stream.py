@@ -165,7 +165,7 @@ async def prediction_broadcast_loop():
                         predictions.append({
                             "symbol": symbol,
                             "direction": pred.direction or "neutral",
-                            "confidence": round(pred.confidence, 2) if pred.confidence else 0.0,
+                            "confidence": round(pred.confidence * 100.0, 2) if pred.confidence is not None else 0.0,
                             "volatility_regime": pred.volatility_regime or "medium",
                             "model_version": pred.model_version or "stgcn-v1.0",
                             "attestation_hash": pred.attestation_hash

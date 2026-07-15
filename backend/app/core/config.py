@@ -39,7 +39,6 @@ settings = Settings()
 
 from app.db.database import SessionLocal
 from app.db.models import AppSetting
-from app.core.security import decrypt_secret
 from cachetools import TTLCache
 
 # Cache settings for 60 seconds to prevent rapid DB queries, but allow dynamic reloading
@@ -60,6 +59,7 @@ def get_setting(key: str, default: str = None) -> Optional[str]:
     if key.lower() == "api_key":
         env_val = getattr(settings, key, None) or os.environ.get("API_KEY")
         if env_val:
+            env_val = env_val.strip()
             _settings_cache[key] = env_val
         return env_val
         
@@ -68,6 +68,7 @@ def get_setting(key: str, default: str = None) -> Optional[str]:
         try:
             record = db.query(AppSetting).filter(AppSetting.setting_key == key).first()
             if record and record.setting_value:
+                from app.core.security import decrypt_secret
                 value = decrypt_secret(record.setting_value)
                 if value:
                     _settings_cache[key] = value

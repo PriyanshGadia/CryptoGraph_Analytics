@@ -60,23 +60,26 @@ import numpy as np
 # Initialize Sentry safely without crashing on failure
 if getattr(settings, 'sentry_dsn', None) and settings.sentry_dsn.strip():
     dsn_str = settings.sentry_dsn.strip()
-    try:
-        from circuitbreaker import circuit
-        @circuit(failure_threshold=2, recovery_timeout=30)
-        def init_sentry():
-            import sentry_sdk
-            from sentry_sdk.integrations.fastapi import FastApiIntegration
-            sentry_sdk.init(
-                dsn=dsn_str,
-                environment=settings.environment,
-                integrations=[FastApiIntegration()],
-                traces_sample_rate=0.1
-            )
-        
-        init_sentry()
-        logger.info("Sentry initialized successfully.")
-    except Exception as e:
-        logger.error(f"Sentry initialization failed (Circuit Broken): {e}. Continuing without monitoring.")
+    if "project_id" in dsn_str or "your_sentry_dsn" in dsn_str:
+        logger.info("Sentry initialization skipped (placeholder DSN detected).")
+    else:
+        try:
+            from circuitbreaker import circuit
+            @circuit(failure_threshold=2, recovery_timeout=30)
+            def init_sentry():
+                import sentry_sdk
+                from sentry_sdk.integrations.fastapi import FastApiIntegration
+                sentry_sdk.init(
+                    dsn=dsn_str,
+                    environment=settings.environment,
+                    integrations=[FastApiIntegration()],
+                    traces_sample_rate=0.1
+                )
+            
+            init_sentry()
+            logger.info("Sentry initialized successfully.")
+        except Exception as e:
+            logger.error(f"Sentry initialization failed (Circuit Broken): {e}. Continuing without monitoring.")
 else:
     logger.info("Sentry initialization skipped (DSN is missing).")
 
@@ -101,6 +104,8 @@ async def lifespan(app: FastAPI):
         # If we had a mechanism to save it, we would. But we just set it in env for this session.
         os.environ["API_KEY"] = new_key
         api_key_configured = new_key
+    else:
+        api_key_configured = api_key_configured.strip()
     
     if len(api_key_configured) < 32 or not re.match(r"^[a-zA-Z0-9_\-]+$", api_key_configured):
         logger.error("[SECURITY ERROR] API_KEY is too weak. Must be >= 32 characters and URL-safe alphanumeric.")

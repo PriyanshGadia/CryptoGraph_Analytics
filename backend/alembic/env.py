@@ -1,9 +1,17 @@
-from logging.config import fileConfig
+import sys
+from pathlib import Path
 
+# Add backend directory to path
+base_dir = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(base_dir))
+
+from logging.config import fileConfig
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
-
 from alembic import context
+
+from app.db.database import SQLALCHEMY_DATABASE_URL  # noqa: E402
+from app.db.schemas import Base  # noqa: E402
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -13,16 +21,6 @@ config = context.config
 # This line sets up loggers basically.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
-
-import sys
-from pathlib import Path
-
-# Add backend directory to path
-base_dir = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(base_dir))
-
-from app.db.database import SQLALCHEMY_DATABASE_URL
-from app.db.schemas import Base
 
 # Set sqlalchemy.url dynamically
 config.set_main_option("sqlalchemy.url", SQLALCHEMY_DATABASE_URL)

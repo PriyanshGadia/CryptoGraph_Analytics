@@ -84,6 +84,16 @@ export interface RiskData {
   down_pct: number;
   neutral_pct: number;
   total_assets_monitored: number;
+  global_confidence?: number;
+  liquidity_routes?: Array<{
+    symbol: string;
+    best_exchange: string;
+    slippage_pct: number;
+    average_fill_price: number;
+    estimated_gas_usd: number;
+    gas_too_high: boolean;
+    depth_insufficient: boolean;
+  }>;
 }
 
 export interface ExplainResponse {

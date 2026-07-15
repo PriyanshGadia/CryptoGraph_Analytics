@@ -74,10 +74,9 @@ def generate_system_explanation(symbol: str, direction: str, confidence: float,
 
     live_tech = live_tech or {}
 
-    # Merge SHAP with live tech for richer context
-    context = {**live_tech}
-    for k, v in numeric_shap.items():
-        context[k] = v
+    # Merge SHAP with live tech for richer context. We put live_tech second to ensure
+    # actual metric values take precedence over SHAP attribution values in shared keys.
+    context = {**numeric_shap, **live_tech}
 
     feature_insights = []
 
@@ -260,7 +259,7 @@ def explain_prediction(request: Request, symbol: str, db: Session = Depends(get_
         return ExplainResponse(symbol=symbol, explanation="No predictions available.", direction="unknown", confidence=0.0, top_features={})
 
     direction = pred.direction or "unknown"
-    confidence = pred.confidence or 0.0
+    confidence = (pred.confidence or 0.0) * 100.0
 
     import json
     

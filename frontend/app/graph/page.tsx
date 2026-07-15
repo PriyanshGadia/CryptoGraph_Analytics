@@ -158,15 +158,19 @@ export default function GraphPage() {
 
   const handleToggle3D = useCallback(() => {
     // Sanitize link object source/target references back to raw symbol strings
-    // to prevent 2D/3D d3 simulation object reference collisions
+    // and clear fx, fy, fz locks so the force layout runs fresh for 2D/3D
     setGraphDataState(prev => ({
-      nodes: prev.nodes,
+      nodes: prev.nodes.map((n: any) => {
+        const { fx, fy, fz, ...rest } = n;
+        return rest;
+      }),
       links: prev.links.map((l: any) => ({
         ...l,
         source: typeof l.source === "object" ? l.source.symbol || l.source.id : l.source,
         target: typeof l.target === "object" ? l.target.symbol || l.target.id : l.target,
       }))
     }));
+    hasZoomed.current = false;
     nodeThreeObjsMap.current.clear();
     setIs3D(prev => !prev);
   }, []);
@@ -293,16 +297,16 @@ export default function GraphPage() {
         const sphereMesh = group.children[0] as THREE.Mesh;
         if (sphereMesh && sphereMesh.material) {
           (sphereMesh.material as THREE.MeshBasicMaterial).color.set(n.color || palette.muted);
-          sphereMesh.scale.setScalar(n.radius / 6);
+          sphereMesh.scale.setScalar(n.radius / 4);
         }
         const logoSprite = group.children[1] as THREE.Sprite;
         if (logoSprite) {
-          logoSprite.scale.setScalar(14 * (n.radius / 6));
+          logoSprite.scale.setScalar(9 * (n.radius / 4));
         }
         const textSprite = group.children[2] as THREE.Sprite;
         if (textSprite) {
-          textSprite.scale.setScalar(18 * (n.radius / 6));
-          textSprite.position.y = n.radius + 5;
+          textSprite.scale.setScalar(12 * (n.radius / 4));
+          textSprite.position.y = n.radius + 3;
         }
       }
     });
@@ -629,10 +633,22 @@ export default function GraphPage() {
             d3VelocityDecay={0.4}
             cooldownTime={4000}
             onEngineStop={() => {
-              if (graphRef.current && !hasZoomed.current) {
-                graphRef.current.zoomToFit(400, 40);
-                hasZoomed.current = true;
+              if (graphRef.current) {
+                if (!hasZoomed.current) {
+                  graphRef.current.zoomToFit(400, 40);
+                  hasZoomed.current = true;
+                }
+                displayGraphData.nodes.forEach((n: any) => {
+                  n.fx = n.x;
+                  n.fy = n.y;
+                  n.fz = n.z;
+                });
               }
+            }}
+            onNodeDragEnd={(node: any) => {
+              node.fx = node.x;
+              node.fy = node.y;
+              node.fz = node.z;
             }}
             onNodeClick={(node: any) => {
               setSelectedNode(node);
@@ -649,15 +665,16 @@ export default function GraphPage() {
             nodeCanvasObject={(node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
               const radius = node.radius || 7;
               
-              // 1. Outer transparent signal ring/glow
+              // 1. Outer transparent signal ring/glow (matching 3D ambient sphere)
+              ctx.save();
               ctx.beginPath();
-              ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI, false);
+              ctx.arc(node.x, node.y, radius * 1.4, 0, 2 * Math.PI, false);
               ctx.fillStyle = node.color || palette.muted;
-              ctx.globalAlpha = 0.25; // Transparent spheres match 3D
+              ctx.globalAlpha = 0.15;
               ctx.fill();
-              ctx.globalAlpha = 1.0;
+              ctx.restore();
               
-              // 2. Render cryptocurrency coin logo clipped inside circle with fallbacks
+              // 2. Render cryptocurrency coin logo
               const imgId = `img-logo-${node.symbol}`;
               const isKnownFailed = failedIcons.current.has(node.symbol);
               let img = document.getElementById(imgId) as HTMLImageElement;
@@ -676,28 +693,37 @@ export default function GraphPage() {
                 document.body.appendChild(img);
               }
               
+              const logoRadius = radius * 1.0;
               if (img && img.complete && img.naturalWidth !== 0 && !node.__imgFailed && !isKnownFailed) {
                 ctx.save();
                 ctx.beginPath();
-                ctx.arc(node.x, node.y, radius * 0.8, 0, 2 * Math.PI, false);
+                ctx.arc(node.x, node.y, logoRadius, 0, 2 * Math.PI, false);
                 ctx.clip();
-                ctx.drawImage(img, node.x - radius * 0.8, node.y - radius * 0.8, radius * 1.6, radius * 1.6);
+                ctx.drawImage(img, node.x - logoRadius, node.y - logoRadius, logoRadius * 2, logoRadius * 2);
                 ctx.restore();
-              } else {
-                // High-quality canvas fallback with colored ring and symbol text
+                
+                // Fine border ring around logo
                 ctx.save();
                 ctx.beginPath();
-                ctx.arc(node.x, node.y, radius * 0.8, 0, 2 * Math.PI, false);
-                const grad = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, radius * 0.8);
-                grad.addColorStop(0, node.color || palette.muted);
-                grad.addColorStop(1, 'rgba(15, 23, 42, 0.9)');
-                ctx.fillStyle = grad;
-                ctx.fill();
-                // Border ring
+                ctx.arc(node.x, node.y, logoRadius, 0, 2 * Math.PI, false);
                 ctx.strokeStyle = node.color || palette.muted;
                 ctx.lineWidth = 1.5;
                 ctx.stroke();
-                ctx.font = `bold ${Math.max(radius * 0.55, 4)}px monospace`;
+                ctx.restore();
+              } else {
+                // High-quality canvas fallback
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, logoRadius, 0, 2 * Math.PI, false);
+                const grad = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, logoRadius);
+                grad.addColorStop(0, node.color || palette.muted);
+                grad.addColorStop(1, 'rgba(15, 23, 42, 0.95)');
+                ctx.fillStyle = grad;
+                ctx.fill();
+                ctx.strokeStyle = node.color || palette.muted;
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+                ctx.font = `bold ${Math.max(logoRadius * 0.7, 5)}px monospace`;
                 ctx.fillStyle = '#ffffff';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
@@ -705,13 +731,32 @@ export default function GraphPage() {
                 ctx.restore();
               }
               
-              // 3. Float ticker text label below
-              const fontSize = 11 / globalScale;
+              // 3. Premium pill container for ticker text below the node (scales screen-consistently)
+              const fontSize = 8.5 / globalScale;
+              const textY = node.y + radius * 1.4 + 9 / globalScale;
+              const textWidth = (node.symbol.length * 5.5 + 8) / globalScale;
+              const textHeight = 12 / globalScale;
+              const pillRadius = 3 / globalScale;
+              
+              ctx.save();
+              ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+              ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+              ctx.lineWidth = 1 / globalScale;
+              ctx.beginPath();
+              if (ctx.roundRect) {
+                ctx.roundRect(node.x - textWidth / 2, textY - textHeight / 2, textWidth, textHeight, pillRadius);
+              } else {
+                ctx.rect(node.x - textWidth / 2, textY - textHeight / 2, textWidth, textHeight);
+              }
+              ctx.fill();
+              ctx.stroke();
+
               ctx.font = `bold ${fontSize}px monospace`;
+              ctx.fillStyle = '#ffffff';
               ctx.textAlign = 'center';
               ctx.textBaseline = 'middle';
-              ctx.fillStyle = '#ffffff';
-              ctx.fillText(node.symbol, node.x, node.y + radius + 9 / globalScale);
+              ctx.fillText(node.symbol, node.x, textY);
+              ctx.restore();
             }}
             linkColor={linkColor}
             linkWidth={linkWidth}
@@ -730,10 +775,20 @@ export default function GraphPage() {
             d3VelocityDecay={0.4}
             cooldownTime={4000}
             onEngineStop={() => {
-              if (graphRef2D.current && !hasZoomed.current) {
-                graphRef2D.current.zoomToFit(400, 40);
-                hasZoomed.current = true;
+              if (graphRef2D.current) {
+                if (!hasZoomed.current) {
+                  graphRef2D.current.zoomToFit(400, 40);
+                  hasZoomed.current = true;
+                }
+                displayGraphData.nodes.forEach((n: any) => {
+                  n.fx = n.x;
+                  n.fy = n.y;
+                });
               }
+            }}
+            onNodeDragEnd={(node: any) => {
+              node.fx = node.x;
+              node.fy = node.y;
             }}
             onNodeClick={(node: any) => {
               setSelectedNode(node);

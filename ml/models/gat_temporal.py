@@ -25,7 +25,7 @@ class SpatioTemporalGAT(nn.Module):
     """
 
     def __init__(self, hidden_dim: int = 128, heads_1: int = 4, heads_2: int = 2,
-                 dropout: float = 0.1):
+                 dropout: float = 0.1, use_gatv2: bool = True):
         super().__init__()
         self.hidden_dim = hidden_dim
 
@@ -42,7 +42,7 @@ class SpatioTemporalGAT(nn.Module):
         # At d=32, heads=2: ~32x less VRAM than the RGATConv that OOM'd.
         self.rgat2 = AdaptiveRelationalGNN(
             hidden_dim=hidden_dim, num_relations=3, heads=heads_2,
-            dropout=dropout, use_gatv2=True,
+            dropout=dropout, use_gatv2=use_gatv2,
         )
 
     @staticmethod

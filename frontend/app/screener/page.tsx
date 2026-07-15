@@ -107,7 +107,7 @@ export default function ScreenerPage() {
     sort_dir: sortDir
   }).toString();
 
-  const { data: results, isLoading, mutate } = useSWR(`${BASE}/api/v1/screener/?${query}`, fetcher);
+  const { data: results, isLoading, mutate } = useSWR(`/api/v1/screener/?${query}`, fetcher);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const refreshLiveTechnicals = async () => {
@@ -190,7 +190,7 @@ export default function ScreenerPage() {
       <div className="relative">
         <div className="absolute top-[-50px] left-[-50px] w-64 h-64 bg-accent/5 rounded-full blur-[80px] pointer-events-none" />
         <div className="relative z-10">
-          <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-text via-text/80 to-text-muted tracking-tight font-sans">Market Scanner</h1>
+          <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-text via-text/80 to-text-muted tracking-tight font-sans">Market Screener</h1>
           <p className="text-text-muted font-light tracking-wide mt-2">Find opportunities using AI-powered filters and neural signals</p>
         </div>
       </div>
@@ -436,22 +436,22 @@ export default function ScreenerPage() {
                       <div className="flex flex-col gap-1.5 w-32">
                         <div className="flex justify-between items-center text-[10px] text-text font-mono font-bold">
                             <span>CONFIDENCE</span>
-                            <span>{(row.confidence).toFixed(1)}%</span>
+                            <span>{(row.confidence ?? 0).toFixed(1)}%</span>
                         </div>
                         <div className="w-full bg-background h-1.5 rounded-full overflow-hidden border border-text/5">
-                          <div className="bg-accent h-full shadow-[0_0_10px_currentColor] transition-all" style={{ width: `${row.confidence}%` }}></div>
+                          <div className="bg-accent h-full shadow-[0_0_10px_currentColor] transition-all" style={{ width: `${row.confidence ?? 0}%` }}></div>
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 font-mono font-bold text-xs">
                       <div className="flex items-center gap-2">
-                        <span className="text-text">{row.rsi_14?.toFixed(1) || 'N/A'}</span>
-                        {row.rsi_14 < 30 && <span className="text-[9px] bg-success/10 text-success px-1.5 py-0.5 shape-tag border border-success/30 uppercase tracking-widest">OVS</span>}
-                        {row.rsi_14 > 70 && <span className="text-[9px] bg-danger/10 text-danger px-1.5 py-0.5 shape-tag border border-danger/30 uppercase tracking-widest">OVB</span>}
+                        <span className="text-text">{row.rsi_14 != null ? row.rsi_14.toFixed(1) : 'N/A'}</span>
+                        {row.rsi_14 != null && row.rsi_14 < 30 && <span className="text-[9px] bg-success/10 text-success px-1.5 py-0.5 shape-tag border border-success/30 uppercase tracking-widest">OVS</span>}
+                        {row.rsi_14 != null && row.rsi_14 > 70 && <span className="text-[9px] bg-danger/10 text-danger px-1.5 py-0.5 shape-tag border border-danger/30 uppercase tracking-widest">OVB</span>}
                       </div>
                     </td>
-                    <td className={`px-6 py-4 font-mono font-black text-xs ${row.returns_7d > 0 ? "text-success" : "text-danger"}`}>
-                      {row.returns_7d > 0 ? "+" : ""}{(row.returns_7d * 100).toFixed(2)}%
+                    <td className={`px-6 py-4 font-mono font-black text-xs ${(row.returns_7d || 0) > 0 ? "text-success" : (row.returns_7d || 0) < 0 ? "text-danger" : "text-text-muted"}`}>
+                      {row.returns_7d != null && !isNaN(row.returns_7d) ? `${row.returns_7d > 0 ? "+" : ""}${(row.returns_7d * 100).toFixed(2)}%` : "N/A"}
                     </td>
                     <td className="px-6 py-4">
                       <VolatilityChip level={row.volatility_regime} />

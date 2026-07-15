@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { apiService } from "@/lib/api";
-import axios from "axios";
+import { apiService, api } from "@/lib/api";
 import { Settings, Key, Save, CheckCircle, AlertCircle, RefreshCcw, Zap, Database, Radio, Globe, Activity, HelpCircle } from "lucide-react";
 import { useCurrency, CURRENCY_SYMBOLS, Currency } from "@/components/CurrencyContext";
 import { GlassCard } from "@/components/ui/GlassCard";
@@ -23,7 +22,7 @@ export default function SettingsPage() {
   const { mode: perfMode, toggleMode: setPerfMode } = usePerformanceMode();
 
   useEffect(() => {
-    axios.get(`${BASE}/api/v1/settings`)
+    api.get(`/api/v1/settings`)
       .then(res => {
         const data = res.data;
         setFormValues(data.values || {});
@@ -54,11 +53,11 @@ export default function SettingsPage() {
         return;
       }
 
-      await axios.post(`${BASE}/api/v1/settings`, { settings: changedSettings });
+      await api.post(`/api/v1/settings`, { settings: changedSettings });
       setStatus({ type: "success", message: "Neural pathways synchronized." });
       setDirtyFields(new Set());
 
-      const res = await axios.get(`${BASE}/api/v1/settings`);
+      const res = await api.get(`/api/v1/settings`);
       setConfigured(res.data.configured || {});
       setFormValues(res.data.values || {});
 
@@ -75,7 +74,7 @@ export default function SettingsPage() {
     setRefreshing(true);
     setRefreshResult(null);
     try {
-      const res = await axios.post(`${BASE}/api/v1/status/refresh-all`);
+      const res = await api.post(`/api/v1/status/refresh-all`);
       const details = res.data.details || {};
       setRefreshResult(
         `✅ Signals: ${details.technicals || 'done'} | Cache: ${details.cache || 'cleared'} | Tensors: ${details.predictions || 'triggered'}`

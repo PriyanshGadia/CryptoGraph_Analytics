@@ -208,13 +208,15 @@ def confirm_web3_trade(trade_id: int, payload: ConfirmTradeRequest, db: Session 
     return {"status": "success"}
 
 @router.post("/execute")
-async def trigger_agent_execution(api_key: str = Depends(get_api_key)):
+async def trigger_agent_execution(db: Session = Depends(get_db), api_key: str = Depends(get_api_key)):
     """Manually trigger the trading agent execution (for testing/demo)."""
-    await execute_daily_trades()
-    return {"status": "success", "message": "Agent execution completed"}
+    res = await execute_daily_trades()
+    if isinstance(res, dict) and res.get("status") == "skipped":
+        return {"status": "skipped", "message": f"Agent execution skipped: {res.get('reason')}"}
+    return {"status": "success", "message": "Agent execution completed successfully!"}
 
 @router.post("/reset")
-def reset_portfolio(db: Session = Depends(get_db), api_key: str = Depends(get_api_key)):
+async def reset_portfolio(db: Session = Depends(get_db), api_key: str = Depends(get_api_key)):
     """Reset portfolio state and clear trades to restart paper trading with $100,000 capital."""
     db.query(TradeHistory).delete()
     db.query(TradeDebate).delete()

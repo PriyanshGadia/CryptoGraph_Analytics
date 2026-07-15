@@ -78,10 +78,8 @@ class AdaptiveRelationalGNN(nn.Module):
             )
 
         # 2. Adaptive Graph Layer — Q/K projections for dynamic adjacency
-        self.query_projection = nn.Linear(hidden_dim, hidden_dim // 4)
-        self.key_projection   = nn.Linear(hidden_dim, hidden_dim // 4)
+        self.adaptive_generator = AdaptiveAdjacencyGenerator(hidden_dim)
         self.adaptive_weight  = nn.Linear(hidden_dim, hidden_dim)
-        self.scale = (hidden_dim // 4) ** 0.5
 
         # 3. LayerNorm and Fusion
         self.norm    = nn.LayerNorm(hidden_dim)
@@ -113,16 +111,16 @@ class AdaptiveRelationalGNN(nn.Module):
             # ── Step 2: Dynamic adaptive graph — fully batched einsum ───────────────
             if T > 1:
                 x_3d = x.view(T, N, -1)                          # (T, N, H)
-                q = self.query_projection(x_3d)                  # (T, N, d)
-                k = self.key_projection(x_3d)                    # (T, N, d)
-                attn = torch.bmm(q, k.transpose(1, 2)) / self.scale  # (T, N, N) — one bmm
+                q = self.adaptive_generator.query_projection(x_3d)  # (T, N, d)
+                k = self.adaptive_generator.key_projection(x_3d)    # (T, N, d)
+                attn = torch.bmm(q, k.transpose(1, 2)) / self.adaptive_generator.scale  # (T, N, N) — one bmm
                 A = F.softmax(F.relu(attn), dim=-1)              # (T, N, N)
                 h_adaptive = torch.bmm(A, x_3d)                  # (T, N, H) — one bmm
                 h_adaptive = h_adaptive.view(T * N, -1)
             else:
-                q = self.query_projection(x)                     # (N, d)
-                k = self.key_projection(x)                       # (N, d)
-                A = F.softmax(F.relu(torch.mm(q, k.t()) / self.scale), dim=-1)  # (N, N)
+                q = self.adaptive_generator.query_projection(x)                     # (N, d)
+                k = self.adaptive_generator.key_projection(x)                       # (N, d)
+                A = F.softmax(F.relu(torch.mm(q, k.t()) / self.adaptive_generator.scale), dim=-1)  # (N, N)
                 h_adaptive = torch.mm(A, x)                      # (N, H)
 
             h_adaptive = self.elu(self.adaptive_weight(h_adaptive))
@@ -155,16 +153,16 @@ class AdaptiveRelationalGNN(nn.Module):
                 
                 if chunk_T > 1:
                     x_3d = x_chunk.view(chunk_T, N, -1)
-                    q = self.query_projection(x_3d)
-                    k = self.key_projection(x_3d)
-                    attn = torch.bmm(q, k.transpose(1, 2)) / self.scale
+                    q = self.adaptive_generator.query_projection(x_3d)
+                    k = self.adaptive_generator.key_projection(x_3d)
+                    attn = torch.bmm(q, k.transpose(1, 2)) / self.adaptive_generator.scale
                     A = F.softmax(F.relu(attn), dim=-1)
                     h_adap_chunk = torch.bmm(A, x_3d)
                     h_adap_chunk = h_adap_chunk.view(chunk_T * N, -1)
                 else:
-                    q = self.query_projection(x_chunk)
-                    k = self.key_projection(x_chunk)
-                    A = F.softmax(F.relu(torch.mm(q, k.t()) / self.scale), dim=-1)
+                    q = self.adaptive_generator.query_projection(x_chunk)
+                    k = self.adaptive_generator.key_projection(x_chunk)
+                    A = F.softmax(F.relu(torch.mm(q, k.t()) / self.adaptive_generator.scale), dim=-1)
                     h_adap_chunk = torch.mm(A, x_chunk)
                 
                 h_adap_chunk = self.elu(self.adaptive_weight(h_adap_chunk))

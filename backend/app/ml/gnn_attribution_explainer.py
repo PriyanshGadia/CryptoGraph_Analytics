@@ -21,30 +21,58 @@ class GNNGradientAttributionExplainer:
         total_gradients = torch.zeros_like(x)
         original_x = last_graph.x
         
-        for step in range(1, self.steps + 1):
-            alpha = step / self.steps
-            interpolated = baseline + alpha * (x - baseline)
-            interpolated.requires_grad_(True)
+        if hasattr(model, "reg_head"):
+            # Enterprise regression model: batch all steps together to execute only one model forward/backward pass
+            interpolated_list = []
+            batch_sequences = []
+            for step in range(1, self.steps + 1):
+                alpha = step / self.steps
+                interpolated = baseline + alpha * (x - baseline)
+                interpolated.requires_grad_(True)
+                interpolated_list.append(interpolated)
 
-            # Efficiently replace the feature tensor without cloning the whole graph object
-            new_x = original_x.clone()
-            new_x[asset_idx] = interpolated
-            last_graph.x = new_x
+                # Clone only the last graph of the sequence and replace the target asset's feature tensor
+                last_g_clone = last_graph.clone()
+                new_x = original_x.clone()
+                new_x[asset_idx] = interpolated
+                last_g_clone.x = new_x
 
-            if hasattr(model, "reg_head"):
-                # Enterprise regression model expects a list of sequences: [graph_sequence]
-                # it outputs pred of shape [1, num_nodes] (since B=1)
-                pred = model([graph_sequence], return_uncertainty=False)
-                target_val = pred[0, asset_idx]
-            else:
+                seq_clone = list(graph_sequence[:-1]) + [last_g_clone]
+                batch_sequences.append(seq_clone)
+
+            # Batched model forward pass
+            pred = model(batch_sequences, return_uncertainty=False)  # shape: (steps, num_nodes)
+            target_vals = pred[:, asset_idx]  # shape: (steps,)
+
+            # Calculate gradients for all steps simultaneously
+            grads = torch.autograd.grad(
+                outputs=target_vals.sum(),
+                inputs=interpolated_list,
+                retain_graph=False,
+                create_graph=False
+            )
+            for grad in grads:
+                total_gradients += grad.detach()
+        else:
+            # Fallback to sequential execution for standard models
+            for step in range(1, self.steps + 1):
+                alpha = step / self.steps
+                interpolated = baseline + alpha * (x - baseline)
+                interpolated.requires_grad_(True)
+
+                # Efficiently replace the feature tensor without cloning the whole graph object
+                new_x = original_x.clone()
+                new_x[asset_idx] = interpolated
+                last_graph.x = new_x
+
                 dir_logits, _ = model(graph_sequence)
                 target_val = dir_logits[asset_idx].max()
  
-            grad = torch.autograd.grad(target_val, interpolated, retain_graph=False, create_graph=False)[0]
-            total_gradients += grad.detach()
+                grad = torch.autograd.grad(target_val, interpolated, retain_graph=False, create_graph=False)[0]
+                total_gradients += grad.detach()
 
-        # Restore original tensor
-        last_graph.x = original_x
+            # Restore original tensor
+            last_graph.x = original_x
         
         avg_gradients = total_gradients / self.steps
         attributions = (x - baseline) * avg_gradients  # (feature_dim,)
@@ -55,7 +83,7 @@ class GNNGradientAttributionExplainer:
         for i, name in enumerate(feature_names[: len(attr_np)]):
             result[name] = float(attr_np[i])
         result["attributions_pct"] = {
-            name: round(100.0 * abs(attr_np[i]) / total_abs, 2)
+            name: float(round(100.0 * float(abs(attr_np[i])) / total_abs, 2))
             for i, name in enumerate(feature_names[: len(attr_np)])
         }
         return result

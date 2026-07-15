@@ -37,6 +37,14 @@ def run_inference_pipeline_task():
         logger.info("Refreshing live technicals...")
         refresh_live_technicals(db=db)
 
+        # Step 1b: Ingest News Context
+        logger.info("Ingesting news context for assets...")
+        try:
+            from ml.data.ingestion.news_collector import collect_news_for_all_assets
+            collect_news_for_all_assets()
+        except Exception as e:
+            logger.error(f"Failed to collect news inside celery task: {e}")
+
         # Step 2: Run Inference
         logger.info("Executing flagship ML inference pipeline...")
         run_inference_main()

@@ -5,6 +5,7 @@ Reads latest ST-GCN predictions and manages a virtual portfolio based on signals
 
 from datetime import datetime, timezone
 import asyncio
+import threading
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from app.db.database import SessionLocal
@@ -16,9 +17,22 @@ import numpy as np
 from app.services.smart_order_router import SmartOrderRouter
 from app.core.proof_of_performance import generate_daily_proof
 import logging
-from app.core.state import trading_lock
 
 logger = logging.getLogger(__name__)
+
+_trading_locks = {}
+_lock_mutex = threading.Lock()
+
+def get_trading_lock():
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.Lock()
+        
+    with _lock_mutex:
+        if loop not in _trading_locks:
+            _trading_locks[loop] = asyncio.Lock()
+        return _trading_locks[loop]
 def get_asset_dynamic_risk_thresholds(db: Session, asset_id: str) -> tuple[float, float, float]:
     """
     Calculates dynamic stop-loss, take-profit, and conviction thresholds per asset
@@ -102,29 +116,40 @@ async def execute_daily_trades():
     if mode != "paper":
         raise RuntimeError("CRITICAL SECURITY ERROR: TradingAgent execution blocked outside of 'paper' TRADING_MODE.")
 
-    if not trading_lock.acquire(blocking=False):
+    lock = get_trading_lock()
+    if lock.locked():
         logger.warning("[TradingAgent] Trade execution cycle already in progress. Skipping concurrent run.")
         return {"status": "skipped", "reason": "Trade execution cycle already in progress"}
 
-    try:
+    async with lock:
         return await _execute_daily_trades_core()
-    finally:
-        trading_lock.release()
 
 
 def run_autonomous_trading_cycle():
     """
     Synchronous entry point for trade execution cycles.
+    Safe to call from any thread/loop without deadlock.
     """
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            return asyncio.run_coroutine_threadsafe(execute_daily_trades(), loop).result(timeout=120)
-        else:
-            return asyncio.run(execute_daily_trades())
-    except Exception as e:
-        logger.error(f"[TradingAgent] Direct execution error: {e}")
-        return asyncio.run(execute_daily_trades())
+    result = [None]
+    error = [None]
+    
+    def worker():
+        try:
+            # Create a new event loop for this thread
+            new_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(new_loop)
+            result[0] = new_loop.run_until_complete(execute_daily_trades())
+            new_loop.close()
+        except Exception as e:
+            error[0] = e
+            
+    t = threading.Thread(target=worker)
+    t.start()
+    t.join(timeout=120)
+    if error[0]:
+        logger.error(f"[TradingAgent] Direct execution error: {error[0]}")
+        raise error[0]
+    return result[0]
 
 
 async def _execute_daily_trades_core():

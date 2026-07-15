@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from app.api.deps import get_db
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from datetime import datetime
+from datetime import datetime, timezone
 import pandas as pd
 import numpy as np
 import ccxt
@@ -220,13 +220,45 @@ def refresh_live_technicals(db: Session = Depends(get_db)):
     def fetch_ohlcv(sym):
         try:
             data = exchange.fetch_ohlcv(f"{sym}/USDT", "1h", limit=250)
-            if not data or len(data) < 24: return sym, None
-            df = pd.DataFrame(data, columns=["timestamp", "open", "high", "low", "close", "volume"])
-            return sym, df
+            if data and len(data) >= 24:
+                df = pd.DataFrame(data, columns=["timestamp", "open", "high", "low", "close", "volume"])
+                return sym, df
         except Exception:
-            return sym, None
+            pass
+            
+        db_local = None
+        try:
+            from app.db.database import SessionLocal
+            from app.db.models import OHLCV, Asset
+            from sqlalchemy import desc
+            db_local = SessionLocal()
+            asset = db_local.query(Asset).filter(Asset.symbol == sym).first()
+            if asset:
+                rows = db_local.query(OHLCV).filter(
+                    OHLCV.asset_id == asset.id
+                ).order_by(desc(OHLCV.timestamp)).limit(250).all()
+                if rows and len(rows) >= 24:
+                    rows.reverse()
+                    data_list = []
+                    for r in rows:
+                        data_list.append({
+                            "timestamp": r.timestamp,
+                            "open": r.open,
+                            "high": r.high,
+                            "low": r.low,
+                            "close": r.close,
+                            "volume": r.volume
+                        })
+                    df = pd.DataFrame(data_list)
+                    return sym, df
+        except Exception:
+            pass
+        finally:
+            if db_local:
+                db_local.close()
+        return sym, None
 
-    timestamp_now = datetime.utcnow().isoformat()
+    timestamp_now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S+00:00")
     updated_records = 0
     
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
@@ -274,8 +306,30 @@ def refresh_live_technicals(db: Session = Depends(get_db)):
             "rsi_14": latest_rsi, "ret1d": ret1d, "ret7d": ret7d, "vol7d": vol7d,
             "macd": macd_val, "macd_sig": macd_sig
         })
+        
+        # Synchronize refresh metrics with in-memory GLOBAL_MARKET_STATE
+        try:
+            from app.core.streams.binance_ws import GLOBAL_MARKET_STATE
+            if sym in GLOBAL_MARKET_STATE:
+                GLOBAL_MARKET_STATE[sym]["rsi_14"] = latest_rsi
+                GLOBAL_MARKET_STATE[sym]["returns_7d"] = ret7d
+                GLOBAL_MARKET_STATE[sym]["volatility_7d"] = vol7d
+                GLOBAL_MARKET_STATE[sym]["macd"] = macd_val
+                GLOBAL_MARKET_STATE[sym]["price_change_24h_pct"] = ret1d * 100
+        except Exception:
+            pass
+
         updated_records += 1
         
     db.commit()
+    
+    # Save the updated GLOBAL_MARKET_STATE to Redis
+    try:
+        from app.core.streams.binance_ws import GLOBAL_MARKET_STATE
+        from app.core.cache import redis_set
+        redis_set("cryptograph:live:market_state", dict(GLOBAL_MARKET_STATE))
+    except Exception:
+        pass
+
     return {"status": "success", "message": f"Refreshed live technicals for {updated_records} assets"}
 

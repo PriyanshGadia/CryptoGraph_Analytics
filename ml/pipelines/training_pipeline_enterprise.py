@@ -362,9 +362,10 @@ class SectorPoolingHead(nn.Module):
         return out.view(B * N_nodes, hidden_dim)
 
 class EnterpriseSTGCNModel(nn.Module):
-    def __init__(self, config: TrainingConfig):
+    def __init__(self, config: TrainingConfig, use_gatv2: bool = True):
         super().__init__()
         self.config = config
+        self.use_sector_pooling = True
 
         self.projection = nn.Linear(config.feature_dim, config.hidden_dim)
         self.proj_norm = nn.LayerNorm(config.hidden_dim)
@@ -375,6 +376,7 @@ class EnterpriseSTGCNModel(nn.Module):
             config.gat_heads_1,
             config.gat_heads_2,
             config.dropout,
+            use_gatv2=use_gatv2,
         )
         if config.use_tcn:
             self.temporal_encoder = TemporalTCN(
@@ -530,7 +532,8 @@ class EnterpriseSTGCNModel(nn.Module):
                 f"expected [{B * N_nodes}, hidden_dim]."
             )
 
-        x = self.sector_pooling_head(x, self.sector_assignments, B, N_nodes)
+        if getattr(self, "use_sector_pooling", True):
+            x = self.sector_pooling_head(x, self.sector_assignments, B, N_nodes)
 
         pred = self.reg_head(x).squeeze(-1).view(B, N_nodes)
         log_var = self.uncertainty_head(x).squeeze(-1).view(B, N_nodes)
@@ -548,12 +551,17 @@ class EnterpriseSTGCNModel(nn.Module):
     @classmethod
     def load(cls, path: str, map_location: str = "cpu") -> "EnterpriseSTGCNModel":
         checkpoint = torch.load(path, map_location=map_location, weights_only=False)
+        sd = checkpoint["model_state_dict"]
+        has_gatv2 = any("spatial_gat.rgat2.rgat.lin_l" in k for k in sd.keys())
+        has_pooling = any("sector_pooling_head" in k for k in sd.keys())
+
         config = TrainingConfig()
         for k, v in checkpoint["config"].items():
             if hasattr(config, k):
                 setattr(config, k, v)
-        model = cls(config)
-        model.load_state_dict(checkpoint["model_state_dict"])
+        model = cls(config, use_gatv2=has_gatv2)
+        model.use_sector_pooling = has_pooling
+        model.load_state_dict(sd, strict=False)
         return model
 
 class EnterpriseTrainer:
@@ -1674,18 +1682,23 @@ def _extract_targets_safe(
     available_symbols: List[str],
     target_col: str,
 ) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
-    pd_dates = [pd.Timestamp(d).tz_localize("UTC") if d.tzinfo is None
-                else pd.Timestamp(d).tz_convert("UTC")
-                for d in graph_dates]
-    pd_dates_normalized = [pd.Timestamp(d).tz_localize(None).normalize() for d in pd_dates]
+    pd_dates_normalized = []
+    for d in graph_dates:
+        ts_d = pd.Timestamp(d)
+        if ts_d.tzinfo is None:
+            ts_d = ts_d.tz_localize("UTC")
+        else:
+            ts_d = ts_d.tz_convert("UTC")
+        pd_dates_normalized.append(ts_d.tz_convert(None).normalize())
 
-    T = len(pd_dates)
+    T = len(pd_dates_normalized)
     N = len(available_symbols)
 
     values_arr = np.full((T, N), np.nan, dtype=np.float64)
     for j, sym in enumerate(available_symbols):
         df = proc_features[sym]
-        series_index = pd.to_datetime(df.index).tz_localize(None).normalize()
+        idx = pd.to_datetime(df.index, utc=True)
+        series_index = idx.tz_convert(None).normalize()
         col_series = pd.Series(df[target_col].values, index=series_index)
         col_series = col_series.loc[~col_series.index.duplicated(keep="last")]
         col_series = col_series.clip(lower=-0.75, upper=0.75).reindex(pd_dates_normalized)
@@ -1765,10 +1778,11 @@ def _normalize_targets(
         series[mask_j < 0.5] = np.nan
 
         # Dynamic Stablecoin/Low-Variance Filtering
-        raw_std = float(np.nanstd(series)) if not np.all(np.isnan(series)) else 0.0
-        if raw_std < 0.008:
+        valid_vals = series[~np.isnan(series)]
+        raw_std = float(np.std(valid_vals)) if len(valid_vals) > 0 else 0.0
+        if len(valid_vals) == 0 or raw_std < 0.008:
             log(
-                f"  {sym}: raw std={raw_std:.6f} < 0.002000 -- "
+                f"  {sym}: raw std={raw_std:.6f} < 0.008000 (or no data) -- "
                 f"identified as stablecoin/low-variance asset. Zeroing masks."
             )
             for t in range(T):
@@ -1780,8 +1794,7 @@ def _normalize_targets(
             continue
 
         # Compute and subtract per-asset mean (valid samples only) before std-scaling.
-        valid_vals = series[~np.isnan(series)]
-        asset_mean = float(np.mean(valid_vals)) if len(valid_vals) > 0 else 0.0
+        asset_mean = float(np.mean(valid_vals))
         mean_map[sym] = asset_mean
         asset_means[j] = asset_mean
         series = series - asset_mean  # mean-center BEFORE rolling std
@@ -1794,7 +1807,7 @@ def _normalize_targets(
             .values
         )
 
-        # FIX(R11): Clip rolling std at min=0.02 to prevent near-zero early-listing windows
+        # Clip rolling std at min=0.02 to prevent near-zero early-listing windows
         # from inflating post-normalization std (e.g. JUP std=2.7 was caused by this).
         rolling_std = np.where(
             np.isnan(rolling_std), rolling_std,
@@ -1810,8 +1823,8 @@ def _normalize_targets(
                 f"range=[{valid_stds.min():.5f}, {valid_stds.max():.5f}]"
             )
         else:
-            median_std = float(np.nanstd(series)) if not np.all(np.isnan(series)) else 0.02
-            if median_std < 1e-6:
+            median_std = raw_std
+            if median_std < 0.02:
                 median_std = 0.02
             log(
                 f"  {sym}: WARNING -- no valid rolling std windows. "
@@ -1827,6 +1840,23 @@ def _normalize_targets(
                 last_valid_std = float(s_t)
             filled_stds[t] = last_valid_std
 
+        # Enforce exact unit variance globally on the active mask elements
+        row_scaled = series / filled_stds
+        valid_scaled_vals = row_scaled[mask_j >= 0.5]
+        scaled_std = float(np.std(valid_scaled_vals)) if len(valid_scaled_vals) > 0 else 0.0
+
+        if scaled_std > 1e-6:
+            filled_stds = filled_stds * scaled_std
+            scale_map[sym] = scale_map[sym] * scaled_std
+            log(f"  {sym}: Enforced exact unit variance. Final global std on active mask elements is 1.0000.")
+        else:
+            log(f"  {sym}: WARNING -- scaled standard deviation is near zero ({scaled_std:.6f}). Zeroing masks.")
+            for t in range(T):
+                masks[t][j] = 0.0
+            scale_map[sym] = 1.0
+            per_sample_scales[:, j] = 1.0
+            continue
+
         per_sample_scales[:, j] = filled_stds
 
     normalized: List[torch.Tensor] = []
@@ -1835,9 +1865,7 @@ def _normalize_targets(
         row = (raw_targets[t] - asset_means_t) / torch.tensor(per_sample_scales[t], dtype=torch.float32)
         normalized.append(row)
 
-    return normalized, scale_map, mean_map
-
-
+    
 def _verify_normalization(
     targets: List[torch.Tensor],
     masks: List[torch.Tensor],
@@ -1901,12 +1929,26 @@ def _determine_surviving_dates(
 ) -> List[datetime]:
     date_sets: Dict[str, set] = {}
     for s in symbols:
-        normalized_idx = pd.to_datetime(proc_features[s].index).tz_localize(None).normalize()
+        idx = pd.to_datetime(proc_features[s].index, utc=True)
+        normalized_idx = idx.tz_convert(None).normalize()
         date_sets[s] = set(normalized_idx)
 
     surviving = []
-    current_ts = pd.Timestamp(start_dt).tz_localize(None).normalize()
-    end_ts = pd.Timestamp(end_dt).tz_localize(None).normalize()
+    
+    current_ts = pd.Timestamp(start_dt)
+    if current_ts.tzinfo is None:
+        current_ts = current_ts.tz_localize("UTC")
+    else:
+        current_ts = current_ts.tz_convert("UTC")
+    current_ts = current_ts.tz_convert(None).normalize()
+
+    end_ts = pd.Timestamp(end_dt)
+    if end_ts.tzinfo is None:
+        end_ts = end_ts.tz_localize("UTC")
+    else:
+        end_ts = end_ts.tz_convert("UTC")
+    end_ts = end_ts.tz_convert(None).normalize()
+
     one_day = pd.Timedelta(days=1)
     n_symbols = len(symbols)
 
