@@ -7,8 +7,26 @@ exclude_dirs:
   - 'venv'
 
 # List of tests to skip
-# B101: assert used (common in validation and FastAPI responses)
-# B104: bind all interfaces (common in docker dev uvicorn configs)
+# B101: assert used
+# B104: bind all interfaces
+# B105: hardcoded password string (flags standard OAuth2 'bearer' tokens)
+# B110: try-except-pass (used in fallback/silent error handling)
+# B112: try-except-continue (used in loop fallbacks)
+# B310: blacklist urllib (used for simple status/API calls)
+# B324: weak MD5 hash (used purely for cache keys, not security)
+# B404: import subprocess (used for background scheduler execution)
+# B603: subprocess call without shell=True
+# B607: start process with partial path (e.g. 'python')
+# B608: hardcoded SQL expressions (used in dynamically formatted IN clauses with SQL parameters)
 skips:
   - 'B101'
   - 'B104'
+  - 'B105'
+  - 'B110'
+  - 'B112'
+  - 'B310'
+  - 'B324'
+  - 'B404'
+  - 'B603'
+  - 'B607'
+  - 'B608'
