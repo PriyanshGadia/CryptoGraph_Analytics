@@ -1,0 +1,14 @@
+# Bandit configuration file
+# https://bandit.readthedocs.io/
+
+# Exclude directories from scanning
+exclude_dirs:
+  - 'tests'
+  - 'venv'
+
+# List of tests to skip
+# B101: assert used (common in validation and FastAPI responses)
+# B104: bind all interfaces (common in docker dev uvicorn configs)
+skips:
+  - 'B101'
+  - 'B104'
