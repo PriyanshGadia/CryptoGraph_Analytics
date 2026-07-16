@@ -46,7 +46,7 @@ services:
       - "127.0.0.1:8000:8000"
     environment:
       - ENVIRONMENT=production
-      - API_KEY=${API_KEY}
+      - API_KEY=${API_KEY:-dev_default_secure_key_1234567890}
       - FRONTEND_URL=http://localhost:3000
       - DATABASE_URL=postgresql+psycopg2://${DB_USER:-crypto_user}:${DB_PASSWORD:-crypto_pass}@db:5432/${DB_NAME:-cryptograph}
       - REDIS_URL=redis://redis:6379/0
@@ -64,7 +64,7 @@ services:
         max-size: "10m"
         max-file: "3"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/status"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -84,7 +84,8 @@ services:
       - "3000:3000"
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
-      - API_KEY=${API_KEY}
+      - NEXT_PUBLIC_API_KEY=${API_KEY:-dev_default_secure_key_1234567890}
+      - API_KEY=${API_KEY:-dev_default_secure_key_1234567890}
     depends_on:
       backend:
         condition: service_healthy

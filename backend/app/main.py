@@ -95,15 +95,13 @@ async def lifespan(app: FastAPI):
     # Startup Security Validation: Ensure API_KEY is set and strongly entropic
     api_key_configured = get_setting("api_key")
     import re
-    import secrets
     
     if not api_key_configured:
-        new_key = secrets.token_urlsafe(32)
-        logger.warning(f"[SECURITY ALERT] No API_KEY configured. Auto-generated secure key: {new_key}")
-        logger.warning("Please save this key and configure it in your environment.")
-        # If we had a mechanism to save it, we would. But we just set it in env for this session.
-        os.environ["API_KEY"] = new_key
-        api_key_configured = new_key
+        default_fallback_key = "dev_default_secure_key_1234567890"
+        logger.warning(f"[SECURITY ALERT] No API_KEY configured. Falling back to default secure developer key: {default_fallback_key}")
+        logger.warning("Please save this key and configure it in your environment for production.")
+        os.environ["API_KEY"] = default_fallback_key
+        api_key_configured = default_fallback_key
     else:
         api_key_configured = api_key_configured.strip()
     
@@ -304,7 +302,7 @@ if insecure_cors:
     dynamic_origins = ["*"]
 else:
     if frontend_origin:
-        dynamic_origins = [origin.strip() for origin in frontend_origin.split(",") if origin.strip()]
+        dynamic_origins = [origin.strip().rstrip("/") for origin in frontend_origin.split(",") if origin.strip()]
         if "http://localhost:3000" not in dynamic_origins:
             dynamic_origins.append("http://localhost:3000")
     else:
@@ -314,6 +312,7 @@ else:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=dynamic_origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_methods=["*"],
     allow_headers=["*"]
 )

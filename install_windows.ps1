@@ -137,10 +137,10 @@ Write-Host "[*] Launching Servers..." -ForegroundColor Green
 
 # Launch backend in a new window using the venv python
 $env:PYTHONPATH = "$ScriptDir\backend;$ScriptDir"
-Start-Process cmd -ArgumentList "/k `"cd /d `"$ScriptDir\backend`" && .\venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --no-use-colors`"" -WindowStyle Normal
+Start-Process cmd -ArgumentList "/k `"cd /d `"$ScriptDir\backend`" && set `"API_KEY=dev_default_secure_key_1234567890`" && .\venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --no-use-colors`"" -WindowStyle Normal
 
 # Launch frontend in a new window
-Start-Process cmd -ArgumentList "/k `"cd /d `"$ScriptDir\frontend`" && npm run dev`"" -WindowStyle Normal
+Start-Process cmd -ArgumentList "/k `"cd /d `"$ScriptDir\frontend`" && set `"NEXT_PUBLIC_API_KEY=dev_default_secure_key_1234567890`" && set `"API_KEY=dev_default_secure_key_1234567890`" && npm run dev`"" -WindowStyle Normal
 
 Start-Sleep -Seconds 8
 

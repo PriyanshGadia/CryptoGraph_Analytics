@@ -6,7 +6,7 @@ export const api = axios.create({
   baseURL: BASE,
   headers: {
     'Content-Type': 'application/json',
-    'X-API-Key': process.env.NEXT_PUBLIC_API_KEY || "",
+    'X-API-Key': process.env.NEXT_PUBLIC_API_KEY || "dev_default_secure_key_1234567890",
   },
 });
 

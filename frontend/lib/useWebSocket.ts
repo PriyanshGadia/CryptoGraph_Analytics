@@ -49,7 +49,7 @@ export function useWebSocket(endpointPath: string, options: WebSocketOptions = {
     setStatus("connecting");
 
     // Construct url with credentials/key if needed
-    const apiKey = process.env.NEXT_PUBLIC_API_KEY || "";
+    const apiKey = process.env.NEXT_PUBLIC_API_KEY || "dev_default_secure_key_1234567890";
     const prefix = endpointPath.startsWith("/") ? "" : "/";
     const connector = endpointPath.includes("?") ? "&" : "?";
     const finalUrl = `${WS_BASE}${prefix}${endpointPath}${connector}api_key=${apiKey}`;
