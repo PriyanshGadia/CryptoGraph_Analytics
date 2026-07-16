@@ -96,7 +96,7 @@ export default function MarketPage() {
   }
 
   // Prioritize riskData global confidence as the Single Source of Truth
-  const avgConfidence = riskData && riskData.global_confidence !== undefined
+  const avgConfidence = riskData && riskData.global_confidence != null
     ? riskData.global_confidence.toFixed(1) 
     : (() => {
         if (!assets || assets.length === 0) return "0.0";

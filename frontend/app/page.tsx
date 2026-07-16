@@ -88,13 +88,13 @@ export default function Dashboard() {
                         <div>
                             <span className="text-[8px] text-text-muted block uppercase font-mono tracking-widest">F1 Validation</span>
                             <span className={`text-xs font-mono font-bold ${validationMetrics ? "text-success" : "text-text-muted"}`}>
-                                {validationMetrics ? validationMetrics.f1_macro.toFixed(4) : "—"}
+                                {validationMetrics && validationMetrics.f1_macro !== null && validationMetrics.f1_macro !== undefined ? validationMetrics.f1_macro.toFixed(4) : "—"}
                             </span>
                         </div>
                         <div>
                             <span className="text-[8px] text-text-muted block uppercase font-mono tracking-widest">Sharpe Ratio</span>
-                            <span className={`text-xs font-mono font-bold ${validationMetrics ? "text-accent-2" : "text-text-muted"}`}>
-                                {validationMetrics ? validationMetrics.sharpe_ratio.toFixed(2) : "—"}
+                            <span className={`text-xs font-mono font-bold ${validationMetrics && validationMetrics.sharpe_ratio !== null && validationMetrics.sharpe_ratio !== undefined ? "text-accent-2" : "text-text-muted"}`}>
+                                {validationMetrics && validationMetrics.sharpe_ratio !== null && validationMetrics.sharpe_ratio !== undefined ? validationMetrics.sharpe_ratio.toFixed(2) : "—"}
                             </span>
                         </div>
                     </div>

@@ -299,11 +299,11 @@ function PredictionStudio() {
                       </div>
 
                       {/* Conformal Prediction Interval Spread */}
-                      {p.confidence_interval && (
+                      {p.confidence_interval && p.confidence_interval.length >= 2 && (
                         <div className="mt-4 flex items-center justify-between bg-black/20 p-2 rounded-sm border border-text/5">
                             <span className="text-[9px] uppercase tracking-widest font-mono text-text-muted">Expected Spread</span>
                             <span className="text-[10px] font-mono font-bold text-text">
-                                [{p.confidence_interval[0].toFixed(1)}% - {p.confidence_interval[1].toFixed(1)}%]
+                                [{(p.confidence_interval[0] ?? 0).toFixed(1)}% - {(p.confidence_interval[1] ?? 0).toFixed(1)}%]
                             </span>
                         </div>
                       )}

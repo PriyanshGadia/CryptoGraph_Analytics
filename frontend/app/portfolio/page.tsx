@@ -241,50 +241,50 @@ export default function PortfolioPage() {
             <Wallet size={16} className="text-accent" /> Total Value
           </div>
           <div className="text-4xl font-black text-text font-mono tracking-tight">
-            ${portfolio.total_value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            ${(portfolio.total_value ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
           <div className="text-xs mt-3 text-text-muted font-mono bg-text/5 inline-block px-2 py-1 rounded border border-text/5">
-            Cash: ${portfolio.cash_balance.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            Cash: ${(portfolio.cash_balance ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
           </div>
         </GlassCard>
-
+ 
         <GlassCard tier={2} shape="none" className="rounded-xl p-6 relative overflow-hidden group interactive-lift">
           <div className="absolute inset-0 bg-gradient-to-br from-success/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
           <div className="text-[10px] font-bold font-mono tracking-widest text-text-muted uppercase mb-4 flex items-center gap-2">
             <Activity size={16} className="text-success" /> Return on Investment
           </div>
-          <div className={`text-4xl font-black font-mono tracking-tight flex items-center gap-2 ${portfolio.roi_pct >= 0 ? 'text-success' : 'text-danger'}`}>
-            {portfolio.roi_pct >= 0 ? <TrendingUp size={28} /> : <TrendingDown size={28} />}
-            {portfolio.roi_pct > 0 ? "+" : ""}{portfolio.roi_pct.toFixed(2)}%
+          <div className={`text-4xl font-black font-mono tracking-tight flex items-center gap-2 ${(portfolio.roi_pct ?? 0) >= 0 ? 'text-success' : 'text-danger'}`}>
+            {(portfolio.roi_pct ?? 0) >= 0 ? <TrendingUp size={28} /> : <TrendingDown size={28} />}
+            {(portfolio.roi_pct ?? 0) > 0 ? "+" : ""}{(portfolio.roi_pct ?? 0).toFixed(2)}%
           </div>
           <div className="text-xs mt-3 text-text-muted font-mono flex items-center justify-between border-t border-text/5 pt-2">
             <span>vs BTC Benchmark:</span>
-            <span className={portfolio.roi_pct >= portfolio.btc_roi_pct ? 'text-success font-bold' : 'text-danger font-bold'}>
-              {portfolio.btc_roi_pct > 0 ? "+" : ""}{portfolio.btc_roi_pct.toFixed(2)}%
+            <span className={(portfolio.roi_pct ?? 0) >= (portfolio.btc_roi_pct ?? 0) ? 'text-success font-bold' : 'text-danger font-bold'}>
+              {(portfolio.btc_roi_pct ?? 0) > 0 ? "+" : ""}{(portfolio.btc_roi_pct ?? 0).toFixed(2)}%
             </span>
           </div>
         </GlassCard>
-
+ 
         <GlassCard tier={2} shape="none" className="rounded-xl p-6 relative overflow-hidden group interactive-lift">
           <div className="absolute inset-0 bg-gradient-to-br from-warning/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
           <div className="text-[10px] font-bold font-mono tracking-widest text-text-muted uppercase mb-4 flex items-center gap-2">
             <Target size={16} className="text-warning" /> Win Rate
           </div>
           <div className="text-4xl font-black text-text font-mono tracking-tight">
-            {portfolio.win_rate.toFixed(1)}%
+            {(portfolio.win_rate ?? 0).toFixed(1)}%
           </div>
           <div className="text-xs mt-3 text-text-muted font-mono">
-            {portfolio.total_trades} total trades executed
+            {portfolio.total_trades ?? 0} total trades executed
           </div>
         </GlassCard>
-
+ 
         <GlassCard tier={2} shape="none" className="rounded-xl p-6 relative overflow-hidden group interactive-lift">
           <div className="absolute inset-0 bg-gradient-to-br from-danger/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
           <div className="text-[10px] font-bold font-mono tracking-widest text-text-muted uppercase mb-4 flex items-center gap-2">
             <TrendingDown size={16} className="text-danger" /> Max Drawdown
           </div>
           <div className="text-4xl font-black text-danger font-mono tracking-tight">
-            -{portfolio.max_drawdown_pct.toFixed(2)}%
+            -{(portfolio.max_drawdown_pct ?? 0).toFixed(2)}%
           </div>
           <div className="text-xs mt-3 text-text-muted font-mono">
             Since inception
@@ -363,15 +363,15 @@ export default function PortfolioPage() {
             ) : (
               <div className="space-y-3">
                 {Object.entries(portfolio.holdings).map(([symbol, data]: [string, any]) => {
-                  const avgPrice = data.total_invested / data.qty;
+                  const avgPrice = (data && data.qty) ? (data.total_invested ?? 0) / data.qty : 0;
                   return (
                     <div key={symbol} className="flex items-center justify-between p-4 bg-surface/40 hover:bg-text/5 rounded-sm border border-text/5 transition-colors group">
                       <div>
                         <div className="font-black text-lg text-text tracking-tight group-hover:text-accent transition-colors">{symbol}</div>
-                        <div className="text-[10px] text-text-muted font-mono mt-1">{data.qty.toFixed(4)} tokens</div>
+                        <div className="text-[10px] text-text-muted font-mono mt-1">{(data?.qty ?? 0).toFixed(4)} tokens</div>
                       </div>
                       <div className="text-right">
-                        <div className="font-bold text-text font-mono">${data.total_invested.toLocaleString(undefined, {maximumFractionDigits: 2})}</div>
+                        <div className="font-bold text-text font-mono">${(data?.total_invested ?? 0).toLocaleString(undefined, {maximumFractionDigits: 2})}</div>
                         <div className="text-[10px] text-text-muted font-mono mt-1">Avg: ${avgPrice.toLocaleString(undefined, {maximumFractionDigits: 2})}</div>
                       </div>
                     </div>

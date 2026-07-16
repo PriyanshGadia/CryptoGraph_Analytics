@@ -16,6 +16,7 @@ const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 function CountUp({ end, decimals = 0, suffix = "" }: { end: number, decimals?: number, suffix?: string }) {
   const [count, setCount] = useState(0);
+  const safeEnd = end ?? 0;
   
   useEffect(() => {
     let startTime: number;
@@ -26,7 +27,7 @@ function CountUp({ end, decimals = 0, suffix = "" }: { end: number, decimals?: n
       if (!startTime) startTime = timestamp;
       const progress = Math.min((timestamp - startTime) / duration, 1);
       const easeProgress = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
-      setCount(easeProgress * end);
+      setCount(easeProgress * safeEnd);
       if (progress < 1) {
         animationFrame = window.requestAnimationFrame(step);
       }
@@ -37,9 +38,9 @@ function CountUp({ end, decimals = 0, suffix = "" }: { end: number, decimals?: n
     return () => {
       if (animationFrame) window.cancelAnimationFrame(animationFrame);
     };
-  }, [end]);
+  }, [safeEnd]);
   
-  return <>{count.toFixed(decimals)}{suffix}</>;
+  return <>{(count ?? 0).toFixed(decimals)}{suffix}</>;
 }
 
 export default function PerformancePage() {
@@ -354,26 +355,27 @@ export default function PerformancePage() {
             </thead>
             <tbody className="divide-y divide-white/5">
               {visibleAssets.map(a => {
-                const a_acc = a.accuracy * 100;
+                const a_acc = (a.accuracy ?? 0) * 100;
                 const a_color = a_acc >= 60 ? "text-success drop-shadow-[0_0_5px_rgba(34,197,94,0.3)]" : a_acc >= 50 ? "text-warning" : "text-danger";
+                const safeAvgConf = a.avg_confidence ?? 0;
                 return (
                   <tr key={a.symbol} className="hover:bg-white/[0.02] transition-colors group">
                     <td className="px-8 py-4 font-sans font-black text-lg text-text">
                       <Link href={`/coin/${a.symbol}`} className="hover:text-accent transition-colors flex items-center gap-3">
                           <div className="w-8 h-8 rounded-full bg-surface/50 border border-white/10 flex items-center justify-center font-bold text-xs shadow-inner text-text-muted group-hover:text-accent">
-                            {a.symbol.charAt(0)}
+                            {a.symbol ? a.symbol.charAt(0) : ""}
                           </div>
                           {a.symbol}
                       </Link>
                     </td>
                     <td className={`px-8 py-4 text-right font-mono font-black text-lg ${a_color}`}>{a_acc.toFixed(1)}%</td>
-                    <td className="px-8 py-4 text-right font-mono text-success font-bold">{a.correct}</td>
-                    <td className="px-8 py-4 text-right font-mono text-danger font-bold">{a.wrong}</td>
+                    <td className="px-8 py-4 text-right font-mono text-success font-bold">{a.correct ?? 0}</td>
+                    <td className="px-8 py-4 text-right font-mono text-danger font-bold">{a.wrong ?? 0}</td>
                     <td className="px-8 py-4 text-right font-mono text-text-muted">
                         <div className="flex items-center justify-end gap-2">
-                            <span>{a.avg_confidence.toFixed(1)}%</span>
+                            <span>{safeAvgConf.toFixed(1)}%</span>
                             <div className="w-12 h-1.5 bg-background rounded-full overflow-hidden">
-                                <div className="h-full bg-accent" style={{width: `${a.avg_confidence}%`}} />
+                                <div className="h-full bg-accent" style={{width: `${safeAvgConf}%`}} />
                             </div>
                         </div>
                     </td>

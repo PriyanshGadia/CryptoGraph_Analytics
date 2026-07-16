@@ -426,14 +426,15 @@ export default function CoinDetailPage({ params }: { params: any }) {
   );
   
   const latestOhlcv = ohlcv[ohlcv.length - 1];
-  const displayPrice = livePrice !== null ? livePrice : latestOhlcv?.close;
-  const changePct = livePriceChangePct !== null ? livePriceChangePct : (Array.isArray(ohlcv) && ohlcv.length > 1 ? ((displayPrice - ohlcv[ohlcv.length - 2].close) / ohlcv[ohlcv.length - 2].close) * 100 : 0);
+  const displayPrice = (livePrice !== null ? livePrice : latestOhlcv?.close) ?? 0;
+  const prevClose = (Array.isArray(ohlcv) && ohlcv.length > 1) ? ohlcv[ohlcv.length - 2]?.close : 0;
+  const changePct = livePriceChangePct !== null ? livePriceChangePct : (prevClose > 0 ? ((displayPrice - prevClose) / prevClose) * 100 : 0);
   const latestPred = predictionHistoryList[0] || {};
   
   // Realtime Market Cap & Supply Scaling
   let displayMcap = liveMarketCap !== null ? liveMarketCap : asset?.market_cap_usd;
   let circSupply = 0;
-  if (displayMcap && displayPrice) {
+  if (displayMcap && displayPrice > 0) {
       circSupply = displayMcap / displayPrice;
   }
 
@@ -487,9 +488,9 @@ export default function CoinDetailPage({ params }: { params: any }) {
                     <div className={`text-4xl font-mono font-black tracking-tighter transition-colors duration-300 ${livePrice ? 'text-accent drop-shadow-[0_0_10px_rgba(var(--accent),0.3)]' : 'text-text'}`}>
                     ${displayPrice > 100 ? displayPrice.toFixed(2) : displayPrice.toFixed(4)}
                     </div>
-                    <div className={`text-sm font-black flex items-center gap-1 ${changePct >= 0 ? "text-success drop-shadow-[0_0_5px_rgba(34,197,94,0.5)]" : "text-danger drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]"}`}>
-                    {changePct >= 0 ? <TrendingUp size={16}/> : <TrendingDown size={16}/>}
-                    {Math.abs(changePct).toFixed(2)}% (24h)
+                    <div className={`text-sm font-black flex items-center gap-1 ${(changePct ?? 0) >= 0 ? "text-success drop-shadow-[0_0_5px_rgba(34,197,94,0.5)]" : "text-danger drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]"}`}>
+                    {(changePct ?? 0) >= 0 ? <TrendingUp size={16}/> : <TrendingDown size={16}/>}
+                    {Math.abs(changePct ?? 0).toFixed(2)}% (24h)
                     </div>
                 </div>
               </div>
@@ -614,7 +615,7 @@ export default function CoinDetailPage({ params }: { params: any }) {
                   <div className="text-text-muted">H <span className="text-text ml-1">{tooltipData.high?.toFixed(2)}</span></div>
                   <div className="text-text-muted">L <span className="text-text ml-1">{tooltipData.low?.toFixed(2)}</span></div>
                   <div className="text-text-muted">C <span className="text-text ml-1">{tooltipData.close?.toFixed(2)}</span></div>
-                  <div className="text-text-muted">V <span className="text-text ml-1">{(tooltipData.volume / 1000).toFixed(1)}k</span></div>
+                  <div className="text-text-muted">V <span className="text-text ml-1">{((tooltipData.volume ?? 0) / 1000).toFixed(1)}k</span></div>
                 </div>
               )}
             </div>
@@ -763,7 +764,7 @@ export default function CoinDetailPage({ params }: { params: any }) {
                     <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mt-1">AI signal accuracy audit log</p>
                   </div>
                   <div className="flex items-center gap-3 bg-text/5 px-4 py-2 rounded-sm border border-text/10">
-                    <span className="text-2xl font-mono font-black text-accent drop-shadow-[0_0_10px_rgba(var(--accent),0.5)]">{history?.summary?.accuracy_pct !== undefined ? history.summary.accuracy_pct.toFixed(0) : "0"}%</span>
+                    <span className="text-2xl font-mono font-black text-accent drop-shadow-[0_0_10px_rgba(var(--accent),0.5)]">{history?.summary?.accuracy_pct != null ? history.summary.accuracy_pct.toFixed(0) : "0"}%</span>
                     <span className="text-[9px] uppercase tracking-widest font-black text-text-muted">accuracy</span>
                   </div>
                 </div>
@@ -822,8 +823,8 @@ export default function CoinDetailPage({ params }: { params: any }) {
                       </div>
                       
                       <div className="flex items-center justify-end gap-4 w-1/4">
-                        <span className={`text-xs font-mono font-black tracking-tight ${c.correlation > 0 ? "text-success drop-shadow-[0_0_5px_rgba(34,197,94,0.5)]" : "text-danger drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]"}`}>
-                          {c.correlation > 0 ? "+" : ""}{c.correlation.toFixed(3)}
+                        <span className={`text-xs font-mono font-black tracking-tight ${(c.correlation ?? 0) > 0 ? "text-success drop-shadow-[0_0_5px_rgba(34,197,94,0.5)]" : "text-danger drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]"}`}>
+                          {(c.correlation ?? 0) > 0 ? "+" : ""}{(c.correlation ?? 0).toFixed(3)}
                         </span>
                       </div>
                     </Link>

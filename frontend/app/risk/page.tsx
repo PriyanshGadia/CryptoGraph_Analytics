@@ -39,23 +39,24 @@ const SEVERITY_CONFIG: Record<string, { bg: string; border: string; icon: any; t
 };
 
 function RiskLivingGauge({ volatility, intervalSpread }: { volatility: number, intervalSpread?: number }) {
-  const normalizedVol = Math.min(Math.max(volatility, 0), 20) / 20; 
+  const safeVol = volatility ?? 0;
+  const normalizedVol = Math.min(Math.max(safeVol, 0), 20) / 20; 
   
   // Bind pulse width and glow to intervalSpread (if it exists) instead of just volatility
-  const spread = intervalSpread || 0;
+  const spread = intervalSpread ?? 0;
   // If spread is 10%, it's highly uncertain. Normalize it (0 to 20 range)
   const normalizedSpread = Math.min(Math.max(spread, 0), 20) / 20;
   
-  const pulseDuration = intervalSpread ? 3 - (normalizedSpread * 2.5) : 3 - (normalizedVol * 2.5);
-  const glowOpacity = intervalSpread ? 0.1 + (normalizedSpread * 0.7) : 0.1 + (normalizedVol * 0.5);
+  const pulseDuration = intervalSpread != null ? 3 - (normalizedSpread * 2.5) : 3 - (normalizedVol * 2.5);
+  const glowOpacity = intervalSpread != null ? 0.1 + (normalizedSpread * 0.7) : 0.1 + (normalizedVol * 0.5);
   // Wider spread = more red/orange hue, lower spread = green
-  const hue = intervalSpread ? 120 - (normalizedSpread * 120) : 120 - (normalizedVol * 120); 
+  const hue = intervalSpread != null ? 120 - (normalizedSpread * 120) : 120 - (normalizedVol * 120); 
   
   return (
     <GlassCard tier={2} shape="none" className="interactive-lift rounded-xl p-6 flex items-center gap-4 group hover:bg-white/[0.02] transition-colors border border-white/10 hover:border-white/20 h-32 relative overflow-hidden">
        <div 
           className="absolute inset-0 pointer-events-none transition-all duration-1000"
-          style={{ background: `radial-gradient(circle at center, hsla(${hue}, 80%, 50%, ${glowOpacity}) 0%, transparent ${intervalSpread ? 50 + (normalizedSpread * 50) : 70}%)` }}
+          style={{ background: `radial-gradient(circle at center, hsla(${hue}, 80%, 50%, ${glowOpacity}) 0%, transparent ${intervalSpread != null ? 50 + (normalizedSpread * 50) : 70}%)` }}
        />
        <div className="p-3 rounded-sm glass bg-white/5 border border-white/10 relative z-10">
          <div 
@@ -69,10 +70,10 @@ function RiskLivingGauge({ volatility, intervalSpread }: { volatility: number, i
          <Activity size={24} style={{ color: `hsl(${hue}, 80%, 50%)` }} className="relative z-10 drop-shadow-[0_0_5px_currentColor]" />
        </div>
        <div className="relative z-10 flex flex-col justify-center">
-         <div className="text-3xl font-black font-sans text-text tracking-tight">{volatility.toFixed(2)}%</div>
+         <div className="text-3xl font-black font-sans text-text tracking-tight">{safeVol.toFixed(2)}%</div>
          <div className="text-[10px] uppercase tracking-widest font-bold text-text-muted mt-1">Mean Volatility</div>
-         {intervalSpread !== undefined && (
-            <div className="text-[9px] uppercase tracking-wider font-semibold text-accent mt-1">Spread: {intervalSpread.toFixed(1)}%</div>
+         {intervalSpread != null && (
+            <div className="text-[9px] uppercase tracking-wider font-semibold text-accent mt-1">Spread: {(intervalSpread ?? 0).toFixed(1)}%</div>
          )}
        </div>
     </GlassCard>
@@ -193,12 +194,12 @@ export default function RiskPage() {
 
           {/* Stats Row */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            {data.average_volatility !== undefined && (
+            {data.average_volatility != null && (
                <RiskLivingGauge 
                   volatility={data.average_volatility} 
                   intervalSpread={
                     preds && preds.length > 0 
-                      ? preds.reduce((acc, p) => acc + (p.confidence_interval ? (p.confidence_interval[1] - p.confidence_interval[0]) : 0), 0) / (preds.filter(p => p.confidence_interval).length || 1) 
+                      ? preds.reduce((acc, p) => acc + (Array.isArray(p.confidence_interval) && p.confidence_interval.length >= 2 ? ((p.confidence_interval[1] ?? 0) - (p.confidence_interval[0] ?? 0)) : 0), 0) / (preds.filter(p => Array.isArray(p.confidence_interval) && p.confidence_interval.length >= 2).length || 1) 
                       : undefined
                   } 
                />
@@ -398,21 +399,21 @@ export default function RiskPage() {
                           <div className="flex justify-between items-center py-1.5 border-b border-white/5">
                             <span className="text-text-muted">Est. Slippage:</span>
                             <span className={`px-2 py-0.5 rounded-sm border font-bold ${slippageColor}`}>
-                              {slippage === 0 ? "0.0000%" : `${slippage.toFixed(4)}%`}
+                              {slippage == null ? "—" : slippage === 0 ? "0.0000%" : `${slippage.toFixed(4)}%`}
                             </span>
                           </div>
                           
                           <div className="flex justify-between items-center py-1.5 border-b border-white/5">
                             <span className="text-text-muted">Fill Price:</span>
                             <span className="text-text font-semibold">
-                              ${route.average_fill_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              {route.average_fill_price != null ? `$${route.average_fill_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}
                             </span>
                           </div>
                           
                           <div className="flex justify-between items-center py-1.5 border-b border-white/5">
                             <span className="text-text-muted">Gas Estimate:</span>
                             <span className="text-text">
-                              ${route.estimated_gas_usd.toFixed(2)}
+                              {route.estimated_gas_usd != null ? `$${route.estimated_gas_usd.toFixed(2)}` : "—"}
                             </span>
                           </div>
                         </div>

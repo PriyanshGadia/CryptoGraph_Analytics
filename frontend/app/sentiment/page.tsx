@@ -127,10 +127,10 @@ export default function SentimentPage() {
   if (!fgHistory || !btcHistory || !sectorSent || !trending) return <ChartSkeleton />;
 
   // Calculate current, yesterday, 7d avg
-  const today = fgHistory[fgHistory.length - 1]?.fear_greed || 50;
-  const yesterday = fgHistory.length > 1 ? fgHistory[fgHistory.length - 2]?.fear_greed : today;
+  const today = fgHistory[fgHistory.length - 1]?.fear_greed ?? 50;
+  const yesterday = (fgHistory.length > 1 ? fgHistory[fgHistory.length - 2]?.fear_greed : today) ?? today;
   const last7 = fgHistory.slice(-7);
-  const avg7 = last7.reduce((sum: number, curr: any) => sum + curr.fear_greed, 0) / (last7.length || 1);
+  const avg7 = last7.reduce((sum: number, curr: any) => sum + (curr?.fear_greed ?? 50), 0) / (last7.length || 1);
 
   return (
     <div className="space-y-8 pt-8 p-6 glass-2 rounded-2xl overflow-hidden max-w-[1600px] mx-auto relative">
@@ -336,15 +336,15 @@ export default function SentimentPage() {
                   <h4 className="font-bold text-xs uppercase tracking-widest text-text">Positive Momentum</h4>
                 </div>
                 <div className="space-y-3">
-                  {trending.gainers.map((g: any, i: number) => (
+                  {trending.gainers?.map((g: any, i: number) => (
                     <div key={i} className="interactive-lift flex justify-between items-center glass bg-success/5 p-4 rounded-sm border border-success/10 hover:border-success/30 hover:bg-success/10 transition-colors group">
                       <div className="flex flex-col gap-1.5">
                         <Link href={`/graph?asset=${g.symbol}`} className="font-mono font-black text-text group-hover:text-success transition-colors text-lg tracking-tight">{g.symbol}</Link>
                         <span className="text-[9px] uppercase tracking-widest font-bold text-white px-2 py-0.5 shape-tag inline-block w-max shadow-inner" style={{ backgroundColor: getSectorColor(g.sector) }}>{g.sector}</span>
                       </div>
                       <div className="text-right">
-                        <div className="text-base font-black font-mono text-success drop-shadow-[0_0_5px_rgba(34,197,94,0.5)]">+{g.change.toFixed(3)}</div>
-                        <div className="text-[10px] text-text-muted font-mono bg-black/40 px-2 py-0.5 rounded-sm mt-1">{g.prev_sentiment.toFixed(2)} → {g.current_sentiment.toFixed(2)}</div>
+                        <div className="text-base font-black font-mono text-success drop-shadow-[0_0_5px_rgba(34,197,94,0.5)]">+{ (g.change ?? 0).toFixed(3) }</div>
+                        <div className="text-[10px] text-text-muted font-mono bg-black/40 px-2 py-0.5 rounded-sm mt-1">{ (g.prev_sentiment ?? 0).toFixed(2) } → { (g.current_sentiment ?? 0).toFixed(2) }</div>
                       </div>
                     </div>
                   ))}
@@ -360,15 +360,15 @@ export default function SentimentPage() {
                   <h4 className="font-bold text-xs uppercase tracking-widest text-text">Negative Momentum</h4>
                 </div>
                 <div className="space-y-3">
-                  {trending.losers.map((l: any, i: number) => (
+                  {trending.losers?.map((l: any, i: number) => (
                     <div key={i} className="interactive-lift flex justify-between items-center glass bg-danger/5 p-4 rounded-sm border border-danger/10 hover:border-danger/30 hover:bg-danger/10 transition-colors group">
                       <div className="flex flex-col gap-1.5">
                         <Link href={`/graph?asset=${l.symbol}`} className="font-mono font-black text-text group-hover:text-danger transition-colors text-lg tracking-tight">{l.symbol}</Link>
                         <span className="text-[9px] uppercase tracking-widest font-bold text-white px-2 py-0.5 shape-tag inline-block w-max shadow-inner" style={{ backgroundColor: getSectorColor(l.sector) }}>{l.sector}</span>
                       </div>
                       <div className="text-right">
-                        <div className="text-base font-black font-mono text-danger drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]">{l.change.toFixed(3)}</div>
-                        <div className="text-[10px] text-text-muted font-mono bg-black/40 px-2 py-0.5 rounded-sm mt-1">{l.prev_sentiment.toFixed(2)} → {l.current_sentiment.toFixed(2)}</div>
+                        <div className="text-base font-black font-mono text-danger drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]">{ (l.change ?? 0).toFixed(3) }</div>
+                        <div className="text-[10px] text-text-muted font-mono bg-black/40 px-2 py-0.5 rounded-sm mt-1">{ (l.prev_sentiment ?? 0).toFixed(2) } → { (l.current_sentiment ?? 0).toFixed(2) }</div>
                       </div>
                     </div>
                   ))}
