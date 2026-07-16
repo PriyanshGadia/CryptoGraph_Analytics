@@ -33,6 +33,7 @@ COPY --from=builder --chown=cryptograph:cryptograph /install /usr/local
 # Copy backend code explicitly
 COPY --chown=cryptograph:cryptograph backend/app /app/app
 COPY --chown=cryptograph:cryptograph backend/scripts /app/scripts
+COPY --chown=cryptograph:cryptograph backend/seed_trades.py /app/seed_trades.py
 COPY --chown=cryptograph:cryptograph ml /app/ml
 COPY --chown=cryptograph:cryptograph backend/alembic /app/alembic
 COPY --chown=cryptograph:cryptograph backend/alembic.ini /app/alembic.ini
