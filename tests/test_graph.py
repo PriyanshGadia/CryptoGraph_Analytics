@@ -2,7 +2,14 @@ import pytest
 import pandas as pd
 import numpy as np
 from datetime import datetime, timezone, timedelta
-from ml.graph.graph_builder import DynamicGraphBuilder
+
+try:
+    from ml.graph.graph_builder import DynamicGraphBuilder
+    has_geometric = True
+except ImportError:
+    has_geometric = False
+
+pytestmark = pytest.mark.skipif(not has_geometric, reason="torch_geometric is not installed")
 
 def test_graph_builder():
     symbols = ["BTC", "ETH", "SOL"]
