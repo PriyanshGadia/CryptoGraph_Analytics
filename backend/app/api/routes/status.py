@@ -5,8 +5,17 @@ from app.api.deps import get_db
 from app.api.deps import verify_api_key as get_api_key
 from app.db.models import OHLCV, Prediction, AssetNews
 from datetime import datetime, timezone
+from pathlib import Path
 
 router = APIRouter(prefix="/status", tags=["status"])
+
+def get_project_root() -> Path:
+    curr = Path(__file__).resolve().parent
+    for _ in range(10):
+        if (curr / "ml").exists() and (curr / "ml" / "pipelines").exists():
+            return curr
+        curr = curr.parent
+    return Path(__file__).resolve().parent.parent.parent.parent.parent
 
 @router.get("")
 @router.get("/")
@@ -91,12 +100,11 @@ def trigger_refresh_all(background_tasks: BackgroundTasks, db: Session = Depends
     try:
         def run_inference_bg():
             import subprocess
-            from pathlib import Path
             import os
             import logging
             log = logging.getLogger(__name__)
             try:
-                root_dir = Path(__file__).resolve().parent.parent.parent.parent.parent
+                root_dir = get_project_root()
                 script_path = root_dir / "ml" / "pipelines" / "inference_pipeline.py"
                 env = os.environ.copy()
                 env["PYTHONPATH"] = str(root_dir)
@@ -139,10 +147,9 @@ async def start_scheduler(api_key: str = Depends(get_api_key)):
     """Starts the background scheduler."""
     try:
         import subprocess
-        from pathlib import Path
         import os
         
-        root_dir = Path(__file__).resolve().parent.parent.parent.parent.parent
+        root_dir = get_project_root()
         scheduler_path = root_dir / "ml" / "scheduler.py"
         
         env = os.environ.copy()
