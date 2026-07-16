@@ -1,7 +1,14 @@
-import torch
 import pytest
-from torch_geometric.data import Data
-from ml.models.stgcn import STGCNModel
+
+try:
+    import torch
+    from torch_geometric.data import Data
+    from ml.models.stgcn import STGCNModel
+    has_geometric = True
+except ImportError:
+    has_geometric = False
+
+pytestmark = pytest.mark.skipif(not has_geometric, reason="torch_geometric is not installed")
 
 def test_model_forward_pass():
     # Setup model parameters

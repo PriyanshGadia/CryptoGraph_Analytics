@@ -13,10 +13,17 @@ if str(backend_dir) not in sys.path:
     sys.path.append(str(backend_dir))
 
 import pytest
-import torch
-from torch_geometric.data import Data
-from ml.models.stgcn import STGCNModel
-from app.ml.gnn_attribution_explainer import GNNGradientAttributionExplainer
+
+try:
+    import torch
+    from torch_geometric.data import Data
+    from ml.models.stgcn import STGCNModel
+    from app.ml.gnn_attribution_explainer import GNNGradientAttributionExplainer
+    has_geometric = True
+except ImportError:
+    has_geometric = False
+
+pytestmark = pytest.mark.skipif(not has_geometric, reason="torch_geometric or torch is not installed")
 
 def test_gnn_gradient_attribution():
     model = STGCNModel(

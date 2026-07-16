@@ -15,8 +15,16 @@ if str(backend_dir) not in sys.path:
 
 import sqlite3
 import pytest
-import torch
-from ml.pipelines.inference_pipeline import run_inference, DB_PATH
+
+try:
+    import torch
+    import torch_geometric
+    from ml.pipelines.inference_pipeline import run_inference, DB_PATH
+    has_geometric = True
+except ImportError:
+    has_geometric = False
+
+pytestmark = pytest.mark.skipif(not has_geometric, reason="torch_geometric or torch is not installed")
 
 def test_inference_pipeline_execution():
     res = run_inference()
