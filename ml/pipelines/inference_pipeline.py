@@ -19,17 +19,13 @@ import sqlite3
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
-
-import torch
-import torch.nn.functional as F
-import math
-
-from ml.data.feature_store.store import FeatureStore
-from ml.graph.graph_builder import DynamicGraphBuilder
-from ml.models.stgcn import STGCNModel
-from ml.pipelines.training_pipeline_enterprise import EnterpriseSTGCNModel
 import json
+import math
 import numpy as np
+
+# Heavy ML packages are imported lazily inside run_inference() to avoid
+# loading ~300 MB of PyTorch/torch-geometric into memory on the Render 512 MB tier.
+# This module is safe to import without triggering any ML framework loading.
 
 class NumpyEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -39,13 +35,9 @@ class NumpyEncoder(json.JSONEncoder):
             return obj.tolist()
         return super().default(obj)
 
-
-# Phase 9: XAI & Inference Attestation Integration
-from app.ml.gnn_attribution_explainer import GNNGradientAttributionExplainer
-from app.ml.inference_attester import InferenceAttester
 import hashlib
-from ml.models.forecast_model import run_ensemble_forecast
 import pandas as pd
+
 
 # ── Constants ────────────────────────────────────────────────────────
 def _find_artifacts_path() -> Path:
@@ -105,6 +97,7 @@ def _get_model_version(model_path: Path) -> str:
     """Extract a version string from the checkpoint, falling back to the
     file modification timestamp."""
     try:
+        import torch
         ckpt = torch.load(model_path, map_location="cpu", weights_only=False)
         cfg = ckpt.get("config", {})
         return cfg.get("version", model_path.stem)
@@ -124,6 +117,24 @@ def run_inference() -> dict:
       7. Return summary dict.
     """
     print("Running inference pipeline …")
+    # Lazy imports — only load heavy packages when inference actually runs
+    import torch
+    import torch.nn.functional as F
+    from ml.data.feature_store.store import FeatureStore
+    from ml.graph.graph_builder import DynamicGraphBuilder
+    from ml.models.stgcn import STGCNModel
+    from ml.models.forecast_model import run_ensemble_forecast
+    try:
+        from ml.pipelines.training_pipeline_enterprise import EnterpriseSTGCNModel
+    except Exception:
+        EnterpriseSTGCNModel = None
+    try:
+        from app.ml.gnn_attribution_explainer import GNNGradientAttributionExplainer
+        from app.ml.inference_attester import InferenceAttester
+    except Exception:
+        GNNGradientAttributionExplainer = None
+        InferenceAttester = None
+
     # CPU usage constraints for Intel i3 compatibility
     torch.set_num_threads(1)
     torch.set_num_interop_threads(1)

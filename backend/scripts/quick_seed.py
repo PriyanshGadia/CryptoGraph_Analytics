@@ -10,6 +10,74 @@ base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, base_dir)
 db_path = os.getenv("DATABASE_PATH") or os.path.join(base_dir, "cryptograph.db")
 
+
+def _insert_placeholder_predictions(path: str) -> None:
+    """
+    Insert heuristic predictions derived from real OHLCV RSI values.
+    No PyTorch / ML frameworks loaded — pure sqlite3 + basic math.
+    Called when LOW_MEM=true to avoid OOM on Render's 512 MB tier.
+    """
+    import math
+    conn = sqlite3.connect(path)
+    c = conn.cursor()
+    now = datetime.now(timezone.utc).isoformat()
+
+    assets = c.execute("SELECT id, symbol FROM assets").fetchall()
+    for asset_id, symbol in assets:
+        # Fetch last 30 close prices to compute a quick RSI-14
+        rows = c.execute(
+            "SELECT close FROM ohlcv WHERE asset_id=? ORDER BY timestamp DESC LIMIT 30",
+            (asset_id,)
+        ).fetchall()
+        closes = [r[0] for r in reversed(rows)]
+
+        direction = "neutral"
+        confidence = 0.34
+        vol_regime = "medium"
+
+        if len(closes) >= 15:
+            deltas = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
+            gains = [d for d in deltas if d > 0]
+            losses = [-d for d in deltas if d < 0]
+            avg_gain = sum(gains[-14:]) / 14 if gains else 0.0
+            avg_loss = sum(losses[-14:]) / 14 if losses else 1e-9
+            rs = avg_gain / avg_loss
+            rsi = 100 - (100 / (1 + rs))
+            if rsi < 40:
+                direction, confidence = "up", 0.62
+            elif rsi > 60:
+                direction, confidence = "down", 0.58
+            else:
+                direction, confidence = "neutral", 0.34
+            # Volatility regime from recent std
+            if len(closes) >= 7:
+                mean_p = sum(closes[-7:]) / 7
+                std_p = math.sqrt(sum((p - mean_p) ** 2 for p in closes[-7:]) / 7)
+                cv = std_p / mean_p if mean_p else 0
+                vol_regime = "high" if cv > 0.05 else "low" if cv < 0.01 else "medium"
+
+        try:
+            c.execute("""
+                INSERT INTO predictions
+                (asset_id, timestamp, direction, confidence, confidence_interval_lower,
+                 confidence_interval_upper, volatility_regime, model_version, baseline_probability)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                asset_id, now, direction,
+                round(confidence, 4),
+                round(max(0.0, confidence - 0.05), 4),
+                round(min(1.0, confidence + 0.05), 4),
+                vol_regime, "heuristic-seed-v1", 0.3333
+            ))
+        except Exception:
+            pass  # Skip duplicates
+
+    conn.commit()
+    conn.close()
+    print(f"[LOW_MEM] Placeholder predictions inserted for {len(assets)} assets.")
+
+
+
 def main():
     if not os.path.exists(db_path):
         print("Database not found. Initializing...")
@@ -109,13 +177,19 @@ def main():
     conn.close()
     
     # Run the real ML inference pipeline to populate the predictions table with true GCN-predicted outputs
-    print("Ingestion complete. Executing real inference pipeline to populate predictions...")
-    try:
-        from ml.pipelines.inference_pipeline import run_inference
-        res = run_inference()
-        print(f"Real predictions populated successfully: {res}")
-    except Exception as e:
-        print(f"Failed to run real prediction pipeline: {e}")
+    print("Ingestion complete. Executing inference pipeline to populate predictions...")
+    import os
+    if os.getenv("LOW_MEM") == "true" or os.getenv("RENDER") == "true":
+        print("[LOW_MEM] Skipping heavy ST-GCN inference to conserve memory. Inserting lightweight placeholder predictions.")
+        _insert_placeholder_predictions(db_path)
+    else:
+        try:
+            from ml.pipelines.inference_pipeline import run_inference
+            res = run_inference()
+            print(f"Real predictions populated successfully: {res}")
+        except Exception as e:
+            print(f"Failed to run real prediction pipeline: {e}")
+            _insert_placeholder_predictions(db_path)
 
     # --- Validation Layer ---
     print("Validating seed integrity...")

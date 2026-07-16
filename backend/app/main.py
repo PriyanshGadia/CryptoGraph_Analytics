@@ -53,7 +53,6 @@ from app.core.streams.binance_ws import binance_ws_loop, populate_static_feature
 from app.api.routes.screener import refresh_live_technicals
 from app.core.cache import _cache
 from app.services.enrich_assets import enrich_assets
-from ml.models.forecast_model import run_lstm_forecast
 import pandas as pd
 import numpy as np
 
@@ -226,24 +225,18 @@ async def lifespan(app: FastAPI):
         except Exception as ex:
             logger.error(f"Metadata create_all fallback failed: {ex}", exc_info=True)
 
-    # Model Health Validation: Ensure artifacts exist
+    # Model Health Validation: log artifact presence only — no warmup to save RAM
     try:
         from pathlib import Path
-        logger.info("Validating ML model artifacts...")
         lstm_path = Path(__file__).resolve().parent.parent.parent / "ml" / "artifacts" / "best_lstm.pt"
-        if not lstm_path.exists():
-            logger.warning(
-                "[MODEL HEALTH] best_lstm.pt not found on disk. "
-                "The system will gracefully fall back to dynamic NeuralProphet and mean-reversion. "
-                "To ensure maximum accuracy, please run the offline pre-training pipeline."
-            )
+        if lstm_path.exists():
+            logger.info("[MODEL HEALTH] best_lstm.pt found on disk.")
         else:
-            logger.info("ML model artifacts validated successfully. Pre-loading into cache...")
-            prices = pd.Series(np.linspace(100, 200, 60))
-            await asyncio.to_thread(run_lstm_forecast, prices, 30)
-            logger.info("LSTM model pre-loaded successfully.")
+            logger.warning(
+                "[MODEL HEALTH] best_lstm.pt not found — will fall back to mean-reversion on forecast requests."
+            )
     except Exception as e:
-        logger.warning(f"Model validation bypassed: {e}")
+        logger.warning(f"Model validation check bypassed: {e}")
 
     # Check if database is empty and requires seeding
     is_empty_db = False
@@ -348,7 +341,14 @@ async def lifespan(app: FastAPI):
     scheduler.start()
 
     # Start WebSocket tasks
-    binance_task = asyncio.create_task(binance_ws_loop(SYMBOLS))
+    # On Render (or LOW_MEM), Binance WS is geo-blocked (HTTP 451).
+    # Skip it entirely and rely on the REST-polling fallback inside the price endpoint.
+    low_mem = os.getenv("LOW_MEM") == "true" or os.getenv("RENDER") == "true"
+    if low_mem:
+        logger.warning("[Lifespan] LOW_MEM/RENDER mode: Binance WebSocket disabled. Using REST polling fallback.")
+        binance_task = asyncio.create_task(asyncio.sleep(0))  # no-op
+    else:
+        binance_task = asyncio.create_task(binance_ws_loop(SYMBOLS))
     prediction_task = asyncio.create_task(prediction_broadcast_loop())
     screener_task = asyncio.create_task(screener_broadcast_loop())
     
