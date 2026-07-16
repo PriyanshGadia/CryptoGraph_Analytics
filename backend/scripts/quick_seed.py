@@ -196,7 +196,6 @@ def main():
     
     # Run the real ML inference pipeline to populate the predictions table with true GCN-predicted outputs
     print("Ingestion complete. Executing inference pipeline to populate predictions...")
-    import os
     if os.getenv("LOW_MEM") == "true" or os.getenv("RENDER") == "true":
         print("[LOW_MEM] Skipping heavy ST-GCN inference to conserve memory. Inserting lightweight placeholder predictions.")
         _insert_placeholder_predictions(db_path)
