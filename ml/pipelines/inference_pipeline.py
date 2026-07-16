@@ -54,7 +54,11 @@ DIRECTION_CLASSES = ["down", "neutral", "up"]
 VOLATILITY_CLASSES = ["low", "medium", "high", "extreme"]
 
 def get_dynamic_symbols() -> List[str]:
-    db_path = Path(__file__).resolve().parent.parent.parent / "backend" / "cryptograph.db"
+    db_path_env = os.getenv("DATABASE_PATH")
+    if db_path_env:
+        db_path = Path(db_path_env)
+    else:
+        db_path = Path(__file__).resolve().parent.parent.parent / "backend" / "cryptograph.db"
     try:
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()

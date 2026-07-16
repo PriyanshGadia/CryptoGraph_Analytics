@@ -51,10 +51,8 @@ import os
 from app.api.routes.stream import SYMBOLS, prediction_broadcast_loop, screener_broadcast_loop, get_refresh_event
 from app.core.streams.binance_ws import binance_ws_loop, populate_static_features, refresh_predictions_in_ssot
 from app.api.routes.screener import refresh_live_technicals
-from app.core.cache import _cache
 from app.services.enrich_assets import enrich_assets
-import pandas as pd
-import numpy as np
+from app.core.cache import _cache
 
 # Initialize Sentry safely without crashing on failure
 if getattr(settings, 'sentry_dsn', None) and settings.sentry_dsn.strip():
