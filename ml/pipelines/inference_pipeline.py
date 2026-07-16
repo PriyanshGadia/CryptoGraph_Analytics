@@ -14,6 +14,7 @@ if str(root_dir) not in sys.path:
 if str(root_dir / "backend") not in sys.path:
     sys.path.append(str(root_dir / "backend"))
 
+import os
 import sqlite3
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -567,6 +568,9 @@ def run_inference() -> dict:
             ))
         except Exception as fe:
             print(f"Forecast generation failed for {symbol}: {fe}")
+        finally:
+            import gc
+            gc.collect()
 
     if forecast_records:
         def _write_forecasts():

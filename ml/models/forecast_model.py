@@ -145,6 +145,12 @@ def run_prophet_forecast(
     NeuralProphet is pure PyTorch — no Stan/C++ dependency.
     pip install neuralprophet==0.9.0
     """
+    import os
+    if os.getenv("LOW_MEM") == "true" or os.getenv("RENDER") == "true":
+        import logging
+        logging.getLogger(__name__).warning("Bypassing NeuralProphet forecast to conserve memory (OOM mitigation).")
+        return None
+
     try:
         import logging
         logging.getLogger("NP.forecaster").setLevel(logging.ERROR)
