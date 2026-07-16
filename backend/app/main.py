@@ -85,6 +85,81 @@ else:
 
 enrich_assets_lock = asyncio.Lock()
 
+async def run_database_seeder():
+    """Background task to seed the database with assets and trades if it's empty."""
+    import sys
+    import os
+    from pathlib import Path
+    logger.info("[Seeder] Starting database self-seeding in background...")
+    try:
+        base_dir = Path(__file__).resolve().parent.parent
+        quick_seed_path = base_dir / "scripts" / "quick_seed.py"
+        seed_trades_path = base_dir / "seed_trades.py"
+        
+        env = os.environ.copy()
+        
+        # 1. Run quick_seed.py
+        logger.info(f"[Seeder] Executing quick_seed.py at {quick_seed_path}")
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable, str(quick_seed_path),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=str(base_dir),
+            env=env
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            logger.error(f"[Seeder] quick_seed.py failed with code {proc.returncode}")
+            logger.error(f"[Seeder] stdout: {stdout.decode(errors='replace')}")
+            logger.error(f"[Seeder] stderr: {stderr.decode(errors='replace')}")
+            return
+        logger.info("[Seeder] quick_seed.py completed successfully.")
+        
+        # 2. Run seed_trades.py
+        logger.info(f"[Seeder] Executing seed_trades.py at {seed_trades_path}")
+        proc2 = await asyncio.create_subprocess_exec(
+            sys.executable, str(seed_trades_path),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=str(base_dir),
+            env=env
+        )
+        stdout2, stderr2 = await proc2.communicate()
+        if proc2.returncode != 0:
+            logger.error(f"[Seeder] seed_trades.py failed with code {proc2.returncode}")
+            logger.error(f"[Seeder] stdout: {stdout2.decode(errors='replace')}")
+            logger.error(f"[Seeder] stderr: {stderr2.decode(errors='replace')}")
+            return
+        logger.info("[Seeder] seed_trades.py completed successfully.")
+        
+        # 3. Refresh SSOT state
+        logger.info("[Seeder] Seeding finished. Refreshing in-memory SSOT state...")
+        from app.db.database import SessionLocal
+        db = SessionLocal()
+        try:
+            from app.api.routes.stream import SYMBOLS as stream_symbols
+            # Re-read symbols from DB
+            from app.db.models import Asset
+            assets = db.query(Asset.symbol).all()
+            symbols_list = [a.symbol for a in assets] if assets else stream_symbols
+            
+            # Re-populate features and predict cache
+            populate_static_features(db, symbols_list)
+            
+            # Recompute correlations if possible
+            try:
+                from app.api.routes.correlations import precompute_correlations_sync
+                precompute_correlations_sync(db)
+            except Exception as ce:
+                logger.error(f"[Seeder] Failed to precompute correlations: {ce}")
+                
+            logger.info("[Seeder] SSOT state refreshed successfully.")
+        finally:
+            db.close()
+            
+    except Exception as e:
+        logger.error(f"[Seeder] Error during background seeding: {e}", exc_info=True)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("========================================")
@@ -169,6 +244,24 @@ async def lifespan(app: FastAPI):
             logger.info("LSTM model pre-loaded successfully.")
     except Exception as e:
         logger.warning(f"Model validation bypassed: {e}")
+
+    # Check if database is empty and requires seeding
+    is_empty_db = False
+    try:
+        db = SessionLocal()
+        from app.db.models import Asset
+        asset_count = db.query(Asset).count()
+        db.close()
+        logger.info(f"[Lifespan] Current database asset count: {asset_count}")
+        if asset_count == 0:
+            is_empty_db = True
+    except Exception as e:
+        logger.error(f"[Lifespan] Error checking database asset count: {e}", exc_info=True)
+        is_empty_db = True
+
+    if is_empty_db:
+        logger.info("[Lifespan] Empty database detected. Initiating background self-seeding...")
+        asyncio.create_task(run_database_seeder())
 
     # Populate static cache using our synchronous DB session setup
     try:

@@ -8,11 +8,15 @@ import numpy as np
 import pandas as pd
 
 # Resolve the local SQLite database path.
-_DB_CANDIDATES = [
-    Path(__file__).resolve().parent.parent.parent.parent / "backend" / "cryptograph.db",
-    Path(__file__).resolve().parent.parent.parent.parent / "cryptograph.db",
-]
-DB_PATH: Optional[Path] = next((p for p in _DB_CANDIDATES if p.exists()), _DB_CANDIDATES[0])
+db_path_env = os.getenv("DATABASE_PATH")
+if db_path_env:
+    DB_PATH = Path(db_path_env)
+else:
+    _DB_CANDIDATES = [
+        Path(__file__).resolve().parent.parent.parent.parent / "backend" / "cryptograph.db",
+        Path(__file__).resolve().parent.parent.parent.parent / "cryptograph.db",
+    ]
+    DB_PATH: Optional[Path] = next((p for p in _DB_CANDIDATES if p.exists()), _DB_CANDIDATES[0])
 
 class FeatureStore:
     """Central interface for loading model-ready features from SQLite.

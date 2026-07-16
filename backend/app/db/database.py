@@ -17,10 +17,13 @@ if db_url_env:
 else:
     db_path_env = os.getenv("DATABASE_PATH")
     if db_path_env:
-        SQLALCHEMY_DATABASE_URL = f"sqlite:///{db_path_env}"
+        db_path = Path(db_path_env).resolve()
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        SQLALCHEMY_DATABASE_URL = f"sqlite:///{db_path}"
     else:
         base_dir = Path(__file__).resolve().parent.parent.parent
         db_path = base_dir / "cryptograph.db"
+        db_path.parent.mkdir(parents=True, exist_ok=True)
         SQLALCHEMY_DATABASE_URL = f"sqlite:///{db_path}"
 
 from sqlalchemy.pool import NullPool

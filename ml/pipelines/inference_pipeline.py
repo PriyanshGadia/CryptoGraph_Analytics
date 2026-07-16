@@ -89,11 +89,15 @@ FEATURE_NAMES: List[str] = [
 ]
 
 # DB path resolution (same logic as FeatureStore)
-_DB_CANDIDATES = [
-    Path(__file__).resolve().parent.parent.parent / "backend" / "cryptograph.db",
-    Path(__file__).resolve().parent.parent.parent / "cryptograph.db",
-]
-DB_PATH: Path = next((p for p in _DB_CANDIDATES if p.exists()), _DB_CANDIDATES[0])
+db_path_env = os.getenv("DATABASE_PATH")
+if db_path_env:
+    DB_PATH = Path(db_path_env)
+else:
+    _DB_CANDIDATES = [
+        Path(__file__).resolve().parent.parent.parent / "backend" / "cryptograph.db",
+        Path(__file__).resolve().parent.parent.parent / "cryptograph.db",
+    ]
+    DB_PATH: Path = next((p for p in _DB_CANDIDATES if p.exists()), _DB_CANDIDATES[0])
 
 
 def _get_model_version(model_path: Path) -> str:

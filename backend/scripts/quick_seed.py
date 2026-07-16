@@ -8,7 +8,7 @@ import sys
 
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, base_dir)
-db_path = os.path.join(base_dir, "cryptograph.db")
+db_path = os.getenv("DATABASE_PATH") or os.path.join(base_dir, "cryptograph.db")
 
 def main():
     if not os.path.exists(db_path):
