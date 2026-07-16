@@ -24,8 +24,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Add non-root user
 RUN useradd -m cryptograph && \
-    mkdir -p /app/database && \
-    chown -R cryptograph:cryptograph /app
+    mkdir -p /app/database /data && \
+    chown -R cryptograph:cryptograph /app /data
 
 # Copy python packages from builder
 COPY --from=builder --chown=cryptograph:cryptograph /install /usr/local
@@ -40,8 +40,14 @@ COPY --chown=cryptograph:cryptograph backend/alembic.ini /app/alembic.ini
 # Switch to non-root user
 USER cryptograph
 
-# Ensure PYTHONPATH is set so that 'app' can be resolved
+# Ensure PYTHONPATH is set so that 'app' and 'ml' can be resolved
 ENV PYTHONPATH=/app
+
+# Store the SQLite database on the persistent volume
+ENV DATABASE_PATH=/data/cryptograph.db
+
+# Declare persistent volume for the SQLite database
+VOLUME ["/data"]
 
 EXPOSE 8000
 
