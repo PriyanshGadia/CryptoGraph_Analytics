@@ -117,7 +117,42 @@ async def lifespan(app: FastAPI):
         if not frontend_url or frontend_url == "http://localhost:3000":
             logger.error("[SECURITY ERROR] FRONTEND_URL is not explicitly configured in production.")
             raise RuntimeError("FRONTEND_URL must be configured in production to restrict CORS.")
+    # Run Database Migrations (Alembic Upgrade) on startup
+    try:
+        from alembic.config import Config
+        from alembic import command
+        from pathlib import Path
+        
+        logger.info("Running database migrations on startup...")
+        base_dir = Path(__file__).resolve().parent.parent
+        ini_path = base_dir / "alembic.ini"
+        if not ini_path.exists():
+            ini_path = base_dir.parent / "backend" / "alembic.ini"
             
+        if ini_path.exists():
+            alembic_cfg = Config(str(ini_path))
+            script_location = base_dir / "alembic"
+            if not script_location.exists():
+                script_location = base_dir.parent / "backend" / "alembic"
+            alembic_cfg.set_main_option("script_location", str(script_location))
+            
+            await asyncio.to_thread(command.upgrade, alembic_cfg, "head")
+            logger.info("Database migrations completed successfully.")
+        else:
+            logger.warning(f"alembic.ini not found at {ini_path}, falling back to metadata.create_all")
+            from app.db.database import engine, Base
+            import app.db.models  # noqa: F401
+            await asyncio.to_thread(Base.metadata.create_all, bind=engine)
+    except Exception as e:
+        logger.error(f"Error running database migrations: {e}", exc_info=True)
+        try:
+            from app.db.database import engine, Base
+            import app.db.models  # noqa: F401
+            await asyncio.to_thread(Base.metadata.create_all, bind=engine)
+            logger.info("Database tables created via create_all fallback.")
+        except Exception as ex:
+            logger.error(f"Metadata create_all fallback failed: {ex}", exc_info=True)
+
     # Model Health Validation: Ensure artifacts exist
     try:
         from pathlib import Path

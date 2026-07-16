@@ -10,8 +10,8 @@ from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 from alembic import context
 
-from app.db.database import SQLALCHEMY_DATABASE_URL  # noqa: E402
-from app.db.schemas import Base  # noqa: E402
+from app.db.database import SQLALCHEMY_DATABASE_URL, Base  # noqa: E402
+import app.db.models  # noqa: F401
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
