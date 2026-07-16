@@ -298,15 +298,17 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 FastAPIInstrumentor.instrument_app(app)
 
 insecure_cors = os.environ.get("INSECURE_DEV_CORS", "false").lower() == "true"
-frontend_origin = get_setting("FRONTEND_URL")
+frontend_origin = os.getenv("FRONTEND_URL") or get_setting("FRONTEND_URL")
 
-if insecure_cors and settings.environment == "development":
+if insecure_cors:
     dynamic_origins = ["*"]
 else:
     if frontend_origin:
         dynamic_origins = [origin.strip() for origin in frontend_origin.split(",") if origin.strip()]
+        if "http://localhost:3000" not in dynamic_origins:
+            dynamic_origins.append("http://localhost:3000")
     else:
-        dynamic_origins = ["http://localhost:3000"]
+        dynamic_origins = ["*"]
 
 # Initialize CORS Middleware at module creation
 app.add_middleware(
