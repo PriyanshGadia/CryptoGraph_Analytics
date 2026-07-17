@@ -19,6 +19,12 @@ def run_lstm_forecast(
     """
     global _GLOBAL_LSTM_MODEL, _GLOBAL_LSTM_LOOKBACK
     
+    import os
+    if os.getenv("LOW_MEM") == "true":
+        import logging
+        logging.getLogger(__name__).warning("Bypassing LSTM forecast to conserve memory (LOW_MEM).")
+        return None
+    
     price_array = prices.values.astype(np.float32)
     price_min   = price_array.min()
     price_max   = price_array.max()

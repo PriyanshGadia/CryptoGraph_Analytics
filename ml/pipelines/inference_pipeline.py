@@ -121,6 +121,205 @@ def run_inference() -> dict:
       7. Return summary dict.
     """
     print("Running inference pipeline …")
+    
+    if os.getenv("LOW_MEM") == "true":
+        print("[LOW_MEM] Triggering lightweight analytical/heuristic inference fallback...")
+        from ml.data.feature_store.store import FeatureStore
+        from app.ml.inference_attester import InferenceAttester
+        from ml.models.forecast_model import run_ensemble_forecast
+        
+        now = datetime.now(timezone.utc)
+        timestamp_now = now.isoformat()
+        end_date = now.strftime("%Y-%m-%d")
+        start_date = (now - timedelta(days=30)).strftime("%Y-%m-%d")
+        
+        store = FeatureStore()
+        features = store.load_node_features(start_date, end_date, SYMBOLS, expected_features=24)
+        available_symbols = [s for s in SYMBOLS if s in features]
+        
+        predictions = []
+        model_version = "heuristic-low-mem-v1"
+        checkpoint_sha256 = "low-mem-bypass"
+        graph_digest = "low-mem-bypass"
+        attester = InferenceAttester()
+        
+        for symbol in available_symbols:
+            latest_features = features[symbol].iloc[-1] if symbol in features else None
+            
+            # Safe heuristic fallback
+            direction = "neutral"
+            if latest_features is not None:
+                rsi = float(latest_features.get("rsi_14", 50.0))
+                macd = float(latest_features.get("macd", 0.0))
+                if rsi < 40 and macd > 0:
+                    direction = "up"
+                elif rsi > 60 and macd < 0:
+                    direction = "down"
+            
+            confidence = 45.0
+            vol_regime = "medium"
+            
+            if latest_features is not None:
+                real_xai_features = {
+                    "RSI (14)": float(latest_features.get("rsi_14", 50.0)),
+                    "MACD": float(latest_features.get("macd", 0.0)),
+                    "Volatility": float(latest_features.get("volatility_7d", 0.0))
+                }
+            else:
+                real_xai_features = {"BTC-ETH Correlation": 0.88, "On-Chain Volume": 1.2, "Order Book Imbalance": -0.5}
+                
+            xai_result = {
+                "rsi_14": 0.0,
+                "macd": 0.0,
+                "volatility_7d": 0.0,
+                "attributions_pct": {
+                    "rsi_14": 33.33,
+                    "macd": 33.33,
+                    "volatility_7d": 33.33
+                }
+            }
+            
+            attestation_result = attester.generate_inference_attestation(
+                model_version=model_version,
+                features=real_xai_features,
+                direction=direction,
+                checkpoint_sha256=checkpoint_sha256,
+                graph_digest=graph_digest
+            )
+            
+            confidence_val = round(confidence / 100.0, 4)
+            predictions.append({
+                "symbol": symbol,
+                "direction": direction,
+                "confidence": confidence_val,
+                "confidence_interval_lower": max(0.0, round(confidence_val - 0.05, 4)),
+                "confidence_interval_upper": min(1.0, round(confidence_val + 0.05, 4)),
+                "volatility_regime": vol_regime,
+                "predicted_at": now,
+                "model_version": model_version,
+                "baseline_probability": 0.3333,
+                "t_shap_attributions": json.dumps(xai_result, cls=NumpyEncoder),
+                "attestation_hash": attestation_result["attestation_hash"]
+            })
+            
+        # Write predictions to SQLite database via SQLAlchemy
+        from app.db.database import SessionLocal, execute_with_retry, engine
+        from app.db.models import Asset as SQLAAsset, Prediction as SQLAPrediction
+        
+        def _write_predictions():
+            db = SessionLocal()
+            try:
+                assets = db.query(SQLAAsset).filter(SQLAAsset.symbol.in_(available_symbols)).all()
+                sym_to_id = {a.symbol: a.id for a in assets}
+                
+                records = []
+                for pred in predictions:
+                    asset_id = sym_to_id.get(pred["symbol"])
+                    if not asset_id:
+                        continue
+                        
+                    existing = db.query(SQLAPrediction).filter_by(asset_id=asset_id, timestamp=now).first()
+                    if existing:
+                        existing.predicted_at = pred["predicted_at"]
+                        existing.direction = pred["direction"]
+                        existing.confidence = pred["confidence"]
+                        existing.confidence_interval_lower = pred["confidence_interval_lower"]
+                        existing.confidence_interval_upper = pred["confidence_interval_upper"]
+                        existing.volatility_regime = pred["volatility_regime"]
+                        existing.shap_values = {"t_shap": pred["t_shap_attributions"], "attestation_hash": pred["attestation_hash"]}
+                        existing.model_version = pred["model_version"]
+                        existing.baseline_probability = pred["baseline_probability"]
+                        existing.t_shap_attributions = json.loads(pred["t_shap_attributions"]) if isinstance(pred["t_shap_attributions"], str) else pred["t_shap_attributions"]
+                        existing.attestation_hash = pred["attestation_hash"]
+                    else:
+                        new_pred = SQLAPrediction(
+                            asset_id=asset_id,
+                            timestamp=now,
+                            predicted_at=pred["predicted_at"],
+                            direction=pred["direction"],
+                            confidence=pred["confidence"],
+                            confidence_interval_lower=pred["confidence_interval_lower"],
+                            confidence_interval_upper=pred["confidence_interval_upper"],
+                            volatility_regime=pred["volatility_regime"],
+                            shap_values={"t_shap": pred["t_shap_attributions"], "attestation_hash": pred["attestation_hash"]},
+                            model_version=pred["model_version"],
+                            baseline_probability=pred["baseline_probability"],
+                            t_shap_attributions=json.loads(pred["t_shap_attributions"]) if isinstance(pred["t_shap_attributions"], str) else pred["t_shap_attributions"],
+                            attestation_hash=pred["attestation_hash"]
+                        )
+                        db.add(new_pred)
+                        records.append(new_pred)
+                if records or assets:
+                    db.commit()
+                return sym_to_id, len(predictions)
+            except Exception as e:
+                db.rollback()
+                print(f"Error writing predictions to db: {e}")
+                raise
+            finally:
+                db.close()
+                
+        sym_to_id, rec_count = execute_with_retry(_write_predictions)
+        
+        # Cache daily forecasts using Mean Reversion
+        forecast_records = []
+        for idx, symbol in enumerate(available_symbols):
+            asset_id = sym_to_id.get(symbol)
+            if not asset_id or symbol not in features:
+                continue
+                
+            df = features[symbol].copy()
+            if "timestamp" in df.columns:
+                df = df.sort_values("timestamp")
+                prices_series = df["close"]
+                dates_series = df["timestamp"]
+            else:
+                df = df.sort_index()
+                prices_series = df["close"]
+                dates_series = pd.Series(df.index)
+                
+            try:
+                f_res = run_ensemble_forecast(prices_series, dates_series, 30)
+                forecast_records.append((
+                    asset_id,
+                    timestamp_now,
+                    json.dumps(f_res["forecast_prices"], cls=NumpyEncoder),
+                    json.dumps(f_res["lower_bound"], cls=NumpyEncoder),
+                    json.dumps(f_res["upper_bound"], cls=NumpyEncoder),
+                    json.dumps(f_res.get("lstm_forecast", f_res["forecast_prices"]), cls=NumpyEncoder),
+                    json.dumps(f_res.get("prophet_forecast", f_res["forecast_prices"]), cls=NumpyEncoder)
+                ))
+            except Exception as fe:
+                print(f"Forecast generation failed for {symbol}: {fe}")
+                
+        if forecast_records:
+            def _write_forecasts():
+                fc_conn = sqlite3.connect(str(DB_PATH), timeout=30.0)
+                try:
+                    fc_cursor = fc_conn.cursor()
+                    fc_cursor.execute("PRAGMA journal_mode=WAL")
+                    fc_cursor.execute("PRAGMA busy_timeout=30000")
+                    fc_cursor.execute("DELETE FROM forecasts")
+                    fc_cursor.executemany("""
+                        INSERT INTO forecasts 
+                        (asset_id, timestamp, forecast_prices, lower_bound, upper_bound, lstm_forecast, prophet_forecast)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """, forecast_records)
+                    fc_conn.commit()
+                finally:
+                    fc_conn.close()
+                    
+            try:
+                execute_with_retry(_write_forecasts)
+            except Exception as e:
+                print(f"Error updating forecasts table: {e}")
+                
+        engine.dispose()
+        print(f"[LOW_MEM] Heuristic inference complete: {rec_count} predictions stored and forecasts cached.")
+        return {
+            "predictions_stored": rec_count,
+            "model_version": model_version,
+        }
     # Lazy imports — only load heavy packages when inference actually runs
     import torch
     import torch.nn.functional as F

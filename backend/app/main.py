@@ -298,6 +298,14 @@ async def lifespan(app: FastAPI):
             except Exception as e:
                 logger.error(f"[Scheduler] Technicals error: {e}", exc_info=True)
             
+            # 1c. Run flagship ML inference pipeline
+            try:
+                from ml.pipelines.inference_pipeline import run_inference
+                logger.info("[Scheduler] Executing flagship ML inference pipeline...")
+                await asyncio.get_event_loop().run_in_executor(bg_executor, run_inference)
+            except Exception as e:
+                logger.error(f"[Scheduler] Inference error: {e}", exc_info=True)
+            
             # 2. Pre-compute heavy correlation matrices
             try:
                 from app.api.routes.correlations import precompute_correlations_sync
@@ -326,6 +334,14 @@ async def lifespan(app: FastAPI):
                 logger.info("[Scheduler] SSOT prediction cache refreshed.")
             except Exception as e:
                 logger.error(f"[Scheduler] SSOT refresh error: {e}")
+
+            # 3c. Run autonomous paper trading cycle
+            try:
+                from app.services.trading_agent import run_autonomous_trading_cycle
+                logger.info("[Scheduler] Executing autonomous paper trading cycle...")
+                await asyncio.get_event_loop().run_in_executor(bg_executor, run_autonomous_trading_cycle)
+            except Exception as e:
+                logger.error(f"[Scheduler] Trading cycle error: {e}", exc_info=True)
         except Exception as e:
             logger.error(f"[Scheduler] Database session error: {e}")
         finally:
@@ -337,6 +353,11 @@ async def lifespan(app: FastAPI):
     # Schedule the refresh job to run every hour
     scheduler.add_job(scheduled_refresh_job, 'interval', hours=1, max_instances=1)
     scheduler.start()
+
+    # Trigger an initial run immediately if not in testing mode
+    if os.getenv("TESTING") != "True":
+        logger.info("[Lifespan] Triggering initial data refresh, inference, and trading cycle immediately on startup...")
+        asyncio.create_task(scheduled_refresh_job())
 
     # Start WebSocket tasks
     # On Render (or LOW_MEM), Binance WS is geo-blocked (HTTP 451).

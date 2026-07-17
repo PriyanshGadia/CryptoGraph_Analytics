@@ -99,11 +99,14 @@ def seed_trades():
             for i in range(20):
                 day_ts = (now - timedelta(days=i)).isoformat()
                 direction = mock_dirs[(i + idx) % 5]
-                confidence = 60.0 + (i * 2 + idx) % 35
+                confidence_pct = 60.0 + (i * 2 + idx) % 35
+                confidence = round(confidence_pct / 100.0, 4)
+                confidence_interval_lower = max(0.0, round(confidence - 0.05, 4))
+                confidence_interval_upper = min(1.0, round(confidence + 0.05, 4))
                 cursor.execute("""
-                    INSERT INTO predictions (asset_id, timestamp, predicted_at, direction, confidence, volatility_regime, shap_values, model_version, t_shap_attributions, attestation_hash)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (asset_id, day_ts, day_ts, direction, confidence, "medium", "{}", "v1.0.0", "{}", f"attest_mock_hash_{idx}_{i}"))
+                    INSERT INTO predictions (asset_id, timestamp, predicted_at, direction, confidence, confidence_interval_lower, confidence_interval_upper, volatility_regime, shap_values, model_version, t_shap_attributions, attestation_hash)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (asset_id, day_ts, day_ts, direction, confidence, confidence_interval_lower, confidence_interval_upper, "medium", "{}", "v1.0.0", "{}", f"attest_mock_hash_{idx}_{i}"))
         conn.commit()
 
     # --- 10-Day Paper-Trading Backtest Simulation ---
