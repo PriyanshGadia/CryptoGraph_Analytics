@@ -122,7 +122,36 @@ def run_inference() -> dict:
     """
     print("Running inference pipeline …")
     
-    if os.getenv("LOW_MEM") == "true":
+    if os.getenv("LOW_MEM") == "true" and os.getenv("IS_ML_WORKER") != "true":
+        # Check if we are running in development / locally (not on Render)
+        if os.getenv("RENDER") != "true" and os.getenv("ENVIRONMENT") != "production":
+            print("[DEVELOPMENT] Bypassing scheduled ST-GCN inference locally to prevent system crash. Database predictions are already pre-seeded.")
+            return {"predictions_stored": 0, "model_version": "cached-development"}
+            
+        print("[LOW_MEM] Running ST-GCN inference in a separate subprocess to optimize memory...")
+        import subprocess
+        import sys
+        worker_path = Path(__file__).resolve().parent / "ml_worker.py"
+        try:
+            res = subprocess.run(
+                [sys.executable, str(worker_path), "--task", "inference"],
+                capture_output=True,
+                text=True,
+                check=True,
+                env={**os.environ, "IS_ML_WORKER": "true", "LOW_MEM": "false"}
+            )
+            output = res.stdout.strip().split("\n")[-1]
+            return json.loads(output)
+        except Exception as e:
+            print(f"Error running ST-GCN inference subprocess: {e}")
+            if hasattr(e, 'stderr') and e.stderr:
+                print(f"Subprocess Stderr: {e.stderr}")
+            print("Falling back to heuristic prediction generation...")
+
+    if os.getenv("LOW_MEM") == "true" and os.getenv("IS_ML_WORKER") == "true":
+        # Let the subprocess run the actual STGCN model
+        pass
+    elif os.getenv("LOW_MEM") == "true":
         print("[LOW_MEM] Triggering lightweight analytical/heuristic inference fallback...")
         from ml.data.feature_store.store import FeatureStore
         from app.ml.inference_attester import InferenceAttester

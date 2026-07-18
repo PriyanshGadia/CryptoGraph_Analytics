@@ -81,38 +81,37 @@ def seed_test_database():
                 atr_14=0.05,
                 bb_width=0.04
             )
+            btc_pred = models.Prediction(
+                asset_id=btc_id,
+                timestamp=timestamp,
+                predicted_at=timestamp,
+                direction="up",
+                confidence=0.75,
+                confidence_interval_lower=0.70,
+                confidence_interval_upper=0.80,
+                volatility_regime="medium",
+                model_version="stgcn-v1.0",
+                baseline_probability=0.3333
+            )
+            dydx_pred = models.Prediction(
+                asset_id=dydx_id,
+                timestamp=timestamp,
+                predicted_at=timestamp,
+                direction="up",
+                confidence=0.80,
+                confidence_interval_lower=0.75,
+                confidence_interval_upper=0.85,
+                volatility_regime="low",
+                model_version="stgcn-v1.0",
+                baseline_probability=0.3333
+            )
             db.add(btc_ohlcv)
             db.add(dydx_ohlcv)
             db.add(btc_tf)
             db.add(dydx_tf)
+            db.add(btc_pred)
+            db.add(dydx_pred)
             
-        # Seed GCN Predictions
-        btc_pred = models.Prediction(
-            asset_id=btc_id,
-            timestamp=now,
-            predicted_at=now,
-            direction="up",
-            confidence=0.75,
-            confidence_interval_lower=0.70,
-            confidence_interval_upper=0.80,
-            volatility_regime="medium",
-            model_version="stgcn-v1.0",
-            baseline_probability=0.3333
-        )
-        dydx_pred = models.Prediction(
-            asset_id=dydx_id,
-            timestamp=now,
-            predicted_at=now,
-            direction="up",
-            confidence=0.80,
-            confidence_interval_lower=0.75,
-            confidence_interval_upper=0.85,
-            volatility_regime="low",
-            model_version="stgcn-v1.0",
-            baseline_probability=0.3333
-        )
-        db.add(btc_pred)
-        db.add(dydx_pred)
         db.commit()
         
     finally:

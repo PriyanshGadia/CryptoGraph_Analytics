@@ -1,12 +1,11 @@
 import React, { useEffect, useState } from "react";
 
-export function BlockchainLoader({ onComplete }: { onComplete?: () => void }) {
+export function BlockchainLoader({ onComplete, duration = 1150 }: { onComplete?: () => void; duration?: number }) {
   const [progress, setProgress] = useState(0);
   const [fade, setFade] = useState(false);
 
   useEffect(() => {
     const start = Date.now();
-    const duration = 1150; // trimmed for a snappier cold-boot feel
 
     const interval = setInterval(() => {
       const elapsed = Date.now() - start;

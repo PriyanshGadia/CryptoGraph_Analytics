@@ -2,6 +2,7 @@
 LSTM + Prophet ensemble for 60-day lookback, 7-day forecast.
 Called on-demand by the FastAPI forecast endpoint.
 """
+import os
 import numpy as np
 import pandas as pd
 from typing import Optional
@@ -20,7 +21,7 @@ def run_lstm_forecast(
     global _GLOBAL_LSTM_MODEL, _GLOBAL_LSTM_LOOKBACK
     
     import os
-    if os.getenv("LOW_MEM") == "true":
+    if os.getenv("LOW_MEM") == "true" and os.getenv("IS_ML_WORKER") != "true":
         import logging
         logging.getLogger(__name__).warning("Bypassing LSTM forecast to conserve memory (LOW_MEM).")
         return None
@@ -152,7 +153,7 @@ def run_prophet_forecast(
     pip install neuralprophet==0.9.0
     """
     import os
-    if os.getenv("LOW_MEM") == "true" or os.getenv("RENDER") == "true":
+    if (os.getenv("LOW_MEM") == "true" or os.getenv("RENDER") == "true") and os.getenv("IS_ML_WORKER") != "true":
         import logging
         logging.getLogger(__name__).warning("Bypassing NeuralProphet forecast to conserve memory (OOM mitigation).")
         return None
@@ -300,6 +301,44 @@ def run_ensemble_forecast(
     Runs LSTM and Prophet, and weights their forecasts using Inverse-Variance Weighting (a form of meta-learning).
     This mathematically suppresses the contribution of the model that exhibits higher uncertainty.
     """
+    if os.getenv("LOW_MEM") == "true" and os.getenv("IS_ML_WORKER") != "true":
+        # Check if we are running in development / locally (not on Render)
+        if os.getenv("RENDER") != "true" and os.getenv("ENVIRONMENT") != "production":
+            print("[DEVELOPMENT] Bypassing on-demand forecast generation locally to prevent system crash. Serving Mean Reversion Baseline.")
+            return run_mean_reversion_forecast(prices, forecast_days)
+            
+        print("[LOW_MEM] Running LSTM/Prophet ensemble forecast in a separate subprocess to optimize memory...")
+        import subprocess
+        import sys
+        import json
+        from pathlib import Path
+        
+        prices_list = prices.tolist()
+        dates_list = [d.isoformat() for d in dates]
+        
+        worker_path = Path(__file__).resolve().parent.parent / "pipelines" / "ml_worker.py"
+        try:
+            res = subprocess.run(
+                [
+                    sys.executable, str(worker_path),
+                    "--task", "forecast",
+                    "--prices", json.dumps(prices_list),
+                    "--dates", json.dumps(dates_list)
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+                env={**os.environ, "IS_ML_WORKER": "true", "LOW_MEM": "false"}
+            )
+            output = res.stdout.strip().split("\n")[-1]
+            return json.loads(output)
+        except Exception as e:
+            print(f"Error running forecast subprocess: {e}")
+            if hasattr(e, 'stderr') and e.stderr:
+                print(f"Subprocess Stderr: {e.stderr}")
+            print("Falling back to Mean Reversion Baseline...")
+            return run_mean_reversion_forecast(prices, forecast_days)
+
     lstm_result   = run_lstm_forecast(prices, forecast_days)
     prophet_result = run_prophet_forecast(prices, dates, forecast_days)
     

@@ -39,7 +39,7 @@ services:
     region: ohio
     plan: starter
     buildCommand: "cd frontend && npm install && npm run build"
-    startCommand: "cd frontend && node .next/standalone/server.js"
+    startCommand: "cd frontend && node --max-old-space-size=300 .next/standalone/server.js"
     envVars:
       - key: NODE_VERSION
         value: 20.18.0

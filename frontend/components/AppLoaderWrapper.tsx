@@ -1,26 +1,31 @@
-"use client";
+'use client';
 
 import React, { useState, useEffect } from 'react';
+import { usePathname } from 'next/navigation';
 import { BlockchainLoader } from './BlockchainLoader';
 
 export const AppLoaderWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [loading, setLoading] = useState(true);
+  const [isFirstLoad, setIsFirstLoad] = useState(true);
+  const pathname = usePathname();
 
   useEffect(() => {
-    const hasLoaded = sessionStorage.getItem("app_loaded");
-    if (hasLoaded) {
-      setLoading(false);
+    if (!isFirstLoad) {
+      setLoading(true);
+    } else {
+      setIsFirstLoad(false);
     }
-  }, []);
+  }, [pathname]);
 
-  const handleComplete = () => {
-    sessionStorage.setItem("app_loaded", "true");
-    setLoading(false);
-  };
-
-  if (loading) {
-    return <BlockchainLoader onComplete={handleComplete} />;
-  }
-
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      {loading && (
+        <BlockchainLoader 
+          duration={isFirstLoad ? 1150 : 600} 
+          onComplete={() => setLoading(false)} 
+        />
+      )}
+    </>
+  );
 };
