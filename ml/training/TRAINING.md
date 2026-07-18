@@ -1,7 +1,7 @@
 # Model Training Workflow
 
 ## Hardware Considerations
-This project is designed to run efficiently on an Intel i3 with 4GB RAM for **inference and data ingestion**. However, training a deep ensemble model (LSTM + NeuralProphet) on 50 assets across years of OHLCV and macroeconomic features requires significantly more memory and compute than the deployment hardware provides. 
+This project is designed to run efficiently on an Intel i3 with 4GB RAM for **inference and data ingestion**. However, training a deep ensemble model (LSTM + NeuralProphet) on 107 assets across years of OHLCV and macroeconomic features requires significantly more memory and compute than the deployment hardware provides. 
 
 Performing full backpropagation on this dataset will result in Out-Of-Memory (OOM) crashes on 3-4GB systems.
 

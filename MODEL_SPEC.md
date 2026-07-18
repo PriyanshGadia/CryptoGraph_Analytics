@@ -9,7 +9,7 @@ This document defines the Spatio-Temporal Graph Convolutional Network (ST-GCN) m
 The model ingests a 3D tensor representing a dynamic lookback window of cryptocurrency states.
 
 - **Dimension**: `(N, T, F)`
-  - `N` (Nodes): `50` assets (top tokens by market cap).
+  - `N` (Nodes): `107` assets (top tokens by market cap).
   - `T` (Timesteps): `30` days lookback window.
   - `F` (Features): `24` features per node.
 

@@ -11,7 +11,7 @@
 
 ## 🪐 Project Overview
 
-**CryptoGraph Analytics** is a data-science research and analytics platform designed to model and forecast cryptocurrency price actions, volatility regimes, and correlation networks. The system tracks 49 major crypto assets, engineering live technical features and feeding them to an **Ensemble Forecasting Pipeline** comprising a flagship Spatio-Temporal Graph Convolutional Network (ST-GCN), a Long Short-Term Memory (LSTM) model, and Facebook's NeuralProphet. 
+**CryptoGraph Analytics** is a data-science research and analytics platform designed to model and forecast cryptocurrency price actions, volatility regimes, and correlation networks. The system tracks 107 major crypto assets, engineering live technical features and feeding them to an **Ensemble Forecasting Pipeline** comprising a flagship Spatio-Temporal Graph Convolutional Network (ST-GCN), a Long Short-Term Memory (LSTM) model, and Facebook's NeuralProphet. 
 
 Predictions are analyzed by a Mixture-of-Agents (MoA) trading swarm, contextualized in plain English via LLM explanation blocks (Groq LLaMA 3.3), and streamed to a Next.js frontend dashboard via real-time WebSockets.
 
@@ -114,6 +114,37 @@ graph TD
 3. **ML Inference:** When predictions are requested, the backend loads pre-trained model weights. Feature signals pass through the ST-GCN spatial correlator, the direct multi-step LSTM model, and Prophet temporal patterns to generate a consensus forecast.
 4. **Validation Gating:** If a model's F1 validation score drops below `0.35` or Sharpe ratio drops below `0.0`, the pipeline flags the model as "recalibrating" and blocks potentially misleading metrics.
 5. **AI Summarization:** A LangChain chain passes raw metrics to Groq to generate human-readable trading explanations.
+
+---
+
+## 📝 Academic Research Report
+
+The repository includes a comprehensive, publication-grade academic research paper documenting the platform's machine learning architecture, custom loss functions, and backtesting results.
+
+### Key Documentation Areas
+* **Mathematical Formulations:** Full mathematical details of the Relational Graph Attention Network (R-GAT) spatial projection and dynamic Spatio-Temporal Graph Convolutional Network (ST-GCN) architecture.
+* **Custom Composite Loss:** Formulation of the multi-task loss function incorporating primary Mean Squared Error, Continuous Variance Regularization (weighted at $3.5$), auxiliary uncertainty NLL, warmup-gated rank learning (ListMLE), and Pearson cross-asset cosine alignment.
+* **Gaussian Calibration:** The Gaussian error function ($\text{erf}$) calibration pipeline mapping regression predictions to confidence-graded discrete signals (`strong_up`, `strong_down`).
+* **Cryptographic Auditing:** Detailed implementation of local explainability blocks (using Integrated Gradients and local LLaMA 3.3 models) backed by Cryptographic Inference Attestation (SHA-256 digests) and Proof-of-Performance (PoP) hash chains.
+
+### Project Files
+* **LaTeX Source:** [report.tex](report.tex) (uses the standard `spconf` style format)
+* **Bibliography:** [refs.bib](refs.bib) (contains peer-reviewed references for spatial-temporal graph modeling and cryptocurrency trading)
+* **Figures:** Located in the [figures/](figures/) directory:
+  * `system_architecture.png` (Fig 1: System pipeline)
+  * `stgcn_architecture.png` (Fig 2: ST-GCN network flow)
+  * `9.1.png` (Fig 3: GNN training loss progression, NLL uncertainty tracking, and RMSE validation curves)
+  * `9.2.png` (Fig 4: Strategy cumulative returns vs. BTC benchmark, and global permutation feature importance)
+* **Compiled Document:** [CryptoGraph Analytics Report.pdf](CryptoGraph%20Analytics%20Report.pdf)
+
+### Compilation Instructions
+To compile the document manually from the LaTeX source files, execute the following command sequence in your terminal:
+```bash
+pdflatex report.tex
+bibtex report
+pdflatex report.tex
+pdflatex report.tex
+```
 
 ---
 
