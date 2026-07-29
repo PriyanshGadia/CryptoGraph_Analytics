@@ -31,8 +31,9 @@ def fetch_asset_info(yf_symbol: str) -> dict:
     return ticker.info
 
 def enrich_assets():
+    import os
     from pathlib import Path
-    db_path = Path(__file__).resolve().parents[2] / 'cryptograph.db'
+    db_path = os.getenv("DATABASE_PATH") or (Path(__file__).resolve().parents[2] / 'cryptograph.db')
     print(f"Connecting to database at {db_path}...")
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()

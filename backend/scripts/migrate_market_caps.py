@@ -1,7 +1,7 @@
 import sqlite3
 import os
 
-db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "cryptograph.db"))
+db_path = os.getenv("DATABASE_PATH") or os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "cryptograph.db"))
 print(f"Connecting to database at {db_path}...")
 conn = sqlite3.connect(db_path)
 cursor = conn.cursor()

@@ -78,6 +78,64 @@ def _insert_placeholder_predictions(path: str) -> None:
 
 
 
+def _insert_placeholder_forecasts(path: str) -> None:
+    """
+    Insert lightweight placeholder forecasts for all assets.
+    """
+    import json
+    import math
+    import random
+    conn = sqlite3.connect(path)
+    c = conn.cursor()
+    now = datetime.now(timezone.utc).isoformat()
+
+    assets = c.execute("SELECT id, symbol FROM assets").fetchall()
+    for asset_id, symbol in assets:
+        # Fetch last close price
+        row = c.execute(
+            "SELECT close FROM ohlcv WHERE asset_id=? ORDER BY timestamp DESC LIMIT 1",
+            (asset_id,)
+        ).fetchone()
+        if not row:
+            continue
+        last_close = row[0]
+        
+        # Generate 30 days of forecasts
+        forecast_prices = []
+        lower_bound = []
+        upper_bound = []
+        
+        current_price = last_close
+        drift = random.uniform(-0.003, 0.003)
+        vol = 0.02
+        for i in range(30):
+            current_price = current_price * (1 + drift + random.normalvariate(0, vol))
+            forecast_prices.append(round(current_price, 4))
+            band = current_price * vol * math.sqrt(i + 1) * 1.96
+            lower_bound.append(round(max(0.01, current_price - band), 4))
+            upper_bound.append(round(current_price + band, 4))
+            
+        try:
+            c.execute("""
+                INSERT INTO forecasts
+                (asset_id, timestamp, forecast_prices, lower_bound, upper_bound, lstm_forecast, prophet_forecast)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                asset_id, now,
+                json.dumps(forecast_prices),
+                json.dumps(lower_bound),
+                json.dumps(upper_bound),
+                json.dumps(forecast_prices),
+                json.dumps(forecast_prices)
+            ))
+        except Exception as e:
+            print(f"Failed to insert forecast for {symbol}: {e}")
+
+    conn.commit()
+    conn.close()
+    print(f"[LOW_MEM] Placeholder forecasts inserted for {len(assets)} assets.")
+
+
 def main():
     if not os.path.exists(db_path):
         print("Database not found. Initializing...")
@@ -88,17 +146,32 @@ def main():
         try:
             c.execute("SELECT COUNT(*) FROM assets")
             count = c.fetchone()[0]
-            if count > 0:
+            c.execute("SELECT COUNT(*) FROM predictions")
+            pred_count = c.fetchone()[0]
+            c.execute("SELECT COUNT(*) FROM forecasts")
+            fc_count = c.fetchone()[0]
+            
+            if count > 0 and pred_count > 0 and fc_count > 0:
                 print("Database is already populated.")
                 return
-        except Exception:
-            pass # Tables might not exist
-        conn.close()
+            
+            if count > 0:
+                print("Database has assets but missing predictions/forecasts. Seeding placeholders directly...")
+                if pred_count == 0:
+                    _insert_placeholder_predictions(db_path)
+                if fc_count == 0:
+                    _insert_placeholder_forecasts(db_path)
+                return
+        except Exception as e:
+            print(f"Error checking database tables: {e}")
+        finally:
+            conn.close()
 
     print("Database is empty! Running rapid seed for Termux...")
     
     # Ensure tables exist
     from app.db.database import engine, Base
+    import app.db.models # noqa: F401
     Base.metadata.create_all(bind=engine)
     
     conn = sqlite3.connect(db_path)
@@ -118,13 +191,10 @@ def main():
     for sym in symbols:
         asset_id = str(uuid.uuid4())
         c.execute("INSERT INTO assets (id, symbol, name, sector) VALUES (?, ?, ?, ?)", (asset_id, sym, sym, "Layer 1"))
-        print(f"Fetching 65 days of OHLCV for {sym}...")
-        try:
-            ohlcv = exchange.fetch_ohlcv(f"{sym}/USDT", "1d", since=since, limit=100)
-        except Exception as e:
-            print(f"Failed to fetch {sym} from Binance: {e}. Generating synthetic/mock OHLCV data...")
+        print(f"Generating 65 days of OHLCV for {sym}...")
+        ohlcv = []
+        if os.getenv("LOW_MEM") == "true" or os.getenv("RENDER") == "true" or os.getenv("ENVIRONMENT") == "production":
             import random
-            ohlcv = []
             current_time = datetime.now(timezone.utc) - timedelta(days=65)
             last_close = random.uniform(10.0, 100.0) if sym not in ["BTC", "ETH"] else (60000.0 if sym == "BTC" else 3000.0)
             for day in range(66):
@@ -138,6 +208,25 @@ def main():
                 ohlcv.append([ts_ms, open_price, high_price, low_price, close_price, volume])
                 last_close = close_price
                 current_time += timedelta(days=1)
+        else:
+            try:
+                ohlcv = exchange.fetch_ohlcv(f"{sym}/USDT", "1d", since=since, limit=100)
+            except Exception as e:
+                print(f"Failed to fetch {sym} from Binance: {e}. Generating synthetic/mock OHLCV data...")
+                import random
+                current_time = datetime.now(timezone.utc) - timedelta(days=65)
+                last_close = random.uniform(10.0, 100.0) if sym not in ["BTC", "ETH"] else (60000.0 if sym == "BTC" else 3000.0)
+                for day in range(66):
+                    ts_ms = int(current_time.timestamp() * 1000)
+                    change = random.uniform(-0.05, 0.05)
+                    close_price = last_close * (1 + change)
+                    open_price = last_close
+                    high_price = max(open_price, close_price) * random.uniform(1.0, 1.03)
+                    low_price = min(open_price, close_price) * random.uniform(0.97, 1.0)
+                    volume = random.uniform(10000, 1000000)
+                    ohlcv.append([ts_ms, open_price, high_price, low_price, close_price, volume])
+                    last_close = close_price
+                    current_time += timedelta(days=1)
         
         try:
             # Insert OHLCV
@@ -189,9 +278,10 @@ def main():
                            float(df.loc[i, "atr_14"]), float(df.loc[i, "bb_width"])))
 
         except Exception as e:
-            print(f"Failed to fetch {sym}: {e}")
+            print(f"Failed to fetch/process {sym}: {e}")
+            
+        conn.commit()
 
-    conn.commit()
     conn.close()
     
     # Run the real ML inference pipeline to populate the predictions table with true GCN-predicted outputs

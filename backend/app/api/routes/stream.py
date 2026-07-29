@@ -14,33 +14,14 @@ router = APIRouter(prefix="/stream", tags=["stream"])
 def get_refresh_event() -> asyncio.Event:
     return ws_manager.prediction_refresh_event
 
-# Discover SYMBOLS from local database dynamically
-def get_db_symbols() -> List[str]:
-    try:
-        from app.db.database import SessionLocal
-        from app.db.models import Asset
-        db = SessionLocal()
-        try:
-            assets = db.query(Asset.symbol).all()
-            if assets:
-                return [a.symbol for a in assets]
-        finally:
-            db.close()
-    except Exception:
-        import logging
-        logging.getLogger(__name__).error("Error querying symbols from database", exc_info=True)
-        
-    # Hardcoded fallback of all 50 database assets
-    return [
-        "BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "AVAX", "LINK", "DOT",
-        "MATIC", "UNI", "ATOM", "LTC", "BCH", "NEAR", "APT", "ICP", "STX", "FIL",
-        "AR", "HBAR", "VET", "MKR", "INJ", "GRT", "OP", "THETA",
-        "LDO", "FET", "FTM", "TAO", "TIA", "SEI", "SUI", "PYTH", "JUP", "GALA",
-        "AAVE", "ALGO", "SAND", "EGLD", "QNT", "SNX", "AXS", "CHZ", "MANA", "MINA",
-        "DYDX"
-    ]
-
-SYMBOLS = get_db_symbols()
+SYMBOLS = [
+    "BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "AVAX", "LINK", "DOT",
+    "MATIC", "UNI", "ATOM", "LTC", "BCH", "NEAR", "APT", "ICP", "STX", "FIL",
+    "AR", "HBAR", "VET", "MKR", "INJ", "GRT", "OP", "THETA",
+    "LDO", "FET", "FTM", "TAO", "TIA", "SEI", "SUI", "PYTH", "JUP", "GALA",
+    "AAVE", "ALGO", "SAND", "EGLD", "QNT", "SNX", "AXS", "CHZ", "MANA", "MINA",
+    "DYDX"
+]
 
 
 @router.post("/broadcast")

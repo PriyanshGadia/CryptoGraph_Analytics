@@ -226,12 +226,17 @@ async def lifespan(app: FastAPI):
     # Model Health Validation: log artifact presence only — no warmup to save RAM
     try:
         from pathlib import Path
-        lstm_path = Path(__file__).resolve().parent.parent.parent / "ml" / "artifacts" / "best_lstm.pt"
+        base_local = Path(__file__).resolve().parent.parent.parent
+        base_docker = Path(__file__).resolve().parent.parent
+        lstm_path = base_local / "ml" / "artifacts" / "best_lstm.pt"
+        if not lstm_path.exists():
+            lstm_path = base_docker / "ml" / "artifacts" / "best_lstm.pt"
+            
         if lstm_path.exists():
-            logger.info("[MODEL HEALTH] best_lstm.pt found on disk.")
+            logger.info(f"[MODEL HEALTH] best_lstm.pt found on disk at: {lstm_path}")
         else:
             logger.warning(
-                "[MODEL HEALTH] best_lstm.pt not found — will fall back to mean-reversion on forecast requests."
+                f"[MODEL HEALTH] best_lstm.pt not found (checked {base_local} and {base_docker}) — will fall back to mean-reversion on forecast requests."
             )
     except Exception as e:
         logger.warning(f"Model validation check bypassed: {e}")
@@ -250,9 +255,10 @@ async def lifespan(app: FastAPI):
         logger.error(f"[Lifespan] Error checking database asset count: {e}", exc_info=True)
         is_empty_db = True
 
+    seeding_task = None
     if is_empty_db:
         logger.info("[Lifespan] Empty database detected. Initiating background self-seeding...")
-        asyncio.create_task(run_database_seeder())
+        seeding_task = asyncio.create_task(run_database_seeder())
 
     # Populate static cache using our synchronous DB session setup
     try:
@@ -357,7 +363,15 @@ async def lifespan(app: FastAPI):
     # Trigger an initial run immediately if not in testing mode
     if os.getenv("TESTING") != "True":
         logger.info("[Lifespan] Triggering initial data refresh, inference, and trading cycle immediately on startup...")
-        asyncio.create_task(scheduled_refresh_job())
+        async def initial_trigger():
+            if seeding_task:
+                logger.info("[Lifespan] Waiting for background database seeder to complete before initial data refresh...")
+                try:
+                    await seeding_task
+                except Exception as e:
+                    logger.error(f"[Lifespan] Background database seeder failed: {e}")
+            await scheduled_refresh_job()
+        asyncio.create_task(initial_trigger())
 
     # Start WebSocket tasks
     # On Render (or LOW_MEM), Binance WS is geo-blocked (HTTP 451).

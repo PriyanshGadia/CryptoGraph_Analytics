@@ -9,20 +9,36 @@ import Link from "next/link";
 import { BlockchainLoader } from "@/components/BlockchainLoader";
 
 export default function Dashboard() {
-  const { data: statusData } = useSWR("/api/v1/status", fetcher);
-  const { data: riskData } = useSWR("/api/v1/risk", fetcher);
-  const { data: assets } = useSWR("/api/v1/assets", fetcher);
-  const { data: graphData } = useSWR("/api/v1/graph/latest", fetcher);
-  const { data: portfolio } = useSWR("/api/v1/portfolio", fetcher);
+  const { data: statusData, error: statusError } = useSWR("/api/v1/status", fetcher);
+  const { data: riskData, error: riskError } = useSWR("/api/v1/risk", fetcher);
+  const { data: assets, error: assetsError } = useSWR("/api/v1/assets", fetcher);
+  const { data: graphData, error: graphError } = useSWR("/api/v1/graph/latest", fetcher);
+  const { data: portfolio, error: portfolioError } = useSWR("/api/v1/portfolio", fetcher);
   const { data: validationMetrics } = useSWR("/api/v1/predictions/validation-metrics", fetcher);
   
   const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const [showDashboard, setShowDashboard] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const isDataLoaded = (statusData || statusError) && 
+                       (riskData || riskError) && 
+                       (assets || assetsError) && 
+                       (graphData || graphError) && 
+                       (portfolio || portfolioError);
 
   const topAssets = assets?.filter((a: any) => a.confidence && a.predicted_direction !== "neutral" && a.predicted_direction !== "recalibrating").sort((a: any, b: any) => b.confidence - a.confidence).slice(0, 4) || [];
 
-  if (!mounted) {
-    return null;
+  if (!mounted || !showDashboard) {
+    return (
+      <BlockchainLoader 
+        ready={!!isDataLoaded} 
+        onComplete={() => setShowDashboard(true)} 
+        duration={1200}
+      />
+    );
   }
 
   return (

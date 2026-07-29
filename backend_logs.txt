@@ -1,0 +1,263 @@
+==> Cloning from https://github.com/PriyanshGadia/CryptoGraph_Analytics
+==> Checking out commit b91df838d1b049c74010e4cc7a5b30022a89cf95 in branch main
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 1.97kB done
+#1 DONE 0.0s
+#2 [internal] load metadata for docker.io/library/python:3.12-slim
+#2 ...
+#3 [auth] library/python:pull render-prod/docker-mirror-repository/library/python:pull token for us-west1-docker.pkg.dev
+#3 DONE 0.0s
+#2 [internal] load metadata for docker.io/library/python:3.12-slim
+#2 DONE 2.3s
+#4 [internal] load .dockerignore
+#4 transferring context: 281B done
+#4 DONE 0.0s
+#5 [internal] load build context
+#5 DONE 0.0s
+#6 [builder 1/5] FROM docker.io/library/python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
+#6 resolve docker.io/library/python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de done
+#6 DONE 0.0s
+#7 importing cache manifest
+#7 inferred cache manifest type: application/vnd.oci.image.manifest.v1+json done
+#7 DONE 0.1s
+#6 [builder 1/5] FROM docker.io/library/python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
+#6 DONE 0.0s
+#5 [internal] load build context
+#5 transferring context: 866.75kB 0.0s done
+#5 DONE 0.0s
+#8 [builder 4/5] COPY backend/requirements*.txt ./
+#8 CACHED
+#9 [runner  7/11] COPY --chown=cryptograph:cryptograph backend/scripts /app/scripts
+#9 CACHED
+#10 [builder 2/5] WORKDIR /build
+#10 CACHED
+#11 [runner  3/11] RUN apt-get update && apt-get install -y --no-install-recommends     curl     && rm -rf /var/lib/apt/lists/*
+#11 CACHED
+#12 [runner  6/11] COPY --chown=cryptograph:cryptograph backend/app /app/app
+#12 CACHED
+#13 [builder 3/5] RUN apt-get update && apt-get install -y --no-install-recommends     build-essential     && rm -rf /var/lib/apt/lists/*
+#13 CACHED
+#14 [runner  4/11] RUN useradd -m cryptograph &&     mkdir -p /app/database /data &&     chown -R cryptograph:cryptograph /app /data
+#14 CACHED
+#15 [runner  5/11] COPY --from=builder --chown=cryptograph:cryptograph /install /usr/local
+#15 CACHED
+#16 [runner  2/11] WORKDIR /app
+#16 CACHED
+#17 [builder 5/5] RUN pip install --no-cache-dir --upgrade pip &&     pip install --no-cache-dir --prefix=/install -r requirements.txt &&     if [ -f requirements-optional.txt ]; then pip install --no-cache-dir --prefix=/install -r requirements-optional.txt || true; fi
+#17 CACHED
+#18 [runner  8/11] COPY --chown=cryptograph:cryptograph backend/seed_trades.py /app/seed_trades.py
+#18 CACHED
+#18 [runner  8/11] COPY --chown=cryptograph:cryptograph backend/seed_trades.py /app/seed_trades.py
+#18 extracting sha256:062e450697faa5f02a3a74eba9864ee4d79bc9cfbd65769fc6cdff2c05c6a053
+#18 extracting sha256:062e450697faa5f02a3a74eba9864ee4d79bc9cfbd65769fc6cdff2c05c6a053 0.7s done
+#18 extracting sha256:98db2485a0d07a8914586b02387e3813aa7e9fed79ab252898d3e96e21c717ea
+#18 extracting sha256:98db2485a0d07a8914586b02387e3813aa7e9fed79ab252898d3e96e21c717ea 17.1s done
+#18 extracting sha256:48347b15c85fd6dde9c5b0259f378fbaee3ce231b30a42f2f2bcc4ea0285cbc9
+#18 extracting sha256:48347b15c85fd6dde9c5b0259f378fbaee3ce231b30a42f2f2bcc4ea0285cbc9 14.6s done
+#18 extracting sha256:fd079632edc0ab4e9d10c77ec348d5057a976e6fc508e93855548096dec2ae1e 0.0s done
+#18 extracting sha256:55149147607c1f1e39711bc80dc8f6794cdd653508111e6446fc43de44f12433 0.0s done
+#18 extracting sha256:af9302a2c29278b37ba540a00c987bbffcc8d5a61463335fdc7b1abcc5536894
+#18 extracting sha256:af9302a2c29278b37ba540a00c987bbffcc8d5a61463335fdc7b1abcc5536894 0.2s done
+#18 DONE 34.6s
+#18 [runner  8/11] COPY --chown=cryptograph:cryptograph backend/seed_trades.py /app/seed_trades.py
+#18 extracting sha256:be6fee77b9b1a546eacec90ad87b527659cdb8088d55e590224042ed87555611 0.0s done
+#18 extracting sha256:15430473acd65c3f941f1df321c44a70450f010867760e335416a2166874dffc
+#18 extracting sha256:15430473acd65c3f941f1df321c44a70450f010867760e335416a2166874dffc 59.2s done
+#18 DONE 93.8s
+#18 [runner  8/11] COPY --chown=cryptograph:cryptograph backend/seed_trades.py /app/seed_trades.py
+#18 extracting sha256:2c6c036af55c140e7f3a427130ebeb28400897b7e4af63413e2637913402499e 0.1s done
+#18 extracting sha256:812b2d47fa8530825591d4f9368cacd334d377aadb90c7b3c8d253c1a3daa6c9 0.0s done
+#18 extracting sha256:21f354ce7c198bf052e9065aa00713dc125156246115bd214079b26e39c6e9ed 0.0s done
+#18 DONE 93.9s
+#19 [runner  9/11] COPY --chown=cryptograph:cryptograph ml /app/ml
+#19 DONE 0.1s
+#20 [runner 10/11] COPY --chown=cryptograph:cryptograph backend/alembic /app/alembic
+#20 DONE 0.1s
+#21 [runner 11/11] COPY --chown=cryptograph:cryptograph backend/alembic.ini /app/alembic.ini
+#21 DONE 0.1s
+#22 exporting to image
+#22 exporting layers 0.1s done
+#22 pushing layers
+#22 pushing layers 0.7s done
+#22 DONE 1.0s
+#23 exporting cache to registry
+#23 sending cache export
+#23 sending cache export 1.3s done
+#23 DONE 1.7s
+==> Deploying...
+==> Setting WEB_CONCURRENCY=1 by default, based on available CPUs in the instance
+==> No open ports detected, continuing to scan...
+==> Docs on specifying a port: https://render.com/docs/web-services#port-binding
+[Security] Generated new local master key at /app/master.key. Do NOT use this in production.
+Error querying symbols from database
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.12/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlite3.OperationalError: no such table: assets
+The above exception was the direct cause of the following exception:
+Traceback (most recent call last):
+  File "/app/app/api/routes/stream.py", line 24, in get_db_symbols
+    assets = db.query(Asset.symbol).all()
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/sqlalchemy/orm/query.py", line 2711, in all
+    return self._iter().all()  # type: ignore
+           ^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/sqlalchemy/orm/query.py", line 2864, in _iter
+    result: Union[ScalarResult[_T], Result[_T]] = self.session.execute(
+                                                  ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 2373, in execute
+    return self._execute_internal(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 2271, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/sqlalchemy/orm/context.py", line 306, in orm_execute_statement
+    result = conn.execute(
+             ^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1421, in execute
+    return meth(
+           ^^^^^
+  File "/usr/local/lib/python3.12/site-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1643, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1848, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1988, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/usr/local/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 2365, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/usr/local/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.12/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) no such table: assets
+[SQL: SELECT assets.symbol AS assets_symbol 
+FROM assets]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+{"asctime": "2026-07-18 13:44:44,874", "levelname": "INFO", "name": "cryptograph", "message": "Sentry initialization skipped (DSN is missing)."}
+INFO:     Started server process [1]
+INFO:     Waiting for application startup.
+{"asctime": "2026-07-18 13:44:45,653", "levelname": "INFO", "name": "cryptograph", "message": "========================================"}
+{"asctime": "2026-07-18 13:44:45,653", "levelname": "INFO", "name": "cryptograph", "message": "CryptoGraph Analytics API Starting Up..."}
+{"asctime": "2026-07-18 13:44:45,653", "levelname": "INFO", "name": "cryptograph", "message": "INFO: Running in single-worker stateless-in-memory mode optimized for low-memory (3GB) local environments."}
+{"asctime": "2026-07-18 13:44:45,653", "levelname": "INFO", "name": "cryptograph", "message": "========================================"}
+{"asctime": "2026-07-18 13:44:46,460", "levelname": "INFO", "name": "alembic.runtime.plugins", "message": "setup plugin alembic.autogenerate.schemas"}
+{"asctime": "2026-07-18 13:44:46,460", "levelname": "INFO", "name": "alembic.runtime.plugins", "message": "setup plugin alembic.autogenerate.tables"}
+{"asctime": "2026-07-18 13:44:46,460", "levelname": "INFO", "name": "alembic.runtime.plugins", "message": "setup plugin alembic.autogenerate.types"}
+{"asctime": "2026-07-18 13:44:46,460", "levelname": "INFO", "name": "alembic.runtime.plugins", "message": "setup plugin alembic.autogenerate.constraints"}
+{"asctime": "2026-07-18 13:44:46,460", "levelname": "INFO", "name": "alembic.runtime.plugins", "message": "setup plugin alembic.autogenerate.defaults"}
+{"asctime": "2026-07-18 13:44:46,460", "levelname": "INFO", "name": "alembic.runtime.plugins", "message": "setup plugin alembic.autogenerate.comments"}
+{"asctime": "2026-07-18 13:44:46,564", "levelname": "INFO", "name": "cryptograph", "message": "Running database migrations on startup..."}
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> dbcb84298bed, Baseline
+ERROR [cryptograph] Error running database migrations: forecasts
+Traceback (most recent call last):
+  File "/app/app/main.py", line 209, in lifespan
+    await asyncio.to_thread(command.upgrade, alembic_cfg, "head")
+  File "/usr/local/lib/python3.12/asyncio/threads.py", line 25, in to_thread
+    return await loop.run_in_executor(None, func_call)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/alembic/command.py", line 490, in upgrade
+    script.run_env()
+  File "/usr/local/lib/python3.12/site-packages/alembic/script/base.py", line 556, in run_env
+    util.load_python_file(self.dir, "env.py")
+  File "/usr/local/lib/python3.12/site-packages/alembic/util/pyfiles.py", line 116, in load_python_file
+    module = load_module_py(module_id, path)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/alembic/util/pyfiles.py", line 136, in load_module_py
+    spec.loader.exec_module(module)  # type: ignore
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap_external>", line 999, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/app/alembic/env.py", line 88, in <module>
+    run_migrations_online()
+  File "/app/alembic/env.py", line 82, in run_migrations_online
+    context.run_migrations()
+  File "<string>", line 8, in run_migrations
+  File "/usr/local/lib/python3.12/site-packages/alembic/runtime/environment.py", line 969, in run_migrations
+    self.get_context().run_migrations(**kw)
+  File "/usr/local/lib/python3.12/site-packages/alembic/runtime/migration.py", line 626, in run_migrations
+    step.migration_fn(**kw)
+  File "/app/alembic/versions/dbcb84298bed_baseline.py", line 24, in upgrade
+    with op.batch_alter_table('forecasts', schema=None) as batch_op:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/contextlib.py", line 144, in __exit__
+    next(self.gen)
+  File "/usr/local/lib/python3.12/site-packages/alembic/operations/base.py", line 408, in batch_alter_table
+    impl.flush()
+  File "/usr/local/lib/python3.12/site-packages/alembic/operations/batch.py", line 141, in flush
+    existing_table = Table(
+                     ^^^^^^
+  File "<string>", line 2, in __new__
+  File "/usr/local/lib/python3.12/site-packages/sqlalchemy/util/deprecations.py", line 281, in warned
+    return fn(*args, **kwargs)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/sqlalchemy/sql/schema.py", line 430, in __new__
+    return cls._new(*args, **kw)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/sqlalchemy/sql/schema.py", line 484, in _new
+    with util.safe_reraise():
+         ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py", line 122, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/usr/local/lib/python3.12/site-packages/sqlalchemy/sql/schema.py", line 480, in _new
+    table.__init__(name, metadata, *args, _no_init=False, **kw)  # type: ignore[misc] # noqa: E501
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/sqlalchemy/sql/schema.py", line 862, in __init__
+    self._autoload(
+  File "/usr/local/lib/python3.12/site-packages/sqlalchemy/sql/schema.py", line 894, in _autoload
+    conn_insp.reflect_table(
+  File "/usr/local/lib/python3.12/site-packages/sqlalchemy/engine/reflection.py", line 1549, in reflect_table
+    raise exc.NoSuchTableError(table_name)
+sqlalchemy.exc.NoSuchTableError: forecasts
+INFO  [cryptograph] Database tables created via create_all fallback.
+WARNI [cryptograph] [MODEL HEALTH] best_lstm.pt not found — will fall back to mean-reversion on forecast requests.
+INFO  [cryptograph] [Lifespan] Current database asset count: 0
+INFO  [cryptograph] [Lifespan] Empty database detected. Initiating background self-seeding...
+INFO  [cryptograph] [Lifespan] Triggering initial data refresh, inference, and trading cycle immediately on startup...
+WARNI [cryptograph] [Lifespan] LOW_MEM/RENDER mode: Binance WebSocket disabled. Using REST polling fallback.
+INFO  [cryptograph] [Seeder] Starting database self-seeding in background...
+INFO  [cryptograph] [Seeder] Executing quick_seed.py at /app/scripts/quick_seed.py
+INFO  [cryptograph] [Scheduler] Auto-running hourly full data refresh...
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+ERROR [cryptograph] [Scheduler] Asset enrichment error: no such table: assets
+Traceback (most recent call last):
+  File "/app/app/main.py", line 287, in scheduled_refresh_job
+    await asyncio.wait_for(asyncio.get_event_loop().run_in_executor(bg_executor, enrich_assets), timeout=1800)
+  File "/usr/local/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/usr/local/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/app/services/enrich_assets.py", line 40, in enrich_assets
+    cursor.execute("SELECT id, symbol FROM assets")
+sqlite3.OperationalError: no such table: assets
+INFO  [cryptograph] [Scheduler] Executing flagship ML inference pipeline...
+Connecting to database at /app/cryptograph.db...
+Running inference pipeline …
+INFO:     127.0.0.1:49942 - "HEAD / HTTP/1.1" 404 Not Found
+==> Your service is live 🎉
+==> 
+==> ///////////////////////////////////////////////////////////
+==> 
+==> Available at your primary URL https://cryptograph-analytics.onrender.com
+==> 
+==> ///////////////////////////////////////////////////////////
+INFO:     10.28.215.132:0 - "GET / HTTP/1.1" 404 Not Found
+INFO:     10.28.215.132:0 - "GET /api/v1/predictions/validation-metrics HTTP/1.1" 200 OK
+INFO:     10.31.227.133:0 - "GET /api/v1/status HTTP/1.1" 200 OK
+INFO:     10.31.227.133:0 - "GET /api/v1/graph/latest HTTP/1.1" 200 OK
+INFO:     10.31.227.133:0 - "GET /api/v1/portfolio HTTP/1.1" 200 OK
+INFO:     10.28.215.132:0 - "GET /api/v1/risk HTTP/1.1" 200 OK

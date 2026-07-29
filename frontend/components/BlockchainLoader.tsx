@@ -1,6 +1,14 @@
 import React, { useEffect, useState } from "react";
 
-export function BlockchainLoader({ onComplete, duration = 1150 }: { onComplete?: () => void; duration?: number }) {
+export function BlockchainLoader({ 
+  onComplete, 
+  duration = 1150, 
+  ready = true 
+}: { 
+  onComplete?: () => void; 
+  duration?: number; 
+  ready?: boolean; 
+}) {
   const [progress, setProgress] = useState(0);
   const [fade, setFade] = useState(false);
 
@@ -8,23 +16,31 @@ export function BlockchainLoader({ onComplete, duration = 1150 }: { onComplete?:
     const start = Date.now();
 
     const interval = setInterval(() => {
-      const elapsed = Date.now() - start;
-      const pct = Math.min(100, Math.floor((elapsed / duration) * 100));
-      setProgress(pct);
+      setProgress((prev) => {
+        if (prev >= 90 && !ready) {
+          return 90;
+        }
 
-      if (pct >= 100) {
-        clearInterval(interval);
-        setTimeout(() => {
-          setFade(true);
-          if (onComplete) {
-            onComplete();
-          }
-        }, 180);
-      }
+        const elapsed = Date.now() - start;
+        const targetPct = Math.min(100, Math.floor((elapsed / duration) * 100));
+        const next = Math.max(prev + 1.5, targetPct); // Ensure smooth progression
+
+        if (next >= 100) {
+          clearInterval(interval);
+          setTimeout(() => {
+            setFade(true);
+            if (onComplete) {
+              onComplete();
+            }
+          }, 180);
+          return 100;
+        }
+        return next;
+      });
     }, 16);
 
     return () => clearInterval(interval);
-  }, [onComplete]);
+  }, [onComplete, duration, ready]);
 
   if (fade) return null;
 

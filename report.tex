@@ -38,7 +38,7 @@
 % ==========================================================
 \begin{abstract}
 % ==========================================================
-This report presents CryptoGraph Analytics, a spatio-temporal graph convolutional ensemble platform for multi-asset cryptocurrency price forecasting. The core challenge is modelling joint spatio-temporal dependencies across 107 simultaneously tracked digital assets. The platform ingests live candlestick data from Binance WebSockets, daily macroeconomic indicators from FRED, and community sentiment from CoinGecko. We design a 24-feature node representation feeding a dual Spatio-Temporal GCN (ST-GCN) architecture: a three-class classification baseline (\texttt{STGCNModel}) and a flagship multi-task regression framework (\texttt{EnterpriseSTGCNModel}) that predicts expected returns and calibrated uncertainties. The GNN's dynamic multi-relational graph encodes sector membership, market-capitalisation proximity, and rolling 30-day Pearson return correlations as three distinct edge types. We combine the ST-GCN with an LSTM and NeuralProphet ensemble forecaster, arbitrating predictions via a Mixture-of-Agents (MoA) swarm and explaining them using Groq-hosted LLaMA~3.3-70B. Quantitative validation yields a macro-averaged F1 of 0.361 and an annualised Sharpe of 15.5 on in-sample validation; an independent backtest gives a realistic Sharpe of $-1.05$, exposing the severe distributional shift inherent in financial ML.
+This report presents CryptoGraph Analytics, a spatio-temporal graph convolutional ensemble platform for multi-asset cryptocurrency price forecasting. The core challenge is modelling joint spatio-temporal dependencies across 107 simultaneously tracked digital assets (categorised across 8 sectors in \texttt{ml/graph/edge\_types.py}). The platform ingests live candlestick data from Binance WebSockets, daily macroeconomic indicators from FRED, and community sentiment from CoinGecko. We design a 24-feature node representation feeding a dual Spatio-Temporal GCN (ST-GCN) architecture: a three-class classification baseline (\texttt{STGCNModel}) and a flagship multi-task regression framework (\texttt{EnterpriseSTGCNModel}) that predicts expected returns and calibrated uncertainties. The GNN's dynamic multi-relational graph encodes sector membership, market-capitalisation proximity, and rolling 30-day Pearson return correlations as three distinct edge types. We combine the ST-GCN with an LSTM and NeuralProphet ensemble forecaster, arbitrating predictions via a Mixture-of-Agents (MoA) swarm and explaining them using Groq-hosted LLaMA~3.3-70B. Quantitative validation yields a macro-averaged F1 of 0.361 and an annualised Sharpe of 15.5 on in-sample validation; an independent backtest gives a realistic Sharpe of $-1.05$, exposing the severe distributional shift inherent in financial ML.
 \end{abstract}
 
 \begin{keywords}
@@ -53,7 +53,7 @@ Cryptocurrency markets present demanding environments for predictive modelling. 
 
 Graph Neural Networks offer a principled framework for jointly modelling these relational structures. Spatio-Temporal GCNs \cite{yan2018stgcn}, combined with attention-based relational message passing \cite{velickovic2018gat}, can exploit both the spatial topology of the crypto market and the temporal dynamics of each asset's price history.
 
-With \textbf{CryptoGraph Analytics}, we build this vision into a production-grade platform. Our key contributions include: (1) a dynamic multi-relational graph builder reconstructing a 107-node graph daily; (2) a dual ST-GCN with RGATConv, Causal TCN, and multi-task regression heads; (3) a three-model ensemble (ST-GCN + LSTM + NeuralProphet) arbitrated by a MoA swarm; (4) a Captum IntegratedGradients explainability pipeline; (5) cryptographic backend validation via Inference Attestation and PoP hash chains; and (6) a production 30-endpoint REST/WebSocket deployment with a real-time Next.js~14 dashboard.
+With \textbf{CryptoGraph Analytics}, we build this vision into a production-grade platform. Our key contributions include: (1) a dynamic multi-relational graph builder reconstructing a 107-node graph daily across 8 sectors (\texttt{ml/graph/edge\_types.py}); (2) a dual ST-GCN with RGATConv, Causal TCN, and multi-task regression heads; (3) a three-model ensemble (ST-GCN + LSTM + NeuralProphet) arbitrated by a MoA swarm; (4) a Captum IntegratedGradients explainability pipeline; (5) cryptographic backend validation via Inference Attestation and PoP hash chains; and (6) a production 59-route REST/WebSocket deployment with a real-time Next.js~14 dashboard.
 
 % ==========================================================
 \section{Problem Statement and Objectives}
@@ -61,7 +61,7 @@ With \textbf{CryptoGraph Analytics}, we build this vision into a production-grad
 
 \subsection{Problem Statement}
 
-Given $N=107$ cryptocurrency assets, each characterised by a 24-dimensional daily feature vector (price, volume, technical indicators, sentiment, macroeconomics), the task we address is to predict: \textbf{(1)} price direction (down/neutral/up, upgraded to 5-class when confidence $>65\%$); \textbf{(2)} volatility regime (low/medium/high/extreme); and \textbf{(3)} a 7--30 day price trajectory with uncertainty bounds. The 107 assets are strongly \emph{cross-correlated} --- their joint dynamics form a time-varying graph that standard independent models ignore. We designed the platform to sustain sub-second API response latency even during active GNN model inference.
+Given $N=107$ cryptocurrency assets (defined across 8 sectors in \texttt{ml/graph/edge\_types.py}), each characterised by a 24-dimensional daily feature vector (price, volume, technical indicators, sentiment, macroeconomics), the task we address is to predict: \textbf{(1)} price direction (down/neutral/up, upgraded to 5-class when confidence $>65\%$); \textbf{(2)} volatility regime (low/medium/high/extreme); and \textbf{(3)} a 7--30 day price trajectory with uncertainty bounds. The 107 assets are strongly \emph{cross-correlated} --- their joint dynamics form a time-varying graph that standard independent models ignore. We designed the platform to sustain sub-second API response latency even during active GNN model inference.
 
 \subsection{Objectives}
 \begin{enumerate}[noitemsep]
@@ -79,7 +79,7 @@ Given $N=107$ cryptocurrency assets, each characterised by a 24-dimensional dail
 
 \subsection{Overall System Architecture}
 
-In Figure~\ref{fig:arch}, we illustrate the four-layer architecture of our system. External data is ingested by a FastAPI backend that maintains a live Binance WebSocket connection and APScheduler cron jobs for daily macro/sentiment ingestion. Computed features are written to a SQLAlchemy-managed database (SQLite in development, Supabase PostgreSQL in production). Our ML inference pipeline reads feature windows, constructs dynamic graphs, and runs the ensemble forward pass. Results are served to a Next.js~14 frontend via 30 authenticated REST endpoints and four WebSocket streams.
+In Figure~\ref{fig:arch}, we illustrate the four-layer architecture of our system. External data is ingested by a FastAPI backend that maintains a live Binance WebSocket connection and APScheduler cron jobs for daily macro/sentiment ingestion. Computed features are written to a SQLAlchemy-managed database (SQLite in development, Supabase PostgreSQL in production). Our ML inference pipeline reads feature windows, constructs dynamic graphs, and runs the ensemble forward pass. Results are served to a Next.js~14 frontend via 59 REST routes and four WebSocket streams.
 
 \begin{figure}[h]
   \centering
@@ -90,7 +90,7 @@ In Figure~\ref{fig:arch}, we illustrate the four-layer architecture of our syste
 
 \subsection{Data Ingestion and Feature Engineering}
 
-\textbf{Price data.} We run a persistent asyncio loop that connects to the Binance WebSocket \texttt{!miniTicker@arr} stream, caching live tick updates in an in-memory \texttt{TTLCache}. Nightly, our APScheduler triggers a bulk OHLCV fetch for all 107 symbols.
+\textbf{Price data.} We run a persistent asyncio loop that connects to the Binance WebSocket \texttt{!miniTicker@arr} stream, caching live tick updates in an in-memory \texttt{TTLCache}. Nightly, our APScheduler triggers a bulk OHLCV fetch for tracked symbols.
 
 \textbf{Technical indicators} (stored in \texttt{technical\_features}): RSI-14, MACD line, MACD signal, ATR-14, Bollinger Band Width, 1-day log return, 7-day simple return, 7-day rolling volatility, plus five engineered momentum features (\texttt{momentum\_5d}, \texttt{volume\_surge}, \texttt{intraday\_range}, \texttt{price\_acceleration}, \texttt{rsi\_divergence}). The final feature vector we construct has dimension $F=24$.
 
@@ -104,7 +104,7 @@ We implemented the \texttt{DynamicGraphBuilder} to construct a fresh \texttt{tor
 
 \subsection{ST-GCN Model Architecture}
 
-In Figure~\ref{fig:stgcn}, we show the ST-GCN model pipeline. The model has 26,050 trainable parameters. The platform employs a dual-model topology: a three-class classification baseline (\texttt{STGCNModel}) and the flagship regression framework (\texttt{EnterpriseSTGCNModel}).
+In Figure~\ref{fig:stgcn}, we show the ST-GCN model pipeline. The platform employs a dual-model topology: a three-class classification baseline (\texttt{STGCNModel}) with 25,606 trainable parameters ($d=32$) and the flagship regression framework (\texttt{EnterpriseSTGCNModel}) scaling to 99,970 parameters ($d=64$).
 
 \begin{figure}[h]
   \centering
@@ -113,20 +113,24 @@ In Figure~\ref{fig:stgcn}, we show the ST-GCN model pipeline. The model has 26,0
   \label{fig:stgcn}
 \end{figure}
 
-\textbf{1. Linear Projection.} Node features projected to hidden dimension $d=64$:
+\textbf{1. Linear Projection.} Node features projected to hidden dimension $d=32$ (or $d=64$):
 \begin{equation}
-  \mathbf{H}_t^{(0)} = \mathrm{ReLU}\!\left(\mathbf{X}_t \, \mathbf{W}_{\mathrm{proj}}\right), \quad \mathbf{W}_{\mathrm{proj}} \in \mathbb{R}^{24 \times 64}
+  \mathbf{H}_t^{(0)} = \mathrm{ReLU}\!\left(\mathbf{X}_t \, \mathbf{W}_{\mathrm{proj}}\right), \quad \mathbf{W}_{\mathrm{proj}} \in \mathbb{R}^{24 \times 32}
 \end{equation}
 
 \textbf{2. SpatioTemporalGAT.} We stack two RGATConv layers with edge-conditioned attention:
 \begin{equation}
   e_{ij}^{(r)} = \mathbf{a}_r^\top \mathrm{LeakyReLU}(\mathbf{W}_r [\mathbf{h}_i \| \mathbf{h}_j])
 \end{equation}
-We configure Layer~1 with 2 attention heads and an output dimension of 64, and Layer~2 with 2 heads and an output dimension of 64, applying ELU activation and Dropout ($p=0.4$).
+We configure Layer~1 with 2 attention heads and Layer~2 with 2 heads, applying ELU activation and Dropout ($p=0.4$).
 
-\textbf{3. Temporal Encoder.} We process the spatial embeddings ($N \times T \times 64$) using either a Causal TCN (with dilations $[1,2,4,8]$ and kernel 3) or a Temporal Transformer ($d_{\mathrm{model}}=64$, 4 heads, 2 layers) to return $\mathbf{e} \in \mathbb{R}^{N \times 64}$.
+\textbf{3. Temporal Encoder.} We process the spatial embeddings ($N \times T \times d$) using either a Causal TCN (with dilations $[1,2,4,8]$ and kernel 3) or a Temporal Transformer ($d_{\mathrm{model}}=32/64$, 4 heads, 2 layers) to return $\mathbf{e} \in \mathbb{R}^{N \times d}$.
 
-\textbf{4. Multi-Task Heads.} We use two parallel MLP heads to decode the temporal embedding:
+\textbf{4. Multi-Task Heads.} Depending on the topology, the temporal embedding $\mathbf{e}$ feeds multi-task prediction heads:
+\begin{itemize}[noitemsep]
+  \item \textbf{Baseline \texttt{STGCNModel} (\texttt{ml/models/heads.py}):} Uses a 4-head \texttt{MultiTaskHead} comprising a 3-class Direction Classification head ($[\textit{down}, \textit{neutral}, \textit{up}]$), a 4-class Volatility Regime head ($[\textit{low}, \textit{medium}, \textit{high}, \textit{extreme}]$), an auxiliary Return Regression head, and an auxiliary Volatility Regression head.
+  \item \textbf{Flagship \texttt{EnterpriseSTGCNModel} (\texttt{ml/pipelines/training\_pipeline\_enterprise.py}):} Combines a \texttt{SectorPoolingHead} for sector context injection with dual multi-task regression heads:
+\end{itemize}
 \begin{align}
   \hat{\mathbf{y}}_{\mathrm{return}} &= \mathbf{W}_{2}^{\mathrm{ret}}\,\mathrm{ReLU}(\mathbf{W}_{1}^{\mathrm{ret}}\,\mathbf{e}) \in \mathbb{R}^N \\
   \log\boldsymbol{\sigma}^2 &= \mathbf{W}_{2}^{\mathrm{var}}\,\mathrm{ReLU}(\mathbf{W}_{1}^{\mathrm{var}}\,\mathbf{e}) \in \mathbb{R}^N
@@ -137,11 +141,11 @@ We configure Layer~1 with 2 attention heads and an output dimension of 64, and L
 
 We formulate a composite loss function to prevent representation collapse:
 \begin{equation}
-  \mathcal{L}_{\mathrm{total}} = \mathcal{L}_{\mathrm{MSE}} + 3.5\,\mathcal{L}_{\mathrm{VarReg}} + \mathcal{L}_{\mathrm{NLL\_aux}} + w_{\mathrm{dir}}(t)\,\mathcal{L}_{\mathrm{ListMLE}} + w_{\mathrm{rank}}\,\mathcal{L}_{\mathrm{Cosine}}
+  \mathcal{L}_{\mathrm{total}} = \mathcal{L}_{\mathrm{MSE}} + 3.5\,\mathcal{L}_{\mathrm{VarReg}} + 0.15\,\mathcal{L}_{\mathrm{NLL\_aux}} + w_{\mathrm{dir}}(t)\,\mathcal{L}_{\mathrm{ListMLE}} + 0.08\,\mathcal{L}_{\mathrm{Cosine}}
 \end{equation}
-where $\mathcal{L}_{\mathrm{MSE}}$ is the primary masked return loss; $\mathcal{L}_{\mathrm{VarReg}} = (0.40-\text{mean\_pred\_std})^2$ prevents zero-variance collapse; $\mathcal{L}_{\mathrm{NLL\_aux}}$ calibrates the uncertainty head; $\mathcal{L}_{\mathrm{ListMLE}}$ is our warmup-gated ranking loss (weight 0 for $t\le15$, ramping to 1.0 by $t>35$); and $\mathcal{L}_{\mathrm{Cosine}}$ maximises cross-asset Pearson alignment.
+where $\mathcal{L}_{\mathrm{MSE}}$ is the primary masked return loss; $\mathcal{L}_{\mathrm{VarReg}} = (0.40-\text{mean\_pred\_std})^2$ prevents zero-variance collapse; $\mathcal{L}_{\mathrm{NLL\_aux}}$ calibrates the uncertainty head (weight 0.15); $\mathcal{L}_{\mathrm{ListMLE}}$ is our warmup-gated ranking loss (weight 0 for $t\le15$, ramping to 0.30 by $t>35$); and $\mathcal{L}_{\mathrm{Cosine}}$ (weight 0.08) maximises cross-asset Pearson alignment.
 
-We train the model using AdamW (lr $= 10^{-4}$, weight decay $= 10^{-2}$) with a linear warm-up. At epoch $t_{\mathrm{swa}}=40$, we engage Stochastic Weight Averaging (SWA) using a constant \texttt{SWALR} scheduler. We support multi-GPU execution using PyTorch's \texttt{DistributedDataParallel}. We also built an automated Model Quality Gate to check validation Sharpe and test RMSE before database registration, reverting to a deterministic RSI/MACD heuristic fallback if anomalies occur.
+We train the model using AdamW ($\text{lr} = 5 \times 10^{-5}$, $\text{weight decay} = 5 \times 10^{-2}$) with a linear warm-up over 15 epochs (\texttt{TrainingConfig} in \texttt{ml/pipelines/training\_pipeline\_enterprise.py}). At epoch $t_{\mathrm{swa}}=40$, we engage Stochastic Weight Averaging (SWA) using a constant \texttt{SWALR} scheduler. We support multi-GPU execution using PyTorch's \texttt{DistributedDataParallel}. We also built an automated Model Quality Gate to check validation Sharpe and test RMSE before database registration, reverting to a deterministic RSI/MACD heuristic fallback if anomalies occur.
 
 \subsection{Confidence Calibration and Inference}
 
@@ -168,7 +172,7 @@ We also built a Proof-of-Performance hash chain that links daily portfolio state
 
 \subsection{Backend API and Database}
 
-Our FastAPI backend exposes 30 endpoints under \texttt{/api/v1} secured by \texttt{X-API-Key}. Table~\ref{tab:api} summarises the categories. Our database schema comprises nine SQLAlchemy tables. In development, we run SQLite in WAL mode with a 64~MB cache, while in production we use Supabase PostgreSQL.
+Our FastAPI backend exposes 59 routes across 14 router modules secured by \texttt{X-API-Key}. Table~\ref{tab:api} summarises the categories. Our database schema comprises 13 SQLAlchemy models (\texttt{backend/app/db/models.py}), translating to 14 tables in SQLite runtime including Alembic versioning. In development, we run SQLite in WAL mode with a 64~MB cache, while in production we use Supabase PostgreSQL.
 
 \begin{table}[h]
   \centering
@@ -178,18 +182,19 @@ Our FastAPI backend exposes 30 endpoints under \texttt{/api/v1} secured by \text
   \setlength{\tabcolsep}{6pt}
   \begin{tabular}{lcc}
     \toprule
-    Category & Method & Endpoints \\
+    Category & Method & Routes \\
     \midrule
-    Assets \& OHLCV        & REST GET       & $5$ \\
-    Predictions            & REST GET/POST  & $6$ \\
-    Forecast (LSTM+Prophet)& REST GET       & $1$ \\
-    Correlation Graph      & REST GET       & $2$ \\
-    Screener               & REST GET/POST  & $3$ \\
-    Sentiment              & REST GET       & $3$ \\
-    Portfolio Sim.         & REST GET/POST  & $3$ \\
-    AI Explain             & REST GET       & $1$ \\
-    WebSocket Streams      & WS             & $4$ \\
-    System / Health        & REST GET/POST  & $4$ \\
+    Assets \& OHLCV / Coins  & REST GET       & $6$ \\
+    Predictions              & REST GET/POST  & $5$ \\
+    Forecast (LSTM+Prophet)  & REST GET       & $1$ \\
+    Correlations \& Graph    & REST GET       & $4$ \\
+    Screener                 & REST GET/POST  & $3$ \\
+    Sentiment Data           & REST GET       & $5$ \\
+    Portfolio Sim. \& Trades & REST GET/POST  & $6$ \\
+    AI Explain               & REST GET       & $1$ \\
+    WebSocket Streams        & WS / POST      & $5$ \\
+    System, Health \& Risk   & REST GET/POST  & $14$ \\
+    Auth, Settings \& Other  & REST GET/POST  & $9$ \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -200,7 +205,7 @@ Our FastAPI backend exposes 30 endpoints under \texttt{/api/v1} secured by \text
 
 \subsection{Experimental Setup}
 
-\textbf{Dataset.} We collected data for 107 assets spanning Layer~1/2, DeFi, Smart Contracts, Exchange Tokens, Stablecoins, Meme, Privacy, and Infrastructure sectors. The daily OHLCV dataset covers $\approx$2 years ($>174{,}000$ rows, occupying $\approx$99~MB in SQLite). \textbf{Splits:} We split the dataset chronologically into 70\% training, 15\% validation, and 15\% testing. We construct graph sequences of $T=30$ with a 1-day stride, resulting in 28 training batches, 4 validation batches, and 4 test batches per rank. \textbf{Hardware:} We trained the model on a CPU-only environment with 16~GB RAM, using 26,050 total parameters. \textbf{Stack:} Our software stack consists of Python~3.11, PyTorch~2.x, PyTorch Geometric \cite{fey2019pyg}, FastAPI~0.110, Next.js~14, SQLAlchemy~2.x, Captum, and Optuna \cite{akiba2019optuna}.
+\textbf{Dataset.} We collected data for 107 assets spanning Layer~1/2, DeFi, Smart Contracts, Exchange Tokens, Stablecoins, Meme, Privacy, and Infrastructure sectors (defined in \texttt{ml/graph/edge\_types.py}). The full daily OHLCV dataset covers $\approx$2 years ($>174{,}000$ rows across 107 assets; 2,990 rows in the local development SQLite seed). \textbf{Splits:} We split the dataset chronologically into 70\% training, 15\% validation, and 15\% testing. We construct graph sequences of $T=30$ with a 1-day stride, resulting in 28 training batches, 4 validation batches, and 4 test batches per rank. \textbf{Hardware:} We trained the model on a CPU-only environment with 16~GB RAM, using 25,606 parameters ($d=32$) to 99,970 parameters ($d=64$). \textbf{Stack:} Our software stack consists of Python~3.11, PyTorch~2.x, PyTorch Geometric \cite{fey2019pyg}, FastAPI~0.110, Next.js~14, SQLAlchemy~2.x, Captum, and Optuna \cite{akiba2019optuna}.
 
 \subsection{Classification Results}
 
@@ -324,9 +329,9 @@ Negative $R^2$ indicates the ensemble's forecasts do not outperform a na\"ive me
 
 \textbf{Mixture-of-Agents (MoA) consensus layer.} The MoA swarm receives independent signals from the ST-GCN model (direction + confidence), LSTM (7-day trajectory), NeuralProphet (30-day trajectory with uncertainty intervals), RSI, MACD, and Bollinger Band breakout detectors. The system applies weighted majority voting with a dynamically adjusted quorum threshold. When fewer than three agents agree on a direction, the system abstains rather than generating a low-confidence signal. This design choice directly reduces the strategy's trade frequency but limits exposure to noisy market conditions.
 
-\textbf{Static topology and CPU bottleneck.} We noticed that sector and market-cap edge topology changes slowly, which lags during black-swan correlation breakdowns. We believe adaptive thresholding or learnable edge pruning would improve robustness. With 26,050 parameters, the model is small by GNN standards, but the PyG graph-list format imposes significant Python-level CPU overhead; migrating to GPU acceleration would provide a $\sim10\times$ speedup.
+\textbf{Static topology and CPU bottleneck.} We noticed that sector and market-cap edge topology changes slowly, which lags during black-swan correlation breakdowns. We believe adaptive thresholding or learnable edge pruning would improve robustness. With 25,606 to 99,970 parameters, the model is small by GNN standards, but the PyG graph-list format imposes significant Python-level CPU overhead; migrating to GPU acceleration would provide a $\sim10\times$ speedup.
 
-\textbf{API performance characteristics.} Under single-user load, the \texttt{/api/v1/predictions} endpoint responds within $\approx$80~ms using database-cached GNN inference. Since NeuralProphet fits are the dominant latency source ($\approx$1.2~s per asset CPU-bound), they are pre-computed via APScheduler and cached in the \texttt{forecasts} table to avoid blocking. The WebSocket tick stream sustains updates for all 107 assets at $\le$500~ms staleness under normal Binance conditions.
+\textbf{API performance characteristics.} Under single-user load, the \texttt{/api/v1/predictions} endpoint responds within $\approx$80~ms using database-cached GNN inference. Since NeuralProphet fits are the dominant latency source ($\approx$1.2~s per asset CPU-bound), they are pre-computed via APScheduler and cached in the \texttt{forecasts} table to avoid blocking. The WebSocket tick stream sustains updates for tracked assets at $\le$500~ms staleness under normal Binance conditions.
 
 \textbf{Graceful degradation.} We designed every dependency boundary to degrade gracefully: a Binance disconnection falls back to database-cached prices; Groq LLM unavailability falls back to a deterministic mathematical XAI summary; missing FRED macro data is forward-filled; and model registry anomalies revert to the RSI/MACD heuristic fallback to ensure the platform never hard-fails in production.
 
@@ -334,7 +339,7 @@ Negative $R^2$ indicates the ensemble's forecasts do not outperform a na\"ive me
 \section{Conclusion and Future Work}
 % ==========================================================
 
-This project delivered a production-grade cryptocurrency analytics platform integrating dynamic multi-relational graph construction, ST-GCN spatio-temporal modelling, an LSTM+NeuralProphet ensemble, Captum explainability, a MoA LLM reasoning chain, and a 30-endpoint authenticated FastAPI backend with a real-time Next.js~14 dashboard. The platform tracks 107 digital assets simultaneously, maintains a live Binance WebSocket connection, and persists cryptographically attested predictions in a dual SQLite/PostgreSQL store.
+This project delivered a production-grade cryptocurrency analytics platform integrating dynamic multi-relational graph construction, ST-GCN spatio-temporal modelling, an LSTM+NeuralProphet ensemble, Captum explainability, a MoA LLM reasoning chain, and a 59-route authenticated FastAPI backend with a real-time Next.js~14 dashboard. The platform tracks 107 digital assets simultaneously across 8 sectors, maintains a live Binance WebSocket connection, and persists cryptographically attested predictions in a dual SQLite/PostgreSQL store.
 
 Key contributions: (1)~a novel dynamic multi-relational graph with three semantically distinct edge types (sector, market-cap, rolling correlation); (2)~the multi-task \texttt{EnterpriseSTGCNModel} with a warmup-gated composite loss achieving a macro-F1 of 0.361 and calibrated uncertainty estimates; (3)~a production-hardened REST/WebSocket API with graceful degradation at every external dependency boundary; (4)~a full Captum IntegratedGradients attribution pipeline persisted into the database layer; and (5)~a cryptographic Inference Attestation and Proof-of-Performance hash chain ensuring prediction auditability.
 
@@ -369,7 +374,7 @@ The most important lesson is the stark gap between in-sample validation scores (
   \item \textbf{Deployment Config:} Docker Compose (\texttt{docker-compose.yml}) and Render.com manifest (\texttt{render.yaml}) for one-command containerised deployment.
   \item \textbf{ML Artifacts:} Trained ST-GCN weights (\texttt{ml/artifacts/best\_model.pt}), Optuna hyperparameter study DB (\texttt{optuna\_study.db}), validation metrics (\texttt{validation\_metrics.json} / \texttt{.md}), backtest equity curve (\texttt{backtest\_results.png}), global attribution chart (\texttt{attr\_summary.png}), and scale map (\texttt{target\_scale\_map.json}).
   \item \textbf{Enterprise Training Pipeline:} \texttt{ml/train\_enterprise.py} --- full distributed training script with SWA, DDP, Model Quality Gate, and checkpoint registration.
-  \item \textbf{API Spec:} \texttt{API\_SPEC.md} (30 endpoints); \textbf{DB Schema:} \texttt{DATABASE.md} (9 tables, full DDL + ERD); \textbf{Architecture Docs:} \texttt{ARCHITECTURE.md} and \texttt{MODEL\_SPEC.md}.
+  \item \textbf{API Spec:} \texttt{API\_SPEC.md} (59 routes); \textbf{DB Schema:} \texttt{DATABASE.md} (13 SQLAlchemy models / 14 runtime tables, full DDL + ERD); \textbf{Architecture Docs:} \texttt{ARCHITECTURE.md} and \texttt{MODEL\_SPEC.md}.
   \item \textbf{Frontend Dashboard:} Next.js~14 real-time dashboard with live price tickers, per-asset ST-GCN prediction cards (direction, confidence, uncertainty), portfolio simulator, correlation graph visualiser, screener, and LLM-generated explanations panel.
 \end{itemize}
 
