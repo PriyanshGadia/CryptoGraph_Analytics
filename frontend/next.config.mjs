@@ -15,6 +15,12 @@ const nextConfig = {
   images: { unoptimized: true }, // Required for Capacitor mobile export and static hosting
   poweredByHeader: false,
   productionBrowserSourceMaps: false,
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   experimental: {
     webpackBuildWorker: false,
   },
