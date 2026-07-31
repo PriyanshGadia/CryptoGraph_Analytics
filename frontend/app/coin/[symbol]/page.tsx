@@ -180,21 +180,21 @@ export default function CoinDetailPage({ params }: { params: any }) {
   const volumeSeriesRef = useRef<any>(null);
   
   // Data fetching
-  const { data: ohlcvRaw, mutate: mutateOhlcv } = useSWR(`/api/v1/coins/${symbol}/ohlcv?interval=${interval}`, fetcher);
+  const { data: ohlcvRaw, mutate: mutateOhlcv } = useSWR(`/api/v1/coins/${symbol}/ohlcv?interval=${interval}`, fetcher, { refreshInterval: 2000 });
   const ohlcv = Array.isArray(ohlcvRaw) 
     ? ohlcvRaw 
     : (ohlcvRaw && Array.isArray((ohlcvRaw as any).data) ? (ohlcvRaw as any).data : null);
 
-  const { data: historyRaw } = useSWR(`/api/v1/coins/${symbol}/prediction-history`, fetcher);
+  const { data: historyRaw } = useSWR(`/api/v1/coins/${symbol}/prediction-history`, fetcher, { refreshInterval: 3000 });
   const history = historyRaw && typeof historyRaw === 'object' && !('detail' in historyRaw) && !('error' in historyRaw) ? historyRaw : null;
   const predictionHistoryList = Array.isArray(history?.predictions) ? history.predictions : [];
 
-  const { data: correlationsRaw } = useSWR(`/api/v1/coins/${symbol}/correlations`, fetcher);
+  const { data: correlationsRaw } = useSWR(`/api/v1/coins/${symbol}/correlations`, fetcher, { refreshInterval: 5000 });
   const correlationList = Array.isArray(correlationsRaw) ? correlationsRaw : [];
 
-  const { data: sentiment } = useSWR(`/api/v1/coins/${symbol}/sentiment-history`, fetcher);
+  const { data: sentiment } = useSWR(`/api/v1/coins/${symbol}/sentiment-history`, fetcher, { refreshInterval: 5000 });
   
-  const { data: assetsData } = useSWR(`/api/v1/assets`, fetcher);
+  const { data: assetsData } = useSWR(`/api/v1/assets`, fetcher, { refreshInterval: 2000 });
   const asset = assetsData?.find((a: any) => a.symbol.toUpperCase() === symbol);
 
   const handleForceSync = async () => {

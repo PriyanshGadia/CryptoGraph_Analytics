@@ -8,16 +8,42 @@ import { Network, Activity, TrendingUp, TrendingDown, Cpu, BookOpen, CheckCircle
 import Link from "next/link";
 import { BlockchainLoader } from "@/components/BlockchainLoader";
 
+import { useRef } from "react";
+import { useWebSocket } from "@/lib/useWebSocket";
+
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 export default function Dashboard() {
-  const { data: statusData, error: statusError } = useSWR("/api/v1/status", fetcher);
-  const { data: riskData, error: riskError } = useSWR("/api/v1/risk", fetcher);
-  const { data: assets, error: assetsError } = useSWR("/api/v1/assets", fetcher);
-  const { data: graphData, error: graphError } = useSWR("/api/v1/graph/latest", fetcher);
-  const { data: portfolio, error: portfolioError } = useSWR("/api/v1/portfolio", fetcher);
-  const { data: validationMetrics } = useSWR("/api/v1/predictions/validation-metrics", fetcher);
+  const { data: statusData, error: statusError } = useSWR("/api/v1/status", fetcher, { refreshInterval: 3000 });
+  const { data: riskData, error: riskError } = useSWR("/api/v1/risk", fetcher, { refreshInterval: 3000 });
+  const { data: assets, error: assetsError, mutate: mutateAssets } = useSWR("/api/v1/assets", fetcher, { refreshInterval: 3000 });
+  const { data: graphData, error: graphError } = useSWR("/api/v1/graph/latest", fetcher, { refreshInterval: 5000 });
+  const { data: portfolio, error: portfolioError } = useSWR("/api/v1/portfolio", fetcher, { refreshInterval: 5000 });
+  const { data: validationMetrics } = useSWR("/api/v1/predictions/validation-metrics", fetcher, { refreshInterval: 10000 });
   
   const [mounted, setMounted] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
+  const [livePrices, setLiveData] = useState<Record<string, {price: number, volume: number}>>({});
+  
+  const updatesRef = useRef<Record<string, {price: number, volume: number}>>({});
+  
+  useWebSocket("api/v1/stream/screener", {
+    onMessage: (payload) => {
+      if (payload.type === "LIVE_PRICES" && payload.data) {
+        Object.assign(updatesRef.current, payload.data);
+      }
+    },
+  });
+  
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (Object.keys(updatesRef.current).length > 0) {
+        setLiveData(prev => ({...prev, ...updatesRef.current}));
+        updatesRef.current = {};
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     setMounted(true);
@@ -29,7 +55,13 @@ export default function Dashboard() {
                        (graphData || graphError) && 
                        (portfolio || portfolioError);
 
-  const topAssets = assets?.filter((a: any) => a.confidence && a.predicted_direction !== "neutral" && a.predicted_direction !== "recalibrating").sort((a: any, b: any) => b.confidence - a.confidence).slice(0, 4) || [];
+  const rawAssets = (assets && Array.isArray(assets)) ? assets : [];
+  const filteredAssets = rawAssets.filter((a: any) => a.confidence && a.predicted_direction !== "recalibrating");
+  const baseTop = filteredAssets.length > 0 ? filteredAssets : rawAssets;
+  const topAssets = [...baseTop].sort((a: any, b: any) => (b.confidence || 0) - (a.confidence || 0)).slice(0, 4).map((a: any) => {
+    const live = livePrices[a.symbol];
+    return live ? { ...a, current_price: live.price } : a;
+  });
 
   if (!mounted || !showDashboard) {
     return (
@@ -73,7 +105,7 @@ export default function Dashboard() {
                             View Models
                         </button>
                     </Link>
-                    <a href="http://localhost:8000/docs" target="_blank" rel="noreferrer">
+                    <a href={`${BASE_URL}/docs`} target="_blank" rel="noreferrer">
                         <button className="interactive-lift glass-flat rounded-xl px-6 py-3 text-sm font-bold tracking-widest uppercase text-text-muted hover:text-text border border-text/10 hover:bg-text/5 transition-all duration-[var(--dur-hover)] ease-glide flex items-center gap-2">
                             <Cpu size={16}/> API Docs
                         </button>

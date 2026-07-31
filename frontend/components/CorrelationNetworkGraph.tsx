@@ -911,40 +911,6 @@ export default function CorrelationNetworkGraph() {
           </div>
         )}
       </div>
-
-      {/* Smooth Timeline range control */}
-      <div className="relative z-10 w-full glass-2 rounded-xl p-6 border border-text/10 shadow-lg mt-2">
-        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-          <div className="flex items-center gap-3">
-            <span className="w-2.5 h-2.5 rounded-full bg-accent animate-pulse" />
-            <span className="text-xs font-mono font-black tracking-widest text-text uppercase">Swarm Timeline Controller</span>
-          </div>
-          <div className="text-xs font-mono font-bold text-accent bg-accent/10 px-3 py-1 rounded">
-            {sliderVal < 0.5 ? "90D PAST HISTORY" :
-             sliderVal < 1.5 ? "30D PAST HISTORY" :
-             sliderVal < 2.5 ? "LIVE ENGINE STATE" :
-             sliderVal < 3.5 ? "GNN PROJECTED +15D" : "GNN PROJECTED +30D"}
-          </div>
-        </div>
-
-        <input 
-          type="range"
-          min="0"
-          max="4"
-          step="0.01"
-          value={sliderVal}
-          onChange={(e) => setSliderVal(parseFloat(e.target.value))}
-          className="w-full h-2 bg-text/10 rounded-lg appearance-none cursor-pointer accent-accent focus:outline-none"
-        />
-
-        <div className="flex justify-between text-[10px] font-mono text-text-muted mt-3 uppercase tracking-wider font-bold">
-          <span>90D Past</span>
-          <span>30D Past</span>
-          <span className="text-accent font-black">Live Engine</span>
-          <span>Projected +15D</span>
-          <span>Projected +30D</span>
-        </div>
-      </div>
     </div>
   );
 }

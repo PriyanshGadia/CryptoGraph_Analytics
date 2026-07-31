@@ -16,13 +16,15 @@ const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export default function MarketPage() {
   const { data: initialAssets, error, isLoading, mutate } = useSWR<any[]>("/api/v1/screener", fetcher, {
-    revalidateOnFocus: false,
-    dedupingInterval: 30000,
+    revalidateOnFocus: true,
+    refreshInterval: 2000,
+    dedupingInterval: 1000,
   });
   
   const { data: riskData } = useSWR<RiskData>("/api/v1/risk", fetcher, {
-    revalidateOnFocus: false,
-    dedupingInterval: 30000,
+    revalidateOnFocus: true,
+    refreshInterval: 2000,
+    dedupingInterval: 1000,
   });
 
   const [assets, setAssets] = useState<Asset[]>([]);

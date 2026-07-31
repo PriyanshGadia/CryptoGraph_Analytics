@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "scripts": {
     "dev": "next dev --webpack",
-    "build": "NODE_OPTIONS='--max-old-space-size=4096' next build",
+    "build": "npx cross-env NODE_OPTIONS=--max-old-space-size=4096 next build",
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run",
