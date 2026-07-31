@@ -11,12 +11,12 @@ import * as d3 from "d3-force";
 import * as THREE from "three";
 import { useRouter } from "next/navigation";
 
-const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
+const ForceGraph2D = dynamic(() => import("react-force-graph-2d").then((mod) => mod.default || mod), {
   ssr: false,
   loading: () => <Skeleton className="w-full h-[600px] shape-squircle" />,
 });
 
-const ForceGraph3D = dynamic(() => import("react-force-graph-3d"), {
+const ForceGraph3D = dynamic(() => import("react-force-graph-3d").then((mod) => mod.default || mod), {
   ssr: false,
   loading: () => <Skeleton className="w-full h-[600px] shape-squircle" />,
 });
@@ -191,8 +191,8 @@ export default function CorrelationNetworkGraph() {
   const handleToggle3D = useCallback(() => {
     setGraphDataState(prev => ({
       nodes: prev.nodes.map((n: any) => {
-        const { fx, fy, fz, ...rest } = n;
-        return rest;
+        const { fx, fy, fz, x, y, z, vx, vy, vz, ...rest } = n;
+        return { ...rest };
       }),
       links: prev.links.map((l: any) => ({
         ...l,
@@ -516,17 +516,12 @@ export default function CorrelationNetworkGraph() {
 
   const linkColor = useCallback((link: any) => {
     const w = link.weight ?? 0;
-    const absWeight = Math.abs(w);
     if (isLight) {
       // High contrast colors for Bright / Light Mode
-      const color = w >= 0 ? "#047857" : "#dc2626"; // Dark Emerald (#047857) and Dark Crimson Red (#dc2626)
-      const opacity = Math.min(1.0, Math.max(0.78, absWeight * 2.5));
-      return `rgba(${hexToRgb(color)}, ${opacity})`;
+      return w >= 0 ? "#047857" : "#dc2626"; // Dark Emerald (#047857) and Dark Crimson Red (#dc2626)
     } else {
       // Electric Neon colors for Dark Mode
-      const color = w >= 0 ? "#00ff66" : "#ff0055"; // Electric Lime and Electric Red
-      const opacity = Math.min(1.0, Math.max(0.82, absWeight * 2.5));
-      return `rgba(${hexToRgb(color)}, ${opacity})`;
+      return w >= 0 ? "#00ff66" : "#ff0055"; // Electric Lime (#00ff66) and Electric Red (#ff0055)
     }
   }, [isLight]);
 
