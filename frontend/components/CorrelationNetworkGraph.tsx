@@ -2,7 +2,7 @@
 import useSWR from "swr";
 import { fetcher, GraphResponse } from "@/lib/api";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { RefreshCcw, ZoomIn, Activity } from "lucide-react";
+import { RefreshCcw, ZoomIn, Activity, Sliders } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useMemo, useRef, useState, useEffect, useCallback } from "react";
 import { useChartPalette } from "@/lib/useChartPalette";
@@ -364,30 +364,79 @@ export default function CorrelationNetworkGraph() {
     setRefreshTrigger(prev => prev + 1);
   }, [sliderVal, histData, hist30Data, liveData, proj15Data, proj30Data, palette]);
 
+  const [spreadMode, setSpreadMode] = useState<"compact" | "normal" | "expanded">("normal");
+  const isLight = resolvedTheme === "light";
+
+  const loadCoinIcon = useCallback((symbol: string, onLoaded: (img: HTMLImageElement) => void) => {
+    if (failedIcons.current.has(symbol)) return;
+    const existing = iconImageMap.current.get(symbol);
+    if (existing && existing.complete && existing.naturalWidth !== 0) {
+      onLoaded(existing);
+      return;
+    }
+
+    const sym = symbol.toLowerCase();
+    const urls = [
+      `https://assets.coincap.io/assets/icons/${sym}@2x.png`,
+      `https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/${sym}.png`,
+      `https://cdn.jsdelivr.net/gh/atomiclabs/cryptocurrency-icons@1a63530be6e374711a8554f31b17e4cb92c25fa5/svg/color/${sym}.svg`
+    ];
+
+    let urlIdx = 0;
+    const tryNext = () => {
+      if (urlIdx >= urls.length) {
+        failedIcons.current.add(symbol);
+        setRefreshTrigger(prev => prev + 1);
+        return;
+      }
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.src = urls[urlIdx++];
+      img.onload = () => {
+        iconImageMap.current.set(symbol, img);
+        onLoaded(img);
+        setRefreshTrigger(prev => prev + 1);
+      };
+      img.onerror = () => tryNext();
+    };
+
+    tryNext();
+  }, []);
+
   const applyForces = useCallback((graphInstance: any) => {
     if (!graphInstance) return;
     try {
+      const isAll = minCorrelationThreshold <= 0;
+      let baseDistance = spreadMode === "compact" ? 120 : spreadMode === "expanded" ? 380 : 210;
+      let baseCharge = spreadMode === "compact" ? -1100 : spreadMode === "expanded" ? -5500 : -2400;
+
+      // When showing ALL links (100+), scale down distance & charge so 3D graph stays bounded and dense
+      if (isAll) {
+        baseDistance = Math.round(baseDistance * 0.58);
+        baseCharge = Math.round(baseCharge * 0.45);
+      }
+
       const linkForce = graphInstance.d3Force?.('link');
       if (linkForce) {
         linkForce
-          .strength((link: any) => (Math.abs(link.weight) || 0.5) * 0.9)
-          .distance(450);
+          .strength((link: any) => (Math.abs(link.weight) || 0.5) * 0.85)
+          .distance(baseDistance);
       }
       const chargeForce = graphInstance.d3Force?.('charge');
       if (chargeForce) {
-        chargeForce.strength(-7000);
+        chargeForce.strength(baseCharge);
       }
       const collideForce = graphInstance.d3Force?.('collision');
       if (collideForce) {
-        collideForce.radius((node: any) => (node.radius || 6) * 3.5 + 32);
+        collideForce.radius((node: any) => (node.radius || 6) * 2.5 + 16);
       } else if (d3.forceCollide) {
-        graphInstance.d3Force?.('collision', d3.forceCollide().radius((node: any) => (node.radius || 6) * 3.5 + 32));
+        graphInstance.d3Force?.('collision', d3.forceCollide().radius((node: any) => (node.radius || 6) * 2.5 + 16));
       }
       graphInstance.d3ReheatSimulation?.();
     } catch (err) {
       console.warn("Could not apply forces:", err);
     }
-  }, []);
+  }, [minCorrelationThreshold, spreadMode]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -398,7 +447,7 @@ export default function CorrelationNetworkGraph() {
       }
     }, 100);
     return () => clearTimeout(timer);
-  }, [is3D, isLoading, minCorrelationThreshold, applyForces]);
+  }, [is3D, isLoading, minCorrelationThreshold, spreadMode, applyForces]);
 
   useEffect(() => {
     if (graphDataState.nodes.length > 0) {
@@ -444,14 +493,11 @@ export default function CorrelationNetworkGraph() {
     const sphereMat = new THREE.MeshBasicMaterial({
       color: node.color || palette.muted,
       transparent: true,
-      opacity: 0.22,
+      opacity: 0.28,
       depthWrite: false
     });
     const sphereMesh = new THREE.Mesh(sphereGeom, sphereMat);
     sphereMesh.scale.setScalar(radius / 4);
-
-    const iconUrl = `https://cdn.jsdelivr.net/gh/atomiclabs/cryptocurrency-icons@1a63530be6e374711a8554f31b17e4cb92c25fa5/svg/color/${node.symbol.toLowerCase()}.svg`;
-    const isKnownFailed = failedIcons.current.has(node.symbol);
 
     const canvas = document.createElement("canvas");
     canvas.width = 64;
@@ -467,7 +513,7 @@ export default function CorrelationNetworkGraph() {
       ctx.fillStyle = grad;
       ctx.fill();
       ctx.strokeStyle = node.color || palette.muted;
-      ctx.lineWidth = 2.0;
+      ctx.lineWidth = 2.5;
       ctx.stroke();
       ctx.font = 'bold 16px sans-serif';
       ctx.fillStyle = '#ffffff';
@@ -477,19 +523,11 @@ export default function CorrelationNetworkGraph() {
     }
     const logoTex = new THREE.CanvasTexture(canvas);
 
-    if (!isKnownFailed) {
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      img.src = iconUrl;
-      img.onload = () => {
-        (logoTex as any).image = img;
-        logoTex.needsUpdate = true;
-        graphRef.current?.refresh?.();
-      };
-      img.onerror = () => {
-        failedIcons.current.add(node.symbol);
-      };
-    }
+    loadCoinIcon(node.symbol, (img) => {
+      (logoTex as any).image = img;
+      logoTex.needsUpdate = true;
+      graphRef.current?.refresh?.();
+    });
 
     const logoMat = new THREE.SpriteMaterial({ 
       map: logoTex, 
@@ -507,11 +545,11 @@ export default function CorrelationNetworkGraph() {
     const tCtx = textCanvas.getContext('2d');
     if (tCtx) {
       tCtx.clearRect(0, 0, 128, 128);
-      tCtx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+      tCtx.fillStyle = 'rgba(15, 23, 42, 0.92)';
       tCtx.beginPath();
       tCtx.roundRect(10, 36, 108, 56, 8);
       tCtx.fill();
-      tCtx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+      tCtx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
       tCtx.lineWidth = 2;
       tCtx.stroke();
 
@@ -540,20 +578,36 @@ export default function CorrelationNetworkGraph() {
     
     nodeThreeObjsMap.current.set(node.symbol, group);
     return group;
-  }, [palette]);
+  }, [palette, loadCoinIcon]);
 
   const linkColor = useCallback((link: any) => {
     const w = link.weight ?? 0;
     const absWeight = Math.abs(w);
-    const color = w >= 0 ? "#00ff66" : "#ff0033";
-    const opacity = w < 0 ? Math.min(1.0, Math.max(0.90, absWeight * 3.0)) : Math.min(1.0, Math.max(0.60, absWeight * 2.0));
-    return `rgba(${hexToRgb(color)}, ${opacity})`;
-  }, []);
+    if (isLight) {
+      // High contrast colors for Bright / Light Mode
+      const color = w >= 0 ? "#047857" : "#dc2626"; // Dark Emerald (#047857) and Dark Crimson Red (#dc2626)
+      const opacity = Math.min(1.0, Math.max(0.78, absWeight * 2.5));
+      return `rgba(${hexToRgb(color)}, ${opacity})`;
+    } else {
+      // Electric Neon colors for Dark Mode
+      const color = w >= 0 ? "#00ff66" : "#ff0055"; // Electric Lime and Electric Red
+      const opacity = Math.min(1.0, Math.max(0.82, absWeight * 2.5));
+      return `rgba(${hexToRgb(color)}, ${opacity})`;
+    }
+  }, [isLight]);
+
+  const linkParticleColor = useCallback((link: any) => {
+    const w = link.weight ?? 0;
+    if (isLight) {
+      return w >= 0 ? "rgba(4, 120, 87, 1.0)" : "rgba(220, 38, 38, 1.0)";
+    }
+    return w >= 0 ? "rgba(0, 255, 102, 1.0)" : "rgba(255, 0, 85, 1.0)";
+  }, [isLight]);
 
   const linkWidth = useCallback((link: any) => {
     const w = link.weight ?? 0;
     const absWeight = Math.abs(w);
-    return w < 0 ? 1.8 + absWeight * 4.0 : 0.8 + absWeight * 2.2;
+    return w < 0 ? 2.5 + absWeight * 4.5 : 1.5 + absWeight * 3.0;
   }, []);
 
   if (!mounted) {
@@ -603,7 +657,7 @@ export default function CorrelationNetworkGraph() {
           />
         </div>
 
-        <div className="flex flex-wrap items-center gap-4 bg-surface/30 p-2 rounded-lg border border-text/10 backdrop-blur-md">
+        <div className="flex flex-wrap items-center gap-3 bg-surface/30 p-2 rounded-lg border border-text/10 backdrop-blur-md">
           {/* Min correlation edge threshold filter */}
           <div className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono rounded border border-text/10 bg-text/5 text-text">
             <span className="text-text-muted font-bold">Min |r|:</span>
@@ -620,19 +674,31 @@ export default function CorrelationNetworkGraph() {
             </select>
           </div>
 
+          {/* Spread Control Button */}
+          <button 
+            onClick={() => {
+              setSpreadMode(prev => prev === "compact" ? "normal" : prev === "normal" ? "expanded" : "compact");
+            }} 
+            className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-wider rounded border border-text/10 bg-text/5 hover:bg-text/15 text-text transition-all"
+            title="Toggle Graph Force Spread (Compact / Normal / Expanded)"
+          >
+            <Sliders size={14} className="text-accent" />
+            Spread: <span className="text-accent capitalize font-black">{spreadMode}</span>
+          </button>
+
           {/* 2D/3D switcher */}
           <button 
             onClick={handleToggle3D} 
-            className="flex items-center gap-2 px-4 py-2 text-xs font-mono font-bold uppercase tracking-wider rounded border border-text/10 bg-text/5 hover:bg-text/15 text-text transition-all"
+            className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-wider rounded border border-text/10 bg-text/5 hover:bg-text/15 text-text transition-all"
           >
             <Activity size={14} className="text-accent" />
-            Switch to {is3D ? "2D Graph" : "3D Graph"}
+            {is3D ? "2D Graph" : "3D Graph"}
           </button>
           
           <button onClick={() => {
             if (is3D) graphRef.current?.zoomToFit(400, 40);
             else graphRef2D.current?.zoomToFit(400, 40);
-          }} className="flex items-center gap-2 px-4 py-2 text-xs font-mono font-bold uppercase tracking-wider rounded border border-text/10 bg-text/5 hover:bg-text/15 text-text transition-all">
+          }} className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-wider rounded border border-text/10 bg-text/5 hover:bg-text/15 text-text transition-all">
             <ZoomIn size={14} /> Center Graph
           </button>
         </div>
@@ -654,10 +720,7 @@ export default function CorrelationNetworkGraph() {
             linkWidth={linkWidth}
             linkResolution={6}
             linkDirectionalParticles={(link: any) => ((link.weight ?? 0) < 0 ? 6 : 4)}
-            linkDirectionalParticleColor={(link: any) => {
-              const w = link.weight ?? 0;
-              return w < 0 ? "rgba(255, 0, 51, 1.0)" : "rgba(0, 255, 102, 1.0)";
-            }}
+            linkDirectionalParticleColor={linkParticleColor}
             linkDirectionalParticleWidth={(link: any) => {
               const w = link.weight ?? 0;
               return w < 0 ? Math.max(1.2, linkWidth(link) * 0.45) : Math.max(0.4, linkWidth(link) * 0.25);
@@ -711,22 +774,11 @@ export default function CorrelationNetworkGraph() {
               const isKnownFailed = failedIcons.current.has(node.symbol);
               let img = iconImageMap.current.get(node.symbol);
               if (!img && !isKnownFailed) {
-                img = new Image();
-                img.crossOrigin = "anonymous";
-                img.src = `https://cdn.jsdelivr.net/gh/atomiclabs/cryptocurrency-icons@1a63530be6e374711a8554f31b17e4cb92c25fa5/svg/color/${node.symbol.toLowerCase()}.svg`;
-                img.onload = () => {
-                  node.__imgLoaded = true;
-                  setRefreshTrigger(prev => prev + 1);
-                };
-                img.onerror = () => {
-                  node.__imgFailed = true;
-                  failedIcons.current.add(node.symbol);
-                };
-                iconImageMap.current.set(node.symbol, img);
+                loadCoinIcon(node.symbol, () => {});
               }
               
               const logoRadius = radius * 1.0;
-              if (img && img.complete && img.naturalWidth !== 0 && !node.__imgFailed && !isKnownFailed) {
+              if (img && img.complete && img.naturalWidth !== 0 && !isKnownFailed) {
                 ctx.save();
                 ctx.beginPath();
                 ctx.arc(node.x, node.y, logoRadius, 0, 2 * Math.PI, false);
@@ -790,10 +842,7 @@ export default function CorrelationNetworkGraph() {
             linkColor={linkColor}
             linkWidth={linkWidth}
             linkDirectionalParticles={(link: any) => ((link.weight ?? 0) < 0 ? 6 : 4)}
-            linkDirectionalParticleColor={(link: any) => {
-              const w = link.weight ?? 0;
-              return w < 0 ? "rgba(255, 0, 51, 1.0)" : "rgba(0, 255, 102, 1.0)";
-            }}
+            linkDirectionalParticleColor={linkParticleColor}
             linkDirectionalParticleWidth={(link: any) => {
               const w = link.weight ?? 0;
               return w < 0 ? Math.max(1.2, linkWidth(link) * 0.45) : Math.max(0.4, linkWidth(link) * 0.25);
