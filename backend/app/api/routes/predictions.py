@@ -106,7 +106,7 @@ async def get_validation_metrics():
 
 @router.get("", response_model=list[Prediction])
 async def get_predictions(
-    limit: int = 50,
+    limit: int = 250,
     days: int = 7,
     direction: str = "all",           # all | up | down | neutral
     min_confidence: float = 0.0,

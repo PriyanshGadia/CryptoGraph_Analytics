@@ -156,7 +156,7 @@ async def get_forecast(request: Request, symbol: str, db: Session = Depends(get_
     m1_snip = f"Conf: {m1_val}%"
     m1_steps = (
         "**Spatial-Temporal Graph Convolutional Network (ST-GCN)**\n\n"
-        "**Source:** PyTorch Geometric (Top 50 Crypto Correlation Matrix)\n\n"
+        "**Source:** PyTorch Geometric (Multi-Asset Crypto Correlation Matrix)\n\n"
         "$$\\mathcal{G} = (V, E)$$\n\n"
         "1. **Graph Construction**: Constructs a topological graph where nodes $V$ are connected assets and edges $E$ are cross-asset correlations.\n"
         "2. **Spatial Convolution**: Aggregates features from neighboring nodes to capture market-wide structural dependencies.\n"

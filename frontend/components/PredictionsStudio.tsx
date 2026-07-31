@@ -122,7 +122,7 @@ export default function PredictionsStudio() {
   const [modalContent, setModalContent] = useState({ title: '', steps: '' });
 
   const { data: predictions } = useSWR(
-    `/api/v1/predictions?limit=100`,
+    `/api/v1/predictions?limit=250`,
     fetcher,
     { revalidateOnFocus: false, refreshInterval: 60000 }
   );

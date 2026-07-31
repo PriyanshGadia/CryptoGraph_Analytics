@@ -13,14 +13,28 @@ router = APIRouter(prefix="/stream", tags=["stream"])
 def get_refresh_event() -> asyncio.Event:
     return ws_manager.prediction_refresh_event
 
-SYMBOLS = [
-    "BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "AVAX", "LINK", "DOT",
-    "MATIC", "UNI", "ATOM", "LTC", "BCH", "NEAR", "APT", "ICP", "STX", "FIL",
-    "AR", "HBAR", "VET", "MKR", "INJ", "GRT", "OP", "THETA",
-    "LDO", "FET", "FTM", "TAO", "TIA", "SEI", "SUI", "PYTH", "JUP", "GALA",
-    "AAVE", "ALGO", "SAND", "EGLD", "QNT", "SNX", "AXS", "CHZ", "MANA", "MINA",
-    "DYDX"
-]
+try:
+    from ml.scripts.seed_assets_top100 import TOP_100_SYMBOLS
+    SYMBOLS = TOP_100_SYMBOLS
+except Exception:
+    SYMBOLS = [
+        "BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "AVAX", "DOT", "TRX", "TON",
+        "NEAR", "ATOM", "APT", "SUI", "HBAR", "ICP", "ALGO", "XLM", "SEI", "TIA", "XMR",
+        "ARB", "OP", "POL", "LRC", "LSK", "OMG", "ONT",
+        "LINK", "UNI", "AAVE", "MKR", "LDO", "CRV", "SNX",
+        "KAVA", "SUSHI", "ZRX", "BAL", "YFI", "KNC", "ENS",
+        "CRO", "OKB", "LEO", "QTUM",
+        "DOGE", "SHIB", "WIF", "BONK", "CAKE", "ANKR", "BAT", "RSR", "OCEAN",
+        "WAVES", "ZIL", "REN",
+        "FET", "RENDER", "AKT", "GRT", "HNT", "STORJ", "BAND", "CELR",
+        "USDT", "USDC", "DAI", "SKL", "NMR",
+        "FIL", "AR", "PYTH", "INJ", "QNT",
+        "LTC", "BCH", "ETC", "ZEC", "XTZ", "EOS", "DASH",
+        "CORE", "ORDI", "ONDO",
+        "SAND", "MANA", "IOTA", "FXS",
+        "JUP", "RAY",
+        "DYDX", "EGLD", "FLOW", "FTM", "KAS", "RUNE", "THETA", "VET"
+    ]
 
 
 @router.post("/broadcast")
