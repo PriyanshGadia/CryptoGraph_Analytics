@@ -583,6 +583,26 @@ export default function CorrelationNetworkGraph() {
           <p className="text-text-muted font-light tracking-wide mt-2">Spatial-Temporal Graph — {graphDataState.nodes.length} assets, {graphDataState.links.length} connections</p>
         </div>
 
+        {/* Timeline Horizon Projection Slider */}
+        <div className="flex flex-col gap-1.5 px-4 py-2 bg-surface/50 rounded-lg border border-accent/20 backdrop-blur-md min-w-[280px]">
+          <div className="flex justify-between items-center text-[10px] font-mono font-bold uppercase tracking-widest text-text-muted">
+            <span className={sliderVal < 1.5 ? "text-accent" : ""}>Past (-90D)</span>
+            <span className="text-accent font-black bg-accent/10 px-2 py-0.5 rounded border border-accent/30">
+              {sliderVal < 0.8 ? "Historical (-90D)" : sliderVal < 1.8 ? "Historical (-30D)" : sliderVal < 2.5 ? "Present (Live)" : sliderVal < 3.5 ? "Projected (+15D)" : "Projected (+30D)"}
+            </span>
+            <span className={sliderVal > 2.5 ? "text-accent" : ""}>Future (+30D)</span>
+          </div>
+          <input
+            type="range"
+            min="0"
+            max="4"
+            step="0.05"
+            value={sliderVal}
+            onChange={(e) => setSliderVal(parseFloat(e.target.value))}
+            className="w-full h-1.5 accent-accent bg-text/10 rounded-lg appearance-none cursor-pointer"
+          />
+        </div>
+
         <div className="flex flex-wrap items-center gap-4 bg-surface/30 p-2 rounded-lg border border-text/10 backdrop-blur-md">
           {/* Min correlation edge threshold filter */}
           <div className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono rounded border border-text/10 bg-text/5 text-text">

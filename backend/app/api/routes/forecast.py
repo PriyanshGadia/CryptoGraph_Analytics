@@ -143,6 +143,34 @@ async def get_forecast(request: Request, symbol: str, db: Session = Depends(get_
         ml_forecast_cache[cache_key_local] = forecast
         redis_set(cache_key_redis, forecast, ttl_seconds=3600)
 
+        # Upsert into forecasts table for graph projected correlation calculations
+        try:
+            existing_f = db.query(SQLAForecast).filter(SQLAForecast.asset_id == asset_id).first()
+            if existing_f:
+                existing_f.forecast_prices = f_prices
+                existing_f.lower_bound = l_bound
+                existing_f.upper_bound = u_bound
+                existing_f.lstm_forecast = lstm_f
+                existing_f.prophet_forecast = prophet_f
+                existing_f.updated_at = datetime.now(timezone.utc)
+            else:
+                new_f = SQLAForecast(
+                    asset_id=asset_id,
+                    target_date=dates.iloc[-1] + timedelta(days=30),
+                    forecast_prices=f_prices,
+                    lower_bound=l_bound,
+                    upper_bound=u_bound,
+                    lstm_forecast=lstm_f,
+                    prophet_forecast=prophet_f,
+                    model_version="stgcn-v1.0"
+                )
+                db.add(new_f)
+            db.commit()
+        except Exception as fe:
+            db.rollback()
+            import logging
+            logging.getLogger(__name__).warning(f"Failed to persist forecast to DB: {fe}")
+
     
     # 5. Extract Deep Learning Metrics
     lstm_forecast_arr = forecast.get("lstm_forecast", forecast["forecast_prices"])

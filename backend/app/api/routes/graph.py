@@ -108,6 +108,24 @@ def _compute_correlation_graph(db: Session, top_n_edges: int = 100, mode: str = 
         for p in pos_rem[n_pos : n_pos + (top_n_edges - len(canonical_edge_pairs))]:
             canonical_edge_pairs.append((p[0], p[1]))
 
+    # Load asset metadata & latest predictions
+    assets = db.query(Asset).all()
+    asset_map = {a.id: a for a in assets}
+
+    subq = db.query(
+        Prediction.asset_id,
+        func.max(Prediction.predicted_at).label("max_at")
+    ).group_by(Prediction.asset_id).subquery()
+
+    latest_preds = db.query(Prediction).join(
+        subq,
+        (Prediction.asset_id == subq.c.asset_id) & (Prediction.predicted_at == subq.c.max_at)
+    ).all()
+    pred_map = {}
+    for p in latest_preds:
+        if p.asset_id not in pred_map:
+            pred_map[p.asset_id] = p
+
     # 2. Compute mode-specific correlation matrix
     target_corr = live_corr.copy()
 
@@ -128,8 +146,8 @@ def _compute_correlation_graph(db: Session, top_n_edges: int = 100, mode: str = 
     elif mode.startswith("projected"):
         import json
         forecast_rows = db.query(SQLAForecast).all()
+        proj_data = {}
         if forecast_rows:
-            proj_data = {}
             for f in forecast_rows:
                 prices = f.forecast_prices
                 if isinstance(prices, str):
@@ -141,36 +159,30 @@ def _compute_correlation_graph(db: Session, top_n_edges: int = 100, mode: str = 
                     limit = 15 if mode == "projected_15" else 30
                     proj_data[f.asset_id] = prices[:limit]
 
-            if len(proj_data) >= 2:
-                df_proj = pd.DataFrame(proj_data)
-                df_returns = df_proj.pct_change().dropna()
-                if len(df_returns) >= 2:
-                    p_proj_corr = df_returns.corr(method="spearman")
-                    for col in target_corr.columns:
-                        for row_idx in target_corr.index:
-                            if col in p_proj_corr.columns and row_idx in p_proj_corr.index:
-                                val = p_proj_corr.loc[row_idx, col]
-                                if not np.isnan(val) and val != 0.0:
-                                    target_corr.loc[row_idx, col] = float(val)
+        # For assets without database forecast rows, project trajectories using ST-GCN model predictions
+        for aid in top_asset_ids:
+            if aid not in proj_data:
+                pred = pred_map.get(aid)
+                dir_val = pred.direction if pred else "neutral"
+                conf = (pred.confidence if pred else 0.5)
+                drift = 0.003 * conf if "up" in dir_val else (-0.003 * conf if "down" in dir_val else 0.0)
+                base_returns = pivot_live[aid].values if aid in pivot_live.columns else np.zeros(30)
+                if len(base_returns) < 30:
+                    base_returns = np.pad(base_returns, (0, max(0, 30 - len(base_returns))), mode='edge')
+                proj_returns = base_returns[:30] + drift
+                proj_data[aid] = list(np.cumsum(proj_returns))
 
-    # Load asset metadata
-    assets = db.query(Asset).all()
-    asset_map = {a.id: a for a in assets}
-
-    # Get latest predictions
-    subq = db.query(
-        Prediction.asset_id,
-        func.max(Prediction.predicted_at).label("max_at")
-    ).group_by(Prediction.asset_id).subquery()
-
-    latest_preds = db.query(Prediction).join(
-        subq,
-        (Prediction.asset_id == subq.c.asset_id) & (Prediction.predicted_at == subq.c.max_at)
-    ).all()
-    pred_map = {}
-    for p in latest_preds:
-        if p.asset_id not in pred_map:
-            pred_map[p.asset_id] = p
+        if len(proj_data) >= 2:
+            df_proj = pd.DataFrame(proj_data)
+            df_returns = df_proj.pct_change().dropna()
+            if len(df_returns) >= 2:
+                p_proj_corr = df_returns.corr(method="spearman").fillna(0.0)
+                for col in target_corr.columns:
+                    for row_idx in target_corr.index:
+                        if col in p_proj_corr.columns and row_idx in p_proj_corr.index:
+                            val = p_proj_corr.loc[row_idx, col]
+                            if not np.isnan(val):
+                                target_corr.loc[row_idx, col] = float(val)
 
     # Build nodes
     nodes_dict = {}
