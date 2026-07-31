@@ -2,7 +2,6 @@ import asyncio
 import json
 import time
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request
-from typing import List
 
 from app.core.streams.binance_ws import get_global_market_state
 from app.api.deps import verify_ws_api_key

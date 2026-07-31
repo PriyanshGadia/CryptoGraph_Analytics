@@ -156,6 +156,25 @@ export default function CorrelationNetworkGraph() {
 
   // Persistent cache for ThreeJS objects to prevent violent recreations
   const nodeThreeObjsMap = useRef<Map<string, THREE.Group>>(new Map());
+  const iconImageMap = useRef<Map<string, HTMLImageElement>>(new Map());
+
+  // Memory cleanup helper for ThreeJS groups
+  const disposeThreeGroup = (group: THREE.Group) => {
+    group.traverse((child: any) => {
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) {
+        if (Array.isArray(child.material)) {
+          child.material.forEach((m: any) => {
+            if (m.map) m.map.dispose();
+            m.dispose();
+          });
+        } else {
+          if (child.material.map) child.material.map.dispose();
+          child.material.dispose();
+        }
+      }
+    });
+  };
 
   const handleToggle3D = useCallback(() => {
     setGraphDataState(prev => ({
@@ -170,8 +189,17 @@ export default function CorrelationNetworkGraph() {
       }))
     }));
     hasZoomed.current = false;
+    nodeThreeObjsMap.current.forEach((group) => disposeThreeGroup(group));
     nodeThreeObjsMap.current.clear();
     setIs3D(prev => !prev);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      nodeThreeObjsMap.current.forEach((group) => disposeThreeGroup(group));
+      nodeThreeObjsMap.current.clear();
+      iconImageMap.current.clear();
+    };
   }, []);
 
   useEffect(() => {
@@ -660,22 +688,21 @@ export default function CorrelationNetworkGraph() {
               ctx.fill();
               ctx.restore();
               
-              const imgId = `img-logo-${node.symbol}`;
               const isKnownFailed = failedIcons.current.has(node.symbol);
-              let img = document.getElementById(imgId) as HTMLImageElement;
+              let img = iconImageMap.current.get(node.symbol);
               if (!img && !isKnownFailed) {
-                img = document.createElement("img");
-                img.id = imgId;
+                img = new Image();
+                img.crossOrigin = "anonymous";
                 img.src = `https://cdn.jsdelivr.net/gh/atomiclabs/cryptocurrency-icons@1a63530be6e374711a8554f31b17e4cb92c25fa5/svg/color/${node.symbol.toLowerCase()}.svg`;
-                img.style.display = "none";
                 img.onload = () => {
                   node.__imgLoaded = true;
+                  setRefreshTrigger(prev => prev + 1);
                 };
                 img.onerror = () => {
                   node.__imgFailed = true;
                   failedIcons.current.add(node.symbol);
                 };
-                document.body.appendChild(img);
+                iconImageMap.current.set(node.symbol, img);
               }
               
               const logoRadius = radius * 1.0;

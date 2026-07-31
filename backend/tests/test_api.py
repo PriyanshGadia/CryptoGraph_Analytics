@@ -1,5 +1,11 @@
 import os
+import sys
 from fastapi.testclient import TestClient
+
+# Ensure backend root is in sys.path
+backend_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if backend_path not in sys.path:
+    sys.path.insert(0, backend_path)
 
 # Set API_KEY for tests so it doesn't fail with 500
 os.environ["API_KEY"] = "test_api_key"

@@ -43,6 +43,8 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 20.18.0
+      - key: NODE_OPTIONS
+        value: "--max-old-space-size=320"
       - key: NEXT_PUBLIC_API_URL
         fromService:
           name: cryptograph-backend

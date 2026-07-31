@@ -14,11 +14,19 @@ const nextConfig = {
   output: process.env.BUILD_MOBILE === "true" ? "export" : "standalone",
   images: { unoptimized: true }, // Required for Capacitor mobile export and static hosting
   poweredByHeader: false,
+  productionBrowserSourceMaps: false,
+  experimental: {
+    webpackBuildWorker: false,
+  },
   turbopack: {
     resolveAlias: {
       "@/components": path.join(__dirname, "components"),
       "@/lib": path.join(__dirname, "lib"),
     },
+  },
+  webpack: (config) => {
+    config.devtool = false;
+    return config;
   },
   async headers() {
     return [
