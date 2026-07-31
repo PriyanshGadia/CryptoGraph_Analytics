@@ -108,21 +108,28 @@ export default function CorrelationNetworkGraph() {
   const router = useRouter();
   
   const [sliderVal, setSliderVal] = useState<number>(2.0); // Smooth continuous float [0.0 - 4.0]
-  const [is3D, setIs3D] = useState(true);
+  const [is3D, setIs3D] = useState(false); // Default to lightweight 2D canvas (<35MB RAM)
   const [mounted, setMounted] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0); // State trigger for 2D image-load repaints & timeline updates
   const failedIcons = useRef<Set<string>>(new Set()); // Cache icon 404s to prevent repeated loads
-  const sliderInitialized = useRef(false); // Track whether initial zoom has occurred
 
   useEffect(() => {
     setMounted(true);
   }, []);
   
-  const { data: histData } = useSWR<GraphResponse>("/api/v1/graph/latest?mode=historical", fetcher, { revalidateOnFocus: false, dedupingInterval: 60000 });
-  const { data: hist30Data } = useSWR<GraphResponse>("/api/v1/graph/latest?mode=historical_30", fetcher, { revalidateOnFocus: false, dedupingInterval: 60000 });
-  const { data: liveData, error, isLoading, mutate } = useSWR<GraphResponse>("/api/v1/graph/latest?mode=live", fetcher, { revalidateOnFocus: false, dedupingInterval: 60000 });
-  const { data: proj15Data } = useSWR<GraphResponse>("/api/v1/graph/latest?mode=projected_15", fetcher, { revalidateOnFocus: false, dedupingInterval: 60000 });
-  const { data: proj30Data } = useSWR<GraphResponse>("/api/v1/graph/latest?mode=projected", fetcher, { revalidateOnFocus: false, dedupingInterval: 60000 });
+  const activeMode = useMemo(() => {
+    if (sliderVal < 0.8) return "historical";
+    if (sliderVal < 1.8) return "historical_30";
+    if (sliderVal < 2.5) return "live";
+    if (sliderVal < 3.5) return "projected_15";
+    return "projected";
+  }, [sliderVal]);
+
+  const { data: liveData, error, isLoading, mutate } = useSWR<GraphResponse>(
+    `/api/v1/graph/latest?mode=${activeMode}`, 
+    fetcher, 
+    { revalidateOnFocus: false, dedupingInterval: 60000, refreshInterval: 10000 }
+  );
 
   const graphRef = useRef<any>(null);
   const graphRef2D = useRef<any>(null);
@@ -144,9 +151,14 @@ export default function CorrelationNetworkGraph() {
       target: typeof l.target === "object" ? (l.target.symbol || l.target.id) : l.target,
     }));
 
-    const filtered = minCorrelationThreshold <= 0 
+    let filtered = minCorrelationThreshold <= 0 
       ? rawLinks 
       : rawLinks.filter((l: any) => Math.abs(l.weight || 0) >= minCorrelationThreshold);
+
+    // Limit maximum edge count to 150 top weighted links to keep RAM < 100 MB and FPS high
+    if (filtered.length > 150) {
+      filtered = [...filtered].sort((a, b) => Math.abs(b.weight || 0) - Math.abs(a.weight || 0)).slice(0, 150);
+    }
 
     return {
       nodes: graphDataState.nodes,
@@ -261,9 +273,9 @@ export default function CorrelationNetworkGraph() {
     };
   }, []);
 
-  // Initialize the topology reference once when base liveData is ready
+  // Update graph nodes & links when liveData changes for the active mode
   useEffect(() => {
-    if (liveData && !graphInitialized.current) {
+    if (liveData && Array.isArray(liveData.nodes)) {
       const nodes = liveData.nodes.map((n: any) => ({
         ...n,
         radius: getNodeRadius(n.market_cap_usd),
@@ -271,7 +283,7 @@ export default function CorrelationNetworkGraph() {
       }));
 
       const nodeIds = new Set(nodes.map((n: any) => n.symbol));
-      const links = liveData.edges
+      const links = (liveData.edges || [])
         .filter((e: any) => nodeIds.has(e.source) && nodeIds.has(e.target))
         .map((e: any) => ({
           source: e.source,
@@ -282,87 +294,9 @@ export default function CorrelationNetworkGraph() {
         }));
 
       setGraphDataState({ nodes, links });
-      graphInitialized.current = true;
+      setRefreshTrigger(prev => prev + 1);
     }
   }, [liveData, palette]);
-
-  // Smoothly update attributes in-place when slider changes to prevent graph reload/force reset
-  useEffect(() => {
-    if (graphDataState.nodes.length === 0) return;
-
-    const stepLower = Math.min(4, Math.max(0, Math.floor(sliderVal)));
-    const stepUpper = Math.min(4, Math.max(0, Math.ceil(sliderVal)));
-    const t = sliderVal - stepLower;
-
-    const list = [histData, hist30Data, liveData, proj15Data, proj30Data];
-    const dataLower = list[stepLower] || liveData;
-    const dataUpper = list[stepUpper] || liveData;
-
-    if (!dataLower || !dataUpper) return;
-
-    const nodeMapLower = new Map(dataLower.nodes.map((n: any) => [n.symbol, n]));
-    const nodeMapUpper = new Map(dataUpper.nodes.map((n: any) => [n.symbol, n]));
-
-    graphDataState.nodes.forEach((n: any) => {
-      const nLower = nodeMapLower.get(n.symbol);
-      const nUpper = nodeMapUpper.get(n.symbol);
-      const targetDirLower = nLower?.predicted_direction || "neutral";
-      const targetDirUpper = nUpper?.predicted_direction || "neutral";
-
-      const colLower = getSignalColor(targetDirLower, palette);
-      const colUpper = getSignalColor(targetDirUpper, palette);
-      n.color = interpolateColor(colLower, colUpper, t);
-
-      const radLower = getNodeRadius(nLower?.market_cap_usd || 1e9);
-      const radUpper = getNodeRadius(nUpper?.market_cap_usd || 1e9);
-      n.radius = Math.max(4, radLower * (1 - t) + radUpper * t);
-      n.predicted_direction = t < 0.5 ? targetDirLower : targetDirUpper;
-
-      // Update ThreeJS meshes in-place for instant, buttery smooth slider transitions
-      const group = nodeThreeObjsMap.current.get(n.symbol);
-      if (group) {
-        const sphereMesh = group.children[0] as THREE.Mesh;
-        if (sphereMesh && sphereMesh.material) {
-          (sphereMesh.material as THREE.MeshBasicMaterial).color.set(n.color || palette.muted);
-          sphereMesh.scale.setScalar(n.radius / 4);
-        }
-        const logoSprite = group.children[1] as THREE.Sprite;
-        if (logoSprite) {
-          logoSprite.scale.setScalar(9 * (n.radius / 4));
-        }
-        const textSprite = group.children[2] as THREE.Sprite;
-        if (textSprite) {
-          textSprite.scale.setScalar(12 * (n.radius / 4));
-          textSprite.position.y = n.radius + 3;
-        }
-      }
-    });
-
-    const edgeMapLower = new Map(dataLower.edges.map((e: any) => [`${e.source}-${e.target}`, e]));
-    const edgeMapUpper = new Map(dataUpper.edges.map((e: any) => [`${e.source}-${e.target}`, e]));
-
-    graphDataState.links.forEach((l: any) => {
-      const srcId = typeof l.source === "object" ? l.source.symbol || l.source.id : l.source;
-      const tgtId = typeof l.target === "object" ? l.target.symbol || l.target.id : l.target;
-      const key = `${srcId}-${tgtId}`;
-      const revKey = `${tgtId}-${srcId}`;
-
-      const eLower = edgeMapLower.get(key) || edgeMapLower.get(revKey);
-      const eUpper = edgeMapUpper.get(key) || edgeMapUpper.get(revKey);
-
-      const wLower = eLower ? eLower.weight : 0.0;
-      const wUpper = eUpper ? eUpper.weight : 0.0;
-      l.weight = wLower * (1 - t) + wUpper * t;
-
-      l.edge_type = l.weight >= 0 ? "positive_correlation" : "negative_correlation";
-
-      const motifLower = eLower ? eLower.motif_similarity : 0.0;
-      const motifUpper = eUpper ? eUpper.motif_similarity : 0.0;
-      l.motif_similarity = motifLower * (1 - t) + motifUpper * t;
-    });
-
-    setRefreshTrigger(prev => prev + 1);
-  }, [sliderVal, histData, hist30Data, liveData, proj15Data, proj30Data, palette]);
 
   const [spreadMode, setSpreadMode] = useState<"compact" | "normal" | "expanded">("normal");
   const isLight = resolvedTheme === "light";
@@ -719,17 +653,11 @@ export default function CorrelationNetworkGraph() {
             linkColor={linkColor}
             linkWidth={linkWidth}
             linkResolution={6}
-            linkDirectionalParticles={(link: any) => ((link.weight ?? 0) < 0 ? 6 : 4)}
-            linkDirectionalParticleColor={linkParticleColor}
-            linkDirectionalParticleWidth={(link: any) => {
-              const w = link.weight ?? 0;
-              return w < 0 ? Math.max(1.2, linkWidth(link) * 0.45) : Math.max(0.4, linkWidth(link) * 0.25);
-            }}
-            linkDirectionalParticleSpeed={(link: any) => 0.012 + (Math.abs(link.motif_similarity || 0.1) * 0.03)}
+            linkDirectionalParticles={0}
             backgroundColor="rgba(0,0,0,0)"
-            d3AlphaDecay={0.06}
-            d3VelocityDecay={0.4}
-            cooldownTime={4000}
+            d3AlphaDecay={0.08}
+            d3VelocityDecay={0.6}
+            cooldownTime={1500}
             onEngineStop={() => {
               if (graphRef.current) {
                 if (!hasZoomed.current) {
@@ -841,17 +769,11 @@ export default function CorrelationNetworkGraph() {
             }}
             linkColor={linkColor}
             linkWidth={linkWidth}
-            linkDirectionalParticles={(link: any) => ((link.weight ?? 0) < 0 ? 6 : 4)}
-            linkDirectionalParticleColor={linkParticleColor}
-            linkDirectionalParticleWidth={(link: any) => {
-              const w = link.weight ?? 0;
-              return w < 0 ? Math.max(1.2, linkWidth(link) * 0.45) : Math.max(0.4, linkWidth(link) * 0.25);
-            }}
-            linkDirectionalParticleSpeed={(link: any) => 0.012 + (Math.abs(link.motif_similarity || 0.1) * 0.03)}
+            linkDirectionalParticles={0}
             backgroundColor="rgba(0,0,0,0)"
-            d3AlphaDecay={0.06}
-            d3VelocityDecay={0.4}
-            cooldownTime={4000}
+            d3AlphaDecay={0.08}
+            d3VelocityDecay={0.6}
+            cooldownTime={1500}
             onEngineStop={() => {
               if (graphRef2D.current) {
                 if (!hasZoomed.current) {

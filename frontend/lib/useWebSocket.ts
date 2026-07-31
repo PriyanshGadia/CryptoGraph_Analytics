@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useAppStore } from "./store";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://cryptograph-analytics.onrender.com";
 const WS_BASE = BASE_URL.replace(/^http/, "ws");
 
 interface WebSocketOptions {
