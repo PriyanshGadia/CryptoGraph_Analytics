@@ -87,7 +87,7 @@ export default function RiskPage() {
   const { data, error, isLoading, mutate } = useSWR<RiskData>("/api/v1/risk", fetcher, {
     revalidateOnFocus: false, dedupingInterval: 30000, refreshInterval: 120000,
   });
-  const { data: preds } = useSWR<PredictionRow[]>("/api/v1/predictions?limit=50", fetcher, {
+  const { data: preds } = useSWR<PredictionRow[]>("/api/v1/predictions?limit=250", fetcher, {
     revalidateOnFocus: false, dedupingInterval: 30000, refreshInterval: 120000,
   });
   const { data: macro } = useSWR("/api/v1/risk/macro", fetcher, {
@@ -206,7 +206,7 @@ export default function RiskPage() {
             )}
             {[
               { label: "Active Threats", value: String(data.risk_alerts?.length ?? 0), icon: AlertTriangle, color: data.risk_alerts?.length ? "text-warning" : "text-success" },
-              { label: "Monitored Nodes", value: String(data.total_assets_monitored ?? 50), icon: Shield, color: "text-text" },
+              { label: "Monitored Nodes", value: String(data.total_assets_monitored ?? 100), icon: Shield, color: "text-text" },
               { label: "Isomorphic Clusters", value: String(Object.keys(data.correlation_clusters || {}).length), icon: BarChart3, color: "text-accent" },
             ].map((s, i) => (
               <GlassCard key={i} tier={2} shape="none" className="interactive-lift rounded-xl p-6 flex items-center gap-4 group hover:bg-white/[0.02] transition-colors border border-white/10 hover:border-white/20 h-32">
