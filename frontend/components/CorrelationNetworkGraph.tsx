@@ -11,12 +11,12 @@ import * as d3 from "d3-force";
 import * as THREE from "three";
 import { useRouter } from "next/navigation";
 
-const ForceGraph2D = dynamic(() => import("react-force-graph-2d").then((mod) => mod.default || mod), {
+const ForceGraph2D = dynamic(() => import("react-force-graph-2d").then((mod) => ({ default: mod.default || mod })), {
   ssr: false,
   loading: () => <Skeleton className="w-full h-[600px] shape-squircle" />,
 });
 
-const ForceGraph3D = dynamic(() => import("react-force-graph-3d").then((mod) => mod.default || mod), {
+const ForceGraph3D = dynamic(() => import("react-force-graph-3d").then((mod) => ({ default: mod.default || mod })), {
   ssr: false,
   loading: () => <Skeleton className="w-full h-[600px] shape-squircle" />,
 });
