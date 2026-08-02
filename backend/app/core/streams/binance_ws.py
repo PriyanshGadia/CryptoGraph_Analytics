@@ -223,6 +223,37 @@ async def binance_ws_loop(symbols: List[str]):
 
     asyncio.create_task(fetch_xmr_price_periodically())
 
+    async def fetch_all_tickers_periodically():
+        import ccxt.async_support as ccxt_async
+        exchange = ccxt_async.binance({'enableRateLimit': True, 'timeout': 5000})
+        try:
+            while True:
+                try:
+                    tickers = await exchange.fetch_tickers()
+                    for sym, data in GLOBAL_MARKET_STATE.items():
+                        pair = f"{sym}/USDT"
+                        if pair in tickers and tickers[pair]:
+                            t = tickers[pair]
+                            if t.get('last'):
+                                data["current_price"] = float(t['last'])
+                            if t.get('quoteVolume'):
+                                data["volume_24h"] = float(t['quoteVolume'])
+                            if t.get('percentage'):
+                                data["price_change_24h_pct"] = float(t['percentage'])
+                            data["updated_at"] = datetime.now(timezone.utc).isoformat()
+                    try:
+                        from app.core.cache import redis_set
+                        redis_set("cryptograph:live:market_state", dict(GLOBAL_MARKET_STATE))
+                    except Exception:
+                        pass
+                except Exception as e:
+                    logger.info(f"[REST Ticker Fallback] Ticker fetch failed: {e}")
+                await asyncio.sleep(20)
+        finally:
+            await exchange.close()
+
+    asyncio.create_task(fetch_all_tickers_periodically())
+
     import logging
     from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type
     from circuitbreaker import circuit
