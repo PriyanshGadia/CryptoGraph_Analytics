@@ -275,7 +275,7 @@ export default function CorrelationNetworkGraph() {
 
   // Update graph nodes & links when liveData changes for the active mode
   useEffect(() => {
-    if (liveData && Array.isArray(liveData.nodes)) {
+    if (liveData && Array.isArray(liveData.nodes) && liveData.nodes.length > 0) {
       const nodes = liveData.nodes.map((n: any) => ({
         ...n,
         radius: getNodeRadius(n.market_cap_usd),

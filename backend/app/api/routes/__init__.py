@@ -1,7 +1,11 @@
-"""
-CryptoGraph API Routes
-Exported FastAPI routers.
-"""
+import sys
+from pathlib import Path
+_root = Path(__file__).resolve().parent.parent.parent.parent
+if str(_root) not in sys.path:
+    sys.path.insert(0, str(_root))
+_backend = Path(__file__).resolve().parent.parent.parent
+if str(_backend) not in sys.path:
+    sys.path.insert(0, str(_backend))
 
 from .assets import router as assets_router
 from .predictions import router as predictions_router
