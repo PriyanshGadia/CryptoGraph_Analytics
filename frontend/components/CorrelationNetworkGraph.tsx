@@ -155,9 +155,9 @@ export default function CorrelationNetworkGraph() {
       ? rawLinks 
       : rawLinks.filter((l: any) => Math.abs(l.weight || 0) >= minCorrelationThreshold);
 
-    // Limit maximum edge count to 150 top weighted links to keep RAM < 100 MB and FPS high
-    if (filtered.length > 150) {
-      filtered = [...filtered].sort((a, b) => Math.abs(b.weight || 0) - Math.abs(a.weight || 0)).slice(0, 150);
+    // Limit maximum edge count to 120 top weighted links to keep RAM < 35 MB and FPS high
+    if (filtered.length > 120) {
+      filtered = [...filtered].sort((a, b) => Math.abs(b.weight || 0) - Math.abs(a.weight || 0)).slice(0, 120);
     }
 
     return {
