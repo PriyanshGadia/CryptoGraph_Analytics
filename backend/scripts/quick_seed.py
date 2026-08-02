@@ -32,10 +32,13 @@ def _insert_placeholder_predictions(path: str) -> None:
         closes = [r[0] for r in reversed(rows)]
 
         direction = "neutral"
-        confidence = 0.34
+        confidence = 0.48
         vol_regime = "medium"
 
         if len(closes) >= 15:
+            ret_7d = (closes[-1] - closes[-7]) / closes[-7] if len(closes) >= 7 and closes[-7] > 0 else 0.0
+            ret_1d = (closes[-1] - closes[-2]) / closes[-2] if len(closes) >= 2 and closes[-2] > 0 else 0.0
+            
             deltas = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
             gains = [d for d in deltas if d > 0]
             losses = [-d for d in deltas if d < 0]
@@ -43,18 +46,25 @@ def _insert_placeholder_predictions(path: str) -> None:
             avg_loss = sum(losses[-14:]) / 14 if losses else 1e-9
             rs = avg_gain / avg_loss
             rsi = 100 - (100 / (1 + rs))
-            if rsi < 40:
-                direction, confidence = "up", 0.62
-            elif rsi > 60:
-                direction, confidence = "down", 0.58
+
+            score = (ret_7d * 5.0) + (ret_1d * 3.0) + ((rsi - 50.0) / 30.0)
+
+            if score > 0.35:
+                direction, confidence = "strong_up", min(0.92, 0.68 + score * 0.15)
+            elif score > 0.08:
+                direction, confidence = "up", min(0.78, 0.55 + score * 0.2)
+            elif score < -0.35:
+                direction, confidence = "strong_down", min(0.92, 0.68 + abs(score) * 0.15)
+            elif score < -0.08:
+                direction, confidence = "down", min(0.78, 0.55 + abs(score) * 0.2)
             else:
-                direction, confidence = "neutral", 0.34
-            # Volatility regime from recent std
+                direction, confidence = "neutral", 0.48
+
             if len(closes) >= 7:
                 mean_p = sum(closes[-7:]) / 7
                 std_p = math.sqrt(sum((p - mean_p) ** 2 for p in closes[-7:]) / 7)
                 cv = std_p / mean_p if mean_p else 0
-                vol_regime = "high" if cv > 0.05 else "low" if cv < 0.01 else "medium"
+                vol_regime = "extreme" if cv > 0.08 else "high" if cv > 0.04 else "low" if cv < 0.015 else "medium"
 
         try:
             c.execute("""

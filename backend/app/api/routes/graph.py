@@ -15,7 +15,7 @@ router = APIRouter(prefix="/graph", tags=["graph"])
 from app.core.cache import cached
 
 @cached(ttl_seconds=3600)
-def _compute_correlation_graph(db: Session, top_n_edges: int = 100, mode: str = "live"):
+def _compute_correlation_graph(db: Session, top_n_edges: int = 450, mode: str = "live"):
     """
     Builds a correlation-based graph from local OHLCV, technical_features, or forecasts tables.
     Nodes = assets, Edges = top Spearman correlations between daily returns.

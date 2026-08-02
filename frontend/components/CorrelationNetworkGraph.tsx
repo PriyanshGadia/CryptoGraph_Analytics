@@ -621,7 +621,7 @@ export default function CorrelationNetworkGraph() {
             className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-wider rounded border border-text/10 bg-text/5 hover:bg-text/15 text-text transition-all"
           >
             <Activity size={14} className="text-accent" />
-            {is3D ? "2D Graph" : "3D Graph"}
+            {is3D ? "Switch to 2D Graph" : "Switch to 3D Graph"}
           </button>
           
           <button onClick={() => {
@@ -638,7 +638,7 @@ export default function CorrelationNetworkGraph() {
           <Skeleton className="w-full h-full" />
         ) : is3D ? (
           <ForceGraph3D
-            key={resolvedTheme || 'dark'}
+            key={`graph-3d-${resolvedTheme || 'dark'}`}
             ref={graphRef}
             width={dimensions.width}
             height={dimensions.height}
@@ -677,6 +677,7 @@ export default function CorrelationNetworkGraph() {
           />
         ) : (
           <ForceGraph2D
+            key={`graph-2d-${resolvedTheme || 'dark'}`}
             ref={graphRef2D}
             width={dimensions.width}
             height={dimensions.height}
