@@ -18,6 +18,13 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  transpilePackages: [
+    "three",
+    "react-force-graph-2d",
+    "react-force-graph-3d",
+    "three-forcegraph",
+    "d3-force"
+  ],
   experimental: {
     webpackBuildWorker: false,
   },
